@@ -1,11 +1,11 @@
 # Ngumu's Eye - Community Safety Platform
 
 ## Overview
-A mobile-first community safety platform for reporting incidents, tracking missing persons, and coordinating neighborhood watch groups. Built with React frontend and Express backend.
+A mobile-first community safety platform for reporting incidents, tracking missing persons, and coordinating neighborhood watch groups. Built with React frontend, Express backend, and a separate React Native mobile app.
 
 ## Project Structure
 
-### Frontend (client/src/)
+### Web App - Frontend (client/src/)
 - **pages/** - Page components
   - `login.tsx` - User authentication
   - `signup.tsx` - User registration
@@ -48,7 +48,26 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 - Email: ngocbo@yopmail.com
 - Password: password123
 
+### Mobile App (mobile/)
+React Native Expo app that connects to the same backend API.
+
+- **App.tsx** - Main navigation setup with bottom tabs
+- **src/screens/** - All app screens (Login, Feed, Map, Report, Groups, Profile)
+- **src/lib/** - API client, theme, and types
+- **assets/** - App icons and splash screens
+
+#### Building the Mobile App
+```bash
+cd mobile
+npm install
+npx expo start           # Development
+eas build --platform android --profile preview  # Build APK
+```
+
+**Important**: Update `apiUrl` in `mobile/app.json` with your deployment URL before building.
+
 ## Design System
 - Primary color: Blue (#1d9bf0)
 - Mobile-first responsive design
 - Bottom navigation for app-like experience
+- Files tab is disabled (coming soon)
