@@ -1,0 +1,180 @@
+import { PageHeader } from "@/components/page-header";
+import { BottomNav } from "@/components/bottom-nav";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import { Pencil, Camera, Shield, Calendar } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { User } from "@shared/schema";
+
+export default function ProfilePage() {
+  const { data: user, isLoading } = useQuery<User>({
+    queryKey: ["/api/user"],
+  });
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background pb-20">
+        <PageHeader title="Profile" />
+        <div className="px-4 py-4 space-y-4">
+          <ProfileSkeleton />
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
+
+  const displayUser = user || {
+    id: "sample",
+    email: "ngocbo@yopmail.com",
+    displayName: "Ngobo D...",
+    phone: "+27781669885",
+    avatarUrl: "",
+    level: 0,
+    trustScore: 0,
+    followers: 0,
+    following: 0,
+    subscriptionType: "Individual 1 Month",
+    subscriptionExpiry: "2/21/2026",
+  };
+
+  const daysRemaining = 26;
+
+  return (
+    <div className="min-h-screen bg-background pb-20">
+      <PageHeader title="Profile" />
+      
+      <div className="px-4 py-4 space-y-4">
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-start gap-4">
+              <div className="relative">
+                <Avatar className="w-20 h-20">
+                  <AvatarImage src={displayUser.avatarUrl} />
+                  <AvatarFallback className="text-2xl bg-muted">
+                    {displayUser.displayName?.charAt(0) || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <Button
+                  size="icon"
+                  className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full"
+                  data-testid="button-change-avatar"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h2 className="text-xl font-bold">{displayUser.displayName}</h2>
+                  <Badge variant="outline" className="text-xs">
+                    Level {displayUser.level}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">{displayUser.email}</p>
+                <p className="text-sm text-muted-foreground">{displayUser.phone}</p>
+              </div>
+            </div>
+
+            <Button variant="outline" className="w-full mt-4" data-testid="button-edit-name">
+              <Pencil className="w-4 h-4 mr-2" />
+              Edit Display Name
+            </Button>
+
+            <div className="flex items-center gap-2 mt-4 text-sm text-muted-foreground">
+              <Shield className="w-4 h-4" />
+              <span>Trust Score: {displayUser.trustScore}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center justify-around">
+              <div className="text-center">
+                <p className="text-2xl font-bold">{displayUser.followers}</p>
+                <p className="text-sm text-muted-foreground">Followers</p>
+              </div>
+              <Separator orientation="vertical" className="h-10" />
+              <div className="text-center">
+                <p className="text-2xl font-bold">{displayUser.following}</p>
+                <p className="text-sm text-muted-foreground">Following</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-5">
+            <h3 className="font-bold text-lg mb-1">Subscription</h3>
+            <p className="text-sm text-muted-foreground mb-4">Active membership</p>
+
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-medium">{displayUser.subscriptionType}</span>
+              <Badge className="bg-green-500 text-white">Active</Badge>
+            </div>
+
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+              <Calendar className="w-4 h-4" />
+              <span>Expires {displayUser.subscriptionExpiry}</span>
+            </div>
+
+            <p className="text-sm text-primary font-medium mb-4">{daysRemaining} days remaining</p>
+
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" data-testid="button-renew">
+                Renew / Upgrade
+              </Button>
+              <Button className="flex-1" data-testid="button-case-deck">
+                My Case Deck
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <BottomNav />
+    </div>
+  );
+}
+
+function ProfileSkeleton() {
+  return (
+    <>
+      <Card>
+        <CardContent className="p-5">
+          <div className="flex items-start gap-4">
+            <Skeleton className="w-20 h-20 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-6 w-32" />
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-4 w-28" />
+            </div>
+          </div>
+          <Skeleton className="h-10 w-full mt-4" />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="py-4">
+          <div className="flex justify-around">
+            <Skeleton className="h-12 w-16" />
+            <Skeleton className="h-12 w-16" />
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="p-5">
+          <Skeleton className="h-6 w-24 mb-4" />
+          <Skeleton className="h-4 w-full mb-2" />
+          <Skeleton className="h-4 w-3/4 mb-4" />
+          <div className="flex gap-2">
+            <Skeleton className="h-10 flex-1" />
+            <Skeleton className="h-10 flex-1" />
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}

@@ -1,16 +1,116 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { insertUserSchema, loginSchema, insertPostSchema, insertGroupSchema } from "@shared/schema";
+import { z } from "zod";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  app.post("/api/auth/signup", async (req, res) => {
+    try {
+      const parsed = insertUserSchema.parse(req.body);
+      const existingUser = await storage.getUserByEmail(parsed.email);
+      if (existingUser) {
+        return res.status(400).json({ message: "Email already registered" });
+      }
+      const user = await storage.createUser(parsed);
+      const { password, ...userWithoutPassword } = user;
+      res.status(201).json(userWithoutPassword);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid input", errors: error.errors });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const parsed = loginSchema.parse(req.body);
+      const user = await storage.getUserByEmail(parsed.email);
+      if (!user || user.password !== parsed.password) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      const { password, ...userWithoutPassword } = user;
+      req.session.userId = user.id;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid input", errors: error.errors });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/user", async (req, res) => {
+    try {
+      const userId = req.session.userId || "user-1";
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/posts", async (req, res) => {
+    try {
+      const filter = req.query.filter as string | undefined;
+      const posts = await storage.getPosts(filter);
+      res.json(posts);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/posts", async (req, res) => {
+    try {
+      const parsed = insertPostSchema.parse(req.body);
+      const userId = req.session.userId || "user-1";
+      const post = await storage.createPost(parsed, userId);
+      res.status(201).json(post);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid input", errors: error.errors });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/groups", async (req, res) => {
+    try {
+      const groups = await storage.getGroups();
+      res.json(groups);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/groups", async (req, res) => {
+    try {
+      const parsed = insertGroupSchema.parse(req.body);
+      const userId = req.session.userId || "user-1";
+      const group = await storage.createGroup(parsed, userId);
+      res.status(201).json(group);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid input", errors: error.errors });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   return httpServer;
+}
+
+declare module "express-session" {
+  interface SessionData {
+    userId: string;
+  }
 }
