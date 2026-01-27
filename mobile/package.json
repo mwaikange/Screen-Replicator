@@ -8,7 +8,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build:android": "eas build --platform android",
-    "build:apk": "eas build --platform android --profile preview"
+    "build:apk": "eas build --platform android --profile preview",
+    "build:production": "eas build --platform android --profile production"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.0",
@@ -18,6 +19,7 @@
     "axios": "^1.6.2",
     "expo": "~50.0.0",
     "expo-constants": "~15.4.5",
+    "expo-image-picker": "~14.7.1",
     "expo-location": "~16.5.3",
     "expo-status-bar": "~1.11.1",
     "react": "18.2.0",
