@@ -1,57 +1,54 @@
 # Ngumu's Eye - Community Safety Platform
 
 ## Overview
+A mobile-first community safety platform for reporting incidents, tracking missing persons, and coordinating neighborhood watch groups. Built with React frontend and Express backend.
 
-Ngumu's Eye is a mobile-first community safety platform that enables users to report incidents, track missing persons, and coordinate neighborhood watch groups. The application provides a social feed for community alerts, an interactive incident map, group coordination features, and user profile management with subscription tracking.
+## Project Structure
 
-## User Preferences
+### Frontend (client/src/)
+- **pages/** - Page components
+  - `login.tsx` - User authentication
+  - `signup.tsx` - User registration
+  - `feed.tsx` - Community feed with posts
+  - `map.tsx` - Incident map with severity markers
+  - `report.tsx` - Multi-step incident reporting form
+  - `groups.tsx` - Community groups listing
+  - `profile.tsx` - User profile and subscription
 
-Preferred communication style: Simple, everyday language.
+- **components/**
+  - `bottom-nav.tsx` - Mobile bottom navigation bar
+  - `page-header.tsx` - Page header with logo and notifications
 
-## System Architecture
+### Backend (server/)
+- `index.ts` - Express server with session middleware
+- `routes.ts` - API endpoints for auth, posts, groups, user
+- `storage.ts` - In-memory storage with sample data
 
-### Frontend Architecture
-- **Framework**: React 18 with TypeScript
-- **Routing**: Wouter (lightweight client-side routing)
-- **State Management**: TanStack React Query for server state caching and synchronization
-- **UI Components**: shadcn/ui component library built on Radix UI primitives
-- **Styling**: Tailwind CSS with CSS variables for theming (light/dark mode support)
-- **Build Tool**: Vite with hot module replacement
+### Shared (shared/)
+- `schema.ts` - TypeScript types and Zod schemas for data validation
 
-The frontend follows a page-based structure under `client/src/pages/` with shared components in `client/src/components/`. Pages include login, signup, feed, map, report, groups, and profile. The bottom navigation provides mobile app-like navigation between main sections.
+## Features
+- **Authentication**: Email/password login and signup
+- **Feed**: View community posts with filters (All, Nearby, Verified, Following)
+- **Map**: Visual incident map with severity legend (Critical, High, Medium, Low)
+- **Report**: 3-step form for reporting incidents with location
+- **Groups**: Join or create community watch groups
+- **Profile**: View user info, trust score, subscription status
 
-### Backend Architecture
-- **Framework**: Express.js 5 running on Node.js
-- **Language**: TypeScript with ES modules
-- **API Pattern**: RESTful JSON APIs under `/api` prefix
-- **Session Management**: Express session (configured for connect-pg-simple with PostgreSQL)
+## API Endpoints
+- `POST /api/auth/login` - Authenticate user
+- `POST /api/auth/signup` - Register new user
+- `GET /api/user` - Get current user profile
+- `GET /api/posts` - Get all posts
+- `POST /api/posts` - Create new post
+- `GET /api/groups` - Get all groups
+- `POST /api/groups` - Create new group
 
-The server uses a modular structure with route registration in `server/routes.ts` and storage abstraction in `server/storage.ts`. Currently implements in-memory storage (`MemStorage`) with a defined interface (`IStorage`) for easy database migration.
+## Test Credentials
+- Email: ngocbo@yopmail.com
+- Password: password123
 
-### Data Layer
-- **ORM**: Drizzle ORM configured for PostgreSQL
-- **Schema Definition**: Shared schema in `shared/schema.ts` using Zod for validation
-- **Database Migrations**: Drizzle Kit with migrations output to `./migrations`
-
-The schema currently defines Users, Posts, and Groups with TypeScript types and Zod validation schemas for insert operations. The storage interface pattern allows swapping between in-memory and database implementations.
-
-### Build System
-- **Development**: Vite dev server with HMR proxied through Express
-- **Production**: Custom build script using esbuild for server bundling and Vite for client
-- **Output**: Server builds to `dist/index.cjs`, client to `dist/public`
-
-## External Dependencies
-
-### Database
-- **PostgreSQL**: Primary database (requires `DATABASE_URL` environment variable)
-- **Drizzle ORM**: Database toolkit for type-safe queries and migrations
-- **connect-pg-simple**: PostgreSQL session store for Express
-
-### UI Framework
-- **Radix UI**: Headless accessible component primitives (accordion, dialog, dropdown, etc.)
-- **shadcn/ui**: Pre-styled component collection using Radix and Tailwind
-- **Lucide React**: Icon library
-
-### Development Tools
-- **Replit Plugins**: Runtime error overlay, cartographer, and dev banner for Replit environment
-- **TypeScript**: Strict mode enabled with path aliases (@/, @shared/, @assets/)
+## Design System
+- Primary color: Blue (#1d9bf0)
+- Mobile-first responsive design
+- Bottom navigation for app-like experience
