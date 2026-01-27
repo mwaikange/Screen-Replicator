@@ -13,11 +13,36 @@ import brandLogo from "@assets/image_1769491690073.png";
 
 const filterTabs = ["All", "Nearby", "Verified", "Following"];
 
+function formatTimeAgo(dateString: string): string {
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "1 day ago";
+  return `${diffDays} days ago`;
+}
+
+function formatRadius(radius: number): string {
+  if (radius >= 1000) {
+    return `${radius / 1000}Km Radius`;
+  }
+  return `${radius}m Radius`;
+}
+
 export default function FeedPage() {
   const [activeFilter, setActiveFilter] = useState("All");
 
   const { data: posts, isLoading } = useQuery<Post[]>({
     queryKey: ["/api/posts", activeFilter],
+    queryFn: async () => {
+      const res = await fetch(`/api/posts?filter=${activeFilter}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch posts");
+      return res.json();
+    },
   });
 
   return (
@@ -70,8 +95,8 @@ export default function FeedPage() {
 function PostCard({ post }: { post: Post }) {
   const typeLabels: Record<string, { label: string; color: string }> = {
     missing_person: { label: "Missing Person", color: "bg-destructive text-destructive-foreground" },
-    incident: { label: "Incident", color: "bg-amber-500 text-white" },
-    alert: { label: "Alert", color: "bg-primary text-primary-foreground" },
+    incident: { label: "Crime Report", color: "bg-destructive text-destructive-foreground" },
+    alert: { label: "Emergency Alert", color: "bg-destructive text-destructive-foreground" },
   };
 
   const typeInfo = typeLabels[post.type] || typeLabels.alert;
@@ -96,8 +121,8 @@ function PostCard({ post }: { post: Post }) {
           <p className="text-muted-foreground text-sm line-clamp-2">{post.description}</p>
           
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>{new Date(post.createdAt).toLocaleDateString() === new Date().toLocaleDateString() ? "Today" : post.createdAt}</span>
-            <span>{post.radius}m Radius</span>
+            <span>{formatTimeAgo(post.createdAt)}</span>
+            <span>{formatRadius(post.radius)}</span>
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-border">
