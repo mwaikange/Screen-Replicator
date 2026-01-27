@@ -15,8 +15,8 @@ export function BottomNav() {
   const [location] = useLocation();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
-      <div className="flex items-center justify-around h-16 max-w-lg mx-auto">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 safe-area-bottom">
+      <div className="grid grid-cols-6 h-16 w-full">
         {navItems.map((item) => {
           const isActive = location === item.path;
           const Icon = item.icon;
@@ -25,11 +25,13 @@ export function BottomNav() {
             return (
               <div
                 key={item.path}
-                className="flex flex-col items-center justify-center flex-1 py-2 opacity-40 cursor-not-allowed"
+                className="flex flex-col items-center justify-center py-2 opacity-40 cursor-not-allowed min-h-[64px]"
                 data-testid={`nav-${item.label.toLowerCase()}-disabled`}
+                aria-disabled="true"
+                role="button"
               >
-                <Icon className="w-6 h-6 text-gray-400" strokeWidth={1.5} />
-                <span className="text-[11px] mt-1 text-gray-400">{item.label}</span>
+                <Icon className="w-5 h-5 text-gray-400" strokeWidth={1.5} />
+                <span className="text-[10px] mt-1 text-gray-400">{item.label}</span>
               </div>
             );
           }
@@ -38,19 +40,16 @@ export function BottomNav() {
             return (
               <Link key={item.path} href={item.path}>
                 <div
-                  className="flex flex-col items-center justify-center flex-1 py-2 cursor-pointer"
+                  className="flex flex-col items-center justify-center py-2 cursor-pointer min-h-[64px] active:bg-gray-50"
                   data-testid={`nav-${item.label.toLowerCase()}`}
                 >
                   <Icon 
-                    className={cn(
-                      "w-6 h-6",
-                      isActive ? "text-primary" : "text-primary"
-                    )} 
+                    className="w-5 h-5 text-primary" 
                     strokeWidth={2} 
                   />
                   <span className={cn(
-                    "text-[11px] mt-1",
-                    isActive ? "font-medium text-primary" : "text-primary"
+                    "text-[10px] mt-1 text-primary",
+                    isActive && "font-medium"
                   )}>{item.label}</span>
                 </div>
               </Link>
@@ -60,18 +59,18 @@ export function BottomNav() {
           return (
             <Link key={item.path} href={item.path}>
               <div
-                className="flex flex-col items-center justify-center flex-1 py-2 cursor-pointer transition-colors"
+                className="flex flex-col items-center justify-center py-2 cursor-pointer transition-colors min-h-[64px] active:bg-gray-50"
                 data-testid={`nav-${item.label.toLowerCase()}`}
               >
                 <Icon 
                   className={cn(
-                    "w-6 h-6", 
+                    "w-5 h-5", 
                     isActive ? "text-primary" : "text-gray-500"
                   )} 
                   strokeWidth={1.5} 
                 />
                 <span className={cn(
-                  "text-[11px] mt-1",
+                  "text-[10px] mt-1",
                   isActive ? "font-medium text-primary" : "text-gray-500"
                 )}>{item.label}</span>
               </div>

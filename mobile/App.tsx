@@ -76,6 +76,7 @@ function MainTabs() {
         tabBarLabelStyle: styles.tabLabel,
         tabBarHideOnKeyboard: true,
         tabBarItemStyle: styles.tabBarItem,
+        tabBarShowLabel: true,
       }}
     >
       <Tab.Screen 
@@ -163,9 +164,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderTopColor: colors.border,
     borderTopWidth: 1,
-    height: Platform.OS === 'ios' ? 88 : 64,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 8,
-    paddingTop: 8,
+    height: Platform.OS === 'ios' ? 84 : 60,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 4,
+    paddingTop: 4,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
@@ -173,16 +174,17 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   tabBarItem: {
-    minHeight: 44,
-    paddingVertical: 4,
+    flex: 1,
+    minHeight: 48,
+    paddingVertical: 2,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '500',
     marginTop: 2,
   },
   tabLabelText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '500',
     marginTop: 2,
   },
@@ -190,8 +192,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
-    paddingTop: 4,
+    minHeight: 48,
+    paddingTop: 2,
   },
   disabledScreen: {
     flex: 1,
