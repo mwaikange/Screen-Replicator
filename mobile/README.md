@@ -2,6 +2,15 @@
 
 React Native mobile app built with Expo for the Ngumu's Eye community safety platform.
 
+## Features
+
+- **Authentication**: Secure login and signup with validation
+- **Community Feed**: View and filter incident reports with FlatList optimization
+- **Incident Map**: Visual map showing incident locations by severity
+- **Report Incidents**: Multi-step form with location capture and image upload
+- **Community Groups**: Join and manage neighborhood watch groups
+- **User Profile**: View trust score, subscription status, and followers
+
 ## Setup
 
 1. Install dependencies:
@@ -21,6 +30,7 @@ npx expo start
 ## Building APK
 
 ### Prerequisites
+
 1. Install EAS CLI globally:
 ```bash
 npm install -g eas-cli
@@ -38,9 +48,9 @@ eas build:configure
 
 ### Build Commands
 
-**Development Build (for testing):**
+**Development Build (for testing with Expo Go):**
 ```bash
-eas build --platform android --profile development
+npx expo start
 ```
 
 **Preview APK (standalone APK for testing):**
@@ -48,7 +58,7 @@ eas build --platform android --profile development
 eas build --platform android --profile preview
 ```
 
-**Production Build:**
+**Production Build (App Bundle for Play Store):**
 ```bash
 eas build --platform android --profile production
 ```
@@ -58,44 +68,52 @@ eas build --platform android --profile production
 ```
 mobile/
 ├── App.tsx                 # Main app entry with navigation
-├── app.json                # Expo configuration
+├── app.json                # Expo configuration with permissions
 ├── eas.json                # EAS Build configuration
 ├── package.json            # Dependencies
+├── babel.config.js         # Babel configuration with Reanimated
 ├── assets/                 # App icons and splash screens
 └── src/
-    ├── components/         # Reusable components
     ├── lib/
-    │   ├── api.ts          # API client
-    │   ├── theme.ts        # Colors and styling
+    │   ├── api.ts          # API client with axios
+    │   ├── theme.ts        # Colors, spacing, typography
     │   └── types.ts        # TypeScript types
     └── screens/
-        ├── LoginScreen.tsx
-        ├── SignupScreen.tsx
-        ├── FeedScreen.tsx
-        ├── MapScreen.tsx
-        ├── ReportScreen.tsx
-        ├── GroupsScreen.tsx
-        └── ProfileScreen.tsx
+        ├── LoginScreen.tsx     # Login with validation
+        ├── SignupScreen.tsx    # User registration
+        ├── FeedScreen.tsx      # Optimized feed with FlatList
+        ├── MapScreen.tsx       # Incident map
+        ├── ReportScreen.tsx    # Multi-step incident form
+        ├── GroupsScreen.tsx    # Community groups
+        └── ProfileScreen.tsx   # User profile
 ```
 
-## Features
+## Mobile Optimizations
 
-- **Authentication**: Login/Signup screens
-- **Feed**: View community posts with filters
-- **Map**: Visual incident map with markers
-- **Report**: Multi-step incident reporting
-- **Groups**: Community groups listing
-- **Profile**: User profile and subscription info
+- **Performance**: React.memo, useCallback, FlatList with optimized rendering
+- **Touch Targets**: Minimum 44x44pt touch targets for accessibility
+- **Keyboard Handling**: KeyboardAvoidingView on all forms
+- **Safe Areas**: Proper handling for iOS notch and Android navigation
+- **Form Validation**: Client-side validation with error messages
+- **Image Optimization**: expo-image-picker with compression
+
+## Permissions
+
+The app requests the following permissions:
+- **Location**: For incident location tagging
+- **Camera**: For capturing incident photos
+- **Photo Library**: For uploading existing photos
 
 ## API Connection
 
 The mobile app connects to the same backend API as the web app. Make sure to:
 1. Deploy your web app to get a public URL
-2. Update the `apiUrl` in `app.json` with your deployment URL
+2. Update the `apiUrl` in `app.json` extra section with your deployment URL
 
 ## Notes
 
-- The Files tab is disabled as per requirements
-- Uses React Navigation for navigation
-- Uses Ionicons for icons
-- Matches the web app's blue color theme
+- The Files tab is disabled (coming soon)
+- Uses React Navigation for bottom tabs and stack navigation
+- Uses Ionicons for consistent iconography
+- Matches the web app's blue color theme (#1d9bf0)
+- Owner is set to "referredby" in app.json

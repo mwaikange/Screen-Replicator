@@ -2,6 +2,7 @@
   "expo": {
     "name": "Ngumu's Eye",
     "slug": "ngumus-eye",
+    "owner": "referredby",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,19 +16,44 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.ngumuseye.app"
+      "supportsTablet": false,
+      "bundleIdentifier": "com.ngumuseye.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This app needs your location to report incidents in your area.",
+        "NSLocationAlwaysUsageDescription": "This app needs your location to alert you about nearby incidents.",
+        "NSCameraUsageDescription": "This app needs camera access to capture photos of incidents.",
+        "NSPhotoLibraryUsageDescription": "This app needs photo library access to upload images of incidents."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1d9bf0"
       },
-      "package": "com.ngumuseye.app"
+      "package": "com.ngumuseye.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Ngumu's Eye to use your location to report and receive alerts about nearby incidents."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Ngumu's Eye to access your photos to upload incident images.",
+          "cameraPermission": "Allow Ngumu's Eye to access your camera to capture incident photos."
+        }
+      ]
+    ],
     "extra": {
       "apiUrl": "https://YOUR_REPLIT_URL"
     }
