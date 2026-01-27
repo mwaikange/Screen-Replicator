@@ -42,9 +42,46 @@ export class MemStorage implements IStorage {
     };
     this.users.set(sampleUser.id, sampleUser);
 
-    const samplePost: Post = {
+    const cykesUser: User = {
+      id: "user-2",
+      email: "cykes@example.com",
+      password: "password123",
+      displayName: "Cykes man",
+      phone: "",
+      avatarUrl: "",
+      level: 2,
+      trustScore: 85,
+      followers: 234,
+      following: 56,
+      subscriptionType: "Premium",
+      subscriptionExpiry: "12/31/2026",
+      town: "Swakopmund"
+    };
+    this.users.set(cykesUser.id, cykesUser);
+
+    const dezzyUser: User = {
+      id: "user-3",
+      email: "dezzy@example.com",
+      password: "password123",
+      displayName: "Dezzy",
+      phone: "",
+      avatarUrl: "",
+      level: 1,
+      trustScore: 72,
+      followers: 128,
+      following: 45,
+      subscriptionType: "Free",
+      subscriptionExpiry: "",
+      town: "Kamanjab"
+    };
+    this.users.set(dezzyUser.id, dezzyUser);
+
+    const now = new Date();
+    const oneDay = 24 * 60 * 60 * 1000;
+
+    const post1: Post = {
       id: "post-1",
-      userId: "user-1",
+      userId: "user-2",
       userName: "Cykes man",
       userAvatar: "",
       userTown: "Swakopmund",
@@ -56,7 +93,39 @@ export class MemStorage implements IStorage {
       createdAt: new Date().toISOString(),
       verified: false
     };
-    this.posts.set(samplePost.id, samplePost);
+    this.posts.set(post1.id, post1);
+
+    const post2: Post = {
+      id: "post-2",
+      userId: "user-3",
+      userName: "Dezzy",
+      userAvatar: "",
+      userTown: "Kamanjab",
+      type: "incident",
+      title: "Killing has become a norm, it's truly scary!",
+      description: "Marlo McNab (38), who admitted to killing his wife last year in their Windhoek home... See more",
+      images: [],
+      radius: 200,
+      createdAt: new Date(now.getTime() - oneDay).toISOString(),
+      verified: true
+    };
+    this.posts.set(post2.id, post2);
+
+    const post3: Post = {
+      id: "post-3",
+      userId: "user-2",
+      userName: "Cykes man",
+      userAvatar: "",
+      userTown: "Namibia",
+      type: "alert",
+      title: "TOURIST ROBBERY IN SWAKOPMUND",
+      description: "A lot is happening, 4 armed man stormed a group of tourists and demanded their personal...",
+      images: [],
+      radius: 2000,
+      createdAt: new Date(now.getTime() - (3 * oneDay)).toISOString(),
+      verified: false
+    };
+    this.posts.set(post3.id, post3);
 
     const group1: Group = {
       id: "group-1",
