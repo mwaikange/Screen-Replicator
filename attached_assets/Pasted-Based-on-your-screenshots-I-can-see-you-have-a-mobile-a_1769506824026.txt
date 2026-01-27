@@ -1,0 +1,50 @@
+Based on your screenshots, I can see you have a mobile app with bottom navigation that needs optimization. Here's a comprehensive prompt for Replit Agent:
+
+---
+
+**Prompt for Replit Agent:**
+
+```
+I need you to optimize this React Native/Expo mobile app for production. This is NOT a web app - it's a native mobile application. Focus on these critical areas:
+
+1. BOTTOM NAVIGATION BAR
+   - Fix the bottom navigation bar layout and spacing
+   - Ensure all tab icons are properly sized and aligned
+   - Make sure the navigation persists correctly across all screens
+   - The tabs should be: Feed, Map, Report (+), Files, Groups, Profile
+
+2. MOBILE-SPECIFIC OPTIMIZATIONS
+   - Optimize all screens for mobile viewport (not web responsive design)
+   - Fix any layout issues that appear on actual mobile devices
+   - Ensure proper safe area handling for iOS notch and Android navigation
+   - Add proper keyboard avoiding view for forms
+   - Optimize touch targets (minimum 44x44 points)
+
+3. PERFORMANCE
+   - Implement proper image optimization and lazy loading
+   - Add FlatList optimization for the Community Feed
+   - Minimize re-renders using React.memo where appropriate
+   - Optimize navigation transitions
+
+4. FORMS & INPUTS
+   - Fix the "Alert Radius" input and location selection
+   - Ensure all form inputs work properly on mobile keyboards
+   - Add proper input validation and error handling
+
+5. NATIVE FEATURES
+   - Ensure location permissions are properly requested
+   - Verify camera/gallery access for image uploads works
+   - Test that the map functionality works on actual devices
+
+6. BUILD CONFIGURATION
+   - Verify app.json/app.config.js is properly configured for mobile
+   - Ensure "owner": "referredby" is set in the config
+   - Check that all required permissions are declared
+   - Verify splash screen and app icons are properly configured
+
+Please scan the entire codebase and fix any issues that would prevent this from working as a smooth, production-ready MOBILE app. Focus on mobile UX, not web responsiveness.
+```
+
+---
+
+This prompt will help Replit Agent focus on the mobile-specific issues rather than treating it as a web app.
