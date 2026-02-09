@@ -90,6 +90,9 @@ function PostCard({ post }: { post: Post }) {
     missing_person: { label: "Missing Person", color: "bg-destructive text-destructive-foreground" },
     incident: { label: "Crime Report", color: "bg-destructive text-destructive-foreground" },
     alert: { label: "Emergency Alert", color: "bg-orange-600 text-white dark:bg-orange-700" },
+    gender_based_violence: { label: "Gender-Based Violence", color: "bg-purple-600 text-white dark:bg-purple-700" },
+    theft: { label: "Theft", color: "bg-red-600 text-white dark:bg-red-700" },
+    suspicious_activity: { label: "Suspicious Activity", color: "bg-yellow-600 text-white dark:bg-yellow-700" },
   };
 
   const typeInfo = typeLabels[post.type] || typeLabels.alert;
