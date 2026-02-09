@@ -4,6 +4,7 @@ import MemoryStore from "memorystore";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import path from "path";
 
 const app = express();
 const httpServer = createServer(app);
@@ -78,6 +79,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  app.use("/attached_assets", express.static(path.resolve(import.meta.dirname, "..", "attached_assets")));
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
