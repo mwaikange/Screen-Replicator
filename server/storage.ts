@@ -183,13 +183,33 @@ export class MemStorage implements IStorage {
 
     const group2: Group = {
       id: "group-2",
-      name: "Outjo herero location neighborhood watch",
-      area: "067",
+      name: "Katutura Kudumo Str. Awareness",
+      area: "061",
       isPublic: false,
-      memberCount: 6,
-      createdBy: "user-1"
+      memberCount: 1,
+      createdBy: "user-2"
     };
     this.groups.set(group2.id, group2);
+
+    const group3: Group = {
+      id: "group-3",
+      name: "Kuisebmond Neighborhood Watch",
+      area: "064",
+      isPublic: true,
+      memberCount: 3,
+      createdBy: "user-1"
+    };
+    this.groups.set(group3.id, group3);
+
+    const group4: Group = {
+      id: "group-4",
+      name: "Osona Neighborhood Watch",
+      area: "062",
+      isPublic: true,
+      memberCount: 1,
+      createdBy: "user-3"
+    };
+    this.groups.set(group4.id, group4);
 
     const seedTimeline = (postId: string, userId: string, userName: string, createdAt: string) => {
       const te: TimelineEvent = {
