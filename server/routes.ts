@@ -8,7 +8,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 
 const uploadStorage = multer.diskStorage({
-  destination: path.resolve(import.meta.dirname, "..", "attached_assets"),
+  destination: path.resolve(process.cwd(), "attached_assets"),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname);
     cb(null, `upload_${randomUUID()}${ext}`);

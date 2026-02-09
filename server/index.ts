@@ -79,7 +79,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  app.use("/attached_assets", express.static(path.resolve(import.meta.dirname, "..", "attached_assets")));
+  app.use("/attached_assets", express.static(path.resolve(process.cwd(), "attached_assets")));
 
   await registerRoutes(httpServer, app);
 
