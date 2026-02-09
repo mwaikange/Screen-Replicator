@@ -8,8 +8,6 @@ import { MapPin, Heart, MessageCircle, Share2, Bookmark, MoreHorizontal } from "
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Post } from "@shared/schema";
-import brandLogo from "@assets/image_1769491690073.png";
-
 const filterTabs = ["All", "Nearby", "Verified", "Following"];
 
 function formatTimeAgo(dateString: string): string {
@@ -69,21 +67,12 @@ export default function FeedPage() {
             <PostSkeleton />
           </div>
         ) : posts && posts.length > 0 ? (
-          posts.map((post) => <PostCard key={post.id} post={post} />)
+          posts.filter((post) => post.id && post.type && post.userId && post.createdAt).map((post) => <PostCard key={post.id} post={post} />)
         ) : (
           <div className="px-4 py-8 text-center text-muted-foreground">
             No posts found
           </div>
         )}
-
-        <div className="py-6 flex justify-center px-4">
-          <img
-            src={brandLogo}
-            alt="Ngumu's Eye - Surveillance & Tracing Services"
-            className="max-w-[280px] w-full object-contain"
-            data-testid="img-brand-logo"
-          />
-        </div>
       </div>
 
       <BottomNav />
