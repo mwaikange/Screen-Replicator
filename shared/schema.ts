@@ -95,6 +95,40 @@ export const insertGroupSchema = z.object({
 
 export type InsertGroup = z.infer<typeof insertGroupSchema>;
 
+export type Comment = {
+  id: string;
+  postId: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  text: string;
+  imageUrl: string | null;
+  createdAt: string;
+};
+
+export const insertCommentSchema = z.object({
+  text: z.string().min(1).max(500),
+  imageUrl: z.string().nullable().optional(),
+});
+
+export type InsertComment = z.infer<typeof insertCommentSchema>;
+
+export type TimelineEvent = {
+  id: string;
+  postId: string;
+  userId: string;
+  userName: string;
+  type: "created" | "comment" | "upvote" | "media_added" | "verified" | "shared";
+  description: string;
+  createdAt: string;
+};
+
+export type PostVotes = {
+  upvotes: number;
+  downvotes: number;
+  userVote: "up" | "down" | null;
+};
+
 export type Incident = {
   id: string;
   latitude: number;
