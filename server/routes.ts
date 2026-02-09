@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, loginSchema, insertPostSchema, insertGroupSchema } from "@shared/schema";
+import { insertUserSchema, loginSchema, insertPostSchema, insertGroupSchema, insertCommentSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(
@@ -102,6 +102,76 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid input", errors: error.errors });
       }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/posts/:id", async (req, res) => {
+    try {
+      const post = await storage.getPost(req.params.id);
+      if (!post) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      const userId = req.session.userId || "user-1";
+      const votes = await storage.getPostVotes(post.id, userId);
+      res.json({ ...post, votes });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/posts/:id/comments", async (req, res) => {
+    try {
+      const comments = await storage.getComments(req.params.id);
+      res.json(comments);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/posts/:id/comments", async (req, res) => {
+    try {
+      const parsed = insertCommentSchema.parse(req.body);
+      const userId = req.session.userId || "user-1";
+      const comment = await storage.createComment(req.params.id, userId, parsed);
+      res.status(201).json(comment);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid input", errors: error.errors });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/posts/:id/timeline", async (req, res) => {
+    try {
+      const events = await storage.getTimeline(req.params.id);
+      res.json(events);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/posts/:id/vote", async (req, res) => {
+    try {
+      const { vote } = req.body;
+      if (vote !== "up" && vote !== "down") {
+        return res.status(400).json({ message: "Vote must be 'up' or 'down'" });
+      }
+      const userId = req.session.userId || "user-1";
+      const result = await storage.votePost(req.params.id, userId, vote);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/posts/:id/like", async (req, res) => {
+    try {
+      const userId = req.session.userId || "user-1";
+      const result = await storage.toggleLikePost(req.params.id, userId);
+      res.json(result);
+    } catch (error) {
       res.status(500).json({ message: "Internal server error" });
     }
   });

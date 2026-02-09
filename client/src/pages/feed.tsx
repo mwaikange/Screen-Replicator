@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { PageHeader } from "@/components/page-header";
 import { BottomNav } from "@/components/bottom-nav";
 import { Card, CardContent } from "@/components/ui/card";
@@ -81,6 +82,7 @@ export default function FeedPage() {
 }
 
 function PostCard({ post }: { post: Post }) {
+  const [, navigate] = useLocation();
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -92,8 +94,14 @@ function PostCard({ post }: { post: Post }) {
 
   const typeInfo = typeLabels[post.type] || typeLabels.alert;
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button")) return;
+    navigate(`/post/${post.id}`);
+  };
+
   return (
-    <div className="bg-card border-y border-border" data-testid={`post-card-${post.id}`}>
+    <div className="bg-card border-y border-border cursor-pointer" onClick={handleCardClick} data-testid={`post-card-${post.id}`}>
       <div className="px-4 py-3 flex items-center gap-3">
         <Avatar className="w-10 h-10">
           <AvatarImage src={post.userAvatar} />
