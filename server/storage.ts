@@ -304,6 +304,7 @@ export class MemStorage implements IStorage {
       shares: 0
     };
     this.posts.set(id, post);
+    await this.addTimelineEvent(id, userId, "created", "Incident created");
     return post;
   }
 

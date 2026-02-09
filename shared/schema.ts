@@ -53,7 +53,7 @@ export type Post = {
   userName: string;
   userAvatar: string;
   userTown: string;
-  type: "missing_person" | "incident" | "alert";
+  type: "missing_person" | "incident" | "alert" | "gender_based_violence" | "theft" | "suspicious_activity";
   title: string;
   description: string;
   images: string[];
@@ -66,9 +66,9 @@ export type Post = {
 };
 
 export const insertPostSchema = z.object({
-  type: z.enum(["missing_person", "incident", "alert"]),
+  type: z.enum(["missing_person", "incident", "alert", "gender_based_violence", "theft", "suspicious_activity"]),
   title: z.string().min(1),
-  description: z.string().min(1),
+  description: z.string().default(""),
   images: z.array(z.string()).optional(),
   radius: z.number().optional(),
   town: z.string().optional(),

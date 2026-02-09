@@ -3,6 +3,30 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertPostSchema, insertGroupSchema, insertCommentSchema } from "@shared/schema";
 import { z } from "zod";
+import multer from "multer";
+import path from "path";
+import { randomUUID } from "crypto";
+
+const uploadStorage = multer.diskStorage({
+  destination: path.resolve(import.meta.dirname, "..", "attached_assets"),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `upload_${randomUUID()}${ext}`);
+  },
+});
+
+const upload = multer({
+  storage: uploadStorage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = /\.(jpg|jpeg|png|gif|mp4|mov|webp)$/i;
+    if (allowed.test(path.extname(file.originalname))) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image and video files are allowed"));
+    }
+  },
+});
 
 export async function registerRoutes(
   httpServer: Server,
@@ -163,6 +187,19 @@ export async function registerRoutes(
       res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/upload", upload.array("files", 10), async (req, res) => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: "No files uploaded" });
+      }
+      const urls = files.map(f => `/attached_assets/${f.filename}`);
+      res.json({ urls });
+    } catch (error) {
+      res.status(500).json({ message: "Upload failed" });
     }
   });
 
