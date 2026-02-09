@@ -50,18 +50,20 @@ export default function FeedPage() {
       <PageHeader title="Community Feed" showSearch />
       
       <div className="px-4 py-3">
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+        <div className="flex bg-muted rounded-full p-1">
           {filterTabs.map((tab) => (
-            <Button
+            <button
               key={tab}
-              variant={activeFilter === tab ? "default" : "secondary"}
-              size="sm"
-              className="rounded-full whitespace-nowrap"
+              className={`flex-1 text-center py-2 px-3 text-sm font-medium rounded-full transition-colors ${
+                activeFilter === tab
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground"
+              }`}
               onClick={() => setActiveFilter(tab)}
               data-testid={`filter-${tab.toLowerCase()}`}
             >
               {tab}
-            </Button>
+            </button>
           ))}
         </div>
       </div>
@@ -103,18 +105,7 @@ function PostCard({ post }: { post: Post }) {
 
   return (
     <Card data-testid={`post-card-${post.id}`}>
-      <CardContent className="p-0">
-        {post.images && post.images.length > 0 && (
-          <div className="grid grid-cols-2 gap-0.5">
-            {post.images.slice(0, 2).map((img, idx) => (
-              <div key={idx} className="aspect-square bg-muted overflow-hidden">
-                <img src={img} alt="" className="w-full h-full object-cover" />
-              </div>
-            ))}
-          </div>
-        )}
-        
-        <div className="p-4 space-y-3">
+      <CardContent className="p-4 space-y-3">
           <Badge className={typeInfo.color}>{typeInfo.label}</Badge>
           
           <h3 className="font-bold text-lg" data-testid={`text-title-${post.id}`}>{post.title}</h3>
@@ -143,7 +134,6 @@ function PostCard({ post }: { post: Post }) {
               Follow
             </Button>
           </div>
-        </div>
       </CardContent>
     </Card>
   );
@@ -152,46 +142,32 @@ function PostCard({ post }: { post: Post }) {
 function SamplePostCard() {
   return (
     <Card data-testid="post-card-sample">
-      <CardContent className="p-0">
-        <div className="grid grid-cols-2 gap-0.5">
-          <div className="aspect-square bg-muted flex items-center justify-center">
-            <span className="text-muted-foreground text-sm">Image 1</span>
-          </div>
-          <div className="aspect-square bg-muted flex items-center justify-center">
-            <span className="text-muted-foreground text-sm">Image 2</span>
-          </div>
+      <CardContent className="p-4 space-y-3">
+        <Badge className="bg-destructive text-destructive-foreground">Missing Person</Badge>
+        <h3 className="font-bold text-lg">MISSING CHILD REPORT</h3>
+        <p className="text-muted-foreground text-sm line-clamp-2">
+          Child is wearing a t-shirt and nappy only. No shoes so if seen please do contact the parents...
+        </p>
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>Today</span>
+          <span>200m Radius</span>
         </div>
-        
-        <div className="p-4 space-y-3">
-          <Badge className="bg-destructive text-destructive-foreground">Missing Person</Badge>
-          
-          <h3 className="font-bold text-lg">MISSING CHILD REPORT</h3>
-          <p className="text-muted-foreground text-sm line-clamp-2">
-            Child is wearing a t-shirt and nappy only. No shoes so if seen please do contact the parents...
-          </p>
-          
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>Today</span>
-            <span>200m Radius</span>
-          </div>
-
-          <div className="flex items-center justify-between pt-2 border-t border-border">
-            <div className="flex items-center gap-2">
-              <Avatar className="w-8 h-8">
-                <AvatarFallback>C</AvatarFallback>
-              </Avatar>
-              <div>
-                <p className="text-sm font-medium">Cykes man</p>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <MapPin className="w-3 h-3" /> Swakopmund
-                </p>
-              </div>
+        <div className="flex items-center justify-between pt-2 border-t border-border">
+          <div className="flex items-center gap-2">
+            <Avatar className="w-8 h-8">
+              <AvatarFallback>C</AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="text-sm font-medium">Cykes man</p>
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <MapPin className="w-3 h-3" /> Swakopmund
+              </p>
             </div>
-            <Button variant="outline" size="sm" data-testid="button-follow-sample">
-              <UserPlus className="w-4 h-4 mr-1" />
-              Follow
-            </Button>
           </div>
+          <Button variant="outline" size="sm" data-testid="button-follow-sample">
+            <UserPlus className="w-4 h-4 mr-1" />
+            Follow
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -201,19 +177,13 @@ function SamplePostCard() {
 function PostSkeleton() {
   return (
     <Card>
-      <CardContent className="p-0">
-        <div className="grid grid-cols-2 gap-0.5">
-          <Skeleton className="aspect-square" />
-          <Skeleton className="aspect-square" />
-        </div>
-        <div className="p-4 space-y-3">
-          <Skeleton className="h-5 w-24" />
-          <Skeleton className="h-6 w-3/4" />
-          <Skeleton className="h-4 w-full" />
-          <div className="flex justify-between">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-4 w-20" />
-          </div>
+      <CardContent className="p-4 space-y-3">
+        <Skeleton className="h-5 w-24" />
+        <Skeleton className="h-6 w-3/4" />
+        <Skeleton className="h-4 w-full" />
+        <div className="flex justify-between">
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-20" />
         </div>
       </CardContent>
     </Card>
