@@ -32,11 +32,14 @@
       },
       "package": "com.ngumuseye.app",
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "plugins": [
@@ -55,7 +58,10 @@
       ]
     ],
     "extra": {
-      "apiUrl": "https://YOUR_REPLIT_URL"
+      "apiUrl": "https://YOUR_REPLIT_URL",
+      "eas": {
+        "projectId": "087a5521-1213-416d-92bf-761dd8fb245a"
+      }
     }
   }
 }
