@@ -16,6 +16,8 @@ import { colors, spacing, fontSize } from '../lib/theme';
 import { postsApi } from '../lib/api';
 import { Post } from '../lib/types';
 
+const appLogo = require('../../assets/logo.jpg');
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const filterTabs = ['All', 'Nearby', 'Verified', 'Following'];
 
@@ -172,9 +174,7 @@ const Header = memo(function Header() {
   return (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        <View style={styles.logoPlaceholder}>
-          <Ionicons name="eye" size={24} color={colors.primary} />
-        </View>
+        <Image source={appLogo} style={styles.headerLogo} resizeMode="contain" />
         <Text style={styles.headerTitle}>Community Feed</Text>
       </View>
       <TouchableOpacity 
@@ -317,13 +317,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  logoPlaceholder: {
-    width: 40,
-    height: 40,
+  headerLogo: {
+    width: 36,
+    height: 36,
     borderRadius: 8,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginRight: spacing.sm,
   },
   headerTitle: {

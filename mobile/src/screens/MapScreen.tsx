@@ -1,7 +1,9 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, fontSize } from '../lib/theme';
+
+const appLogo = require('../../assets/logo.jpg');
 
 const severityLegend = [
   { level: 'Critical', color: '#ef4444' },
@@ -15,9 +17,7 @@ export default function MapScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.logoPlaceholder}>
-            <Ionicons name="eye" size={24} color={colors.primary} />
-          </View>
+          <Image source={appLogo} style={styles.headerLogo} resizeMode="contain" />
           <Text style={styles.headerTitle}>Incident Map</Text>
         </View>
         <TouchableOpacity style={styles.notificationButton}>
@@ -93,13 +93,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  logoPlaceholder: {
+  headerLogo: {
     width: 36,
     height: 36,
     borderRadius: 8,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: fontSize.lg,
