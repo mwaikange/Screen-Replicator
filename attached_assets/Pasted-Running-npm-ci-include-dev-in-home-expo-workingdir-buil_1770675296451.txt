@@ -1,0 +1,60 @@
+Running "npm ci --include=dev" in /home/expo/workingdir/build/mobile directory
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @react-native/virtualized-lists@0.81.5
+npm warn Found: @types/react@18.2.79
+npm warn node_modules/@types/react
+npm warn   dev @types/react@"~18.2.45" from the root project
+npm warn
+npm warn Could not resolve dependency:
+npm warn peerOptional @types/react@"^19.1.0" from @react-native/virtualized-lists@0.81.5
+npm warn node_modules/@react-native/virtualized-lists
+npm warn   @react-native/virtualized-lists@"0.81.5" from react-native@0.81.5
+npm warn   node_modules/react-native
+npm warn
+npm warn Conflicting peer dependency: @types/react@19.2.13
+npm warn node_modules/@types/react
+npm warn   peerOptional @types/react@"^19.1.0" from @react-native/virtualized-lists@0.81.5
+npm warn   node_modules/@react-native/virtualized-lists
+npm warn     @react-native/virtualized-lists@"0.81.5" from react-native@0.81.5
+npm warn     node_modules/react-native
+npm error code ERESOLVE
+npm error ERESOLVE could not resolve
+npm error
+npm error While resolving: react-native@0.81.5
+npm error Found: @types/react@18.2.79
+npm error node_modules/@types/react
+npm error   dev @types/react@"~18.2.45" from the root project
+npm error
+npm error Could not resolve dependency:
+npm error peerOptional @types/react@"^19.1.0" from react-native@0.81.5
+npm error node_modules/react-native
+npm error   react-native@"0.81.5" from the root project
+npm error   peerOptional react-native@"*" from @expo/cli@54.0.23
+npm error   node_modules/@expo/cli
+npm error     @expo/cli@"54.0.23" from expo@54.0.33
+npm error     node_modules/expo
+npm error       expo@"^54.0.33" from the root project
+npm error       12 more (@expo/cli, @expo/prebuild-config, @expo/metro-config, ...)
+npm error   19 more (@expo/devtools, @expo/vector-icons, ...)
+npm error
+npm error Conflicting peer dependency: @types/react@19.2.13
+npm error node_modules/@types/react
+npm error   peerOptional @types/react@"^19.1.0" from react-native@0.81.5
+npm error   node_modules/react-native
+npm error     react-native@"0.81.5" from the root project
+npm error     peerOptional react-native@"*" from @expo/cli@54.0.23
+npm error     node_modules/@expo/cli
+npm error       @expo/cli@"54.0.23" from expo@54.0.33
+npm error       node_modules/expo
+npm error         expo@"^54.0.33" from the root project
+npm error         12 more (@expo/cli, @expo/prebuild-config, @expo/metro-config, ...)
+npm error     19 more (@expo/devtools, @expo/vector-icons, ...)
+npm error
+npm error Fix the upstream dependency conflict, or retry
+npm error this command with --force or --legacy-peer-deps
+npm error to accept an incorrect (and potentially broken) dependency resolution.
+npm error
+npm error
+npm error For a full report see:
+npm error /home/expo/.npm/_logs/2026-02-09T21_54_11_817Z-eresolve-report.txt
+npm error A complete log of this run can be found in: /home/expo/.npm/_logs/2026-02-09T21_54_11_817Z-debug-0.log
