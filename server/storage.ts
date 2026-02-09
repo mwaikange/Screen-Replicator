@@ -84,14 +84,17 @@ export class MemStorage implements IStorage {
       userId: "user-2",
       userName: "Cykes man",
       userAvatar: "",
-      userTown: "Swakopmund",
-      type: "missing_person",
-      title: "MISSING CHILD REPORT",
-      description: "Child is wearing a t-shirt and nappy only. No shoes so if seen please do contact the parents...",
-      images: [],
-      radius: 200,
+      userTown: "Windhoek",
+      type: "incident",
+      title: "NEW GUN LAWS, SINCE POLICE STARTED KILLING DEFENCELESS",
+      description: "Gun laws invoked amid unlawful police killings. The government has announced new measures to address the growing concerns...",
+      images: ["/attached_assets/1770575351049-ucib6_1770661190550.jpg"],
+      radius: 5000,
       createdAt: new Date().toISOString(),
-      verified: false
+      verified: true,
+      likes: 142,
+      comments: 89,
+      shares: 56
     };
     this.posts.set(post1.id, post1);
 
@@ -101,13 +104,16 @@ export class MemStorage implements IStorage {
       userName: "Dezzy",
       userAvatar: "",
       userTown: "Kamanjab",
-      type: "incident",
-      title: "Killing has become a norm, it's truly scary!",
-      description: "Marlo McNab (38), who admitted to killing his wife last year in their Windhoek home... See more",
-      images: [],
-      radius: 200,
+      type: "alert",
+      title: "MEASURES INTRODUCED TO MANAGE SOCIAL GRANT QUEUES",
+      description: "New measures have been introduced to manage the long queues at social grant pay points across the country...",
+      images: ["/attached_assets/1769090152419-pux56_1770661190547.jpg"],
+      radius: 2000,
       createdAt: new Date(now.getTime() - oneDay).toISOString(),
-      verified: true
+      verified: true,
+      likes: 234,
+      comments: 67,
+      shares: 45
     };
     this.posts.set(post2.id, post2);
 
@@ -117,15 +123,37 @@ export class MemStorage implements IStorage {
       userName: "Cykes man",
       userAvatar: "",
       userTown: "Namibia",
-      type: "alert",
-      title: "TOURIST ROBBERY IN SWAKOPMUND",
-      description: "A lot is happening, 4 armed man stormed a group of tourists and demanded their personal...",
-      images: [],
+      type: "incident",
+      title: "NAMIBIAN POLICE UNDER SCRUTINY",
+      description: "The Namibian Police force is facing increased scrutiny following a series of incidents involving use of excessive force...",
+      images: ["/attached_assets/1768991272446-ig4hrk_1770661190549.jpg"],
       radius: 2000,
-      createdAt: new Date(now.getTime() - (3 * oneDay)).toISOString(),
-      verified: false
+      createdAt: new Date(now.getTime() - (2 * oneDay)).toISOString(),
+      verified: false,
+      likes: 312,
+      comments: 156,
+      shares: 89
     };
     this.posts.set(post3.id, post3);
+
+    const post4: Post = {
+      id: "post-4",
+      userId: "user-3",
+      userName: "Dezzy",
+      userAvatar: "",
+      userTown: "Dakar",
+      type: "alert",
+      title: "AFRICA CELEBRATES HISTORIC AFCON VICTORY",
+      description: "Celebrations continue across the continent as the AFCON champions lift the trophy in a thrilling final match...",
+      images: ["/attached_assets/1768821746081-wlwl0s_1770661190544.jpg"],
+      radius: 5000,
+      createdAt: new Date(now.getTime() - (3 * oneDay)).toISOString(),
+      verified: false,
+      likes: 567,
+      comments: 203,
+      shares: 178
+    };
+    this.posts.set(post4.id, post4);
 
     const group1: Group = {
       id: "group-1",
@@ -204,7 +232,10 @@ export class MemStorage implements IStorage {
       images: insertPost.images || [],
       radius: insertPost.radius || 200,
       createdAt: new Date().toISOString(),
-      verified: false
+      verified: false,
+      likes: 0,
+      comments: 0,
+      shares: 0
     };
     this.posts.set(id, post);
     return post;
