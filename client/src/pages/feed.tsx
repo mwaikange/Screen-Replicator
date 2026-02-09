@@ -117,8 +117,8 @@ function PostCard({ post }: { post: Post }) {
         <div className="p-4 space-y-3">
           <Badge className={typeInfo.color}>{typeInfo.label}</Badge>
           
-          <h3 className="font-bold text-lg">{post.title}</h3>
-          <p className="text-muted-foreground text-sm line-clamp-2">{post.description}</p>
+          <h3 className="font-bold text-lg" data-testid={`text-title-${post.id}`}>{post.title}</h3>
+          <p className="text-muted-foreground text-sm line-clamp-2" data-testid={`text-description-${post.id}`}>{post.description}</p>
           
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>{formatTimeAgo(post.createdAt)}</span>
@@ -132,8 +132,8 @@ function PostCard({ post }: { post: Post }) {
                 <AvatarFallback>{post.userName.charAt(0)}</AvatarFallback>
               </Avatar>
               <div>
-                <p className="text-sm font-medium">{post.userName}</p>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <p className="text-sm font-medium" data-testid={`text-username-${post.id}`}>{post.userName}</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1" data-testid={`text-location-${post.id}`}>
                   <MapPin className="w-3 h-3" /> {post.userTown}
                 </p>
               </div>
