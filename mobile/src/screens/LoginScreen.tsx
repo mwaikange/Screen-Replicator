@@ -11,6 +11,7 @@ import {
   ScrollView,
   Keyboard,
   TouchableWithoutFeedback,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +20,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { authApi } from '../lib/api';
 import { RootStackParamList } from '../lib/types';
+
+const appLogo = require('../../assets/logo.jpg');
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -48,8 +51,6 @@ export default function LoginScreen() {
 
     if (!password) {
       newErrors.password = 'Password is required';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -64,7 +65,7 @@ export default function LoginScreen() {
       await authApi.login(email.trim().toLowerCase(), password);
       navigation.replace('Main');
     } catch (error) {
-      Alert.alert('Login Failed', 'Invalid email or password. Please try again.');
+      Alert.alert('Login Failed', 'Could not connect to server. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -83,9 +84,7 @@ export default function LoginScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.logoContainer}>
-              <View style={styles.logoPlaceholder}>
-                <Ionicons name="eye" size={48} color={colors.primary} />
-              </View>
+              <Image source={appLogo} style={styles.logoImage} resizeMode="contain" />
               <Text style={styles.title}>Ngumu's Eye</Text>
               <Text style={styles.subtitle}>Community Safety Platform</Text>
             </View>
@@ -209,19 +208,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xl,
   },
-  logoPlaceholder: {
+  logoImage: {
     width: 96,
     height: 96,
     borderRadius: 20,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   title: {
     fontSize: fontSize['2xl'],
