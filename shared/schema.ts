@@ -60,6 +60,9 @@ export type Post = {
   radius: number;
   createdAt: string;
   verified: boolean;
+  likes: number;
+  comments: number;
+  shares: number;
 };
 
 export const insertPostSchema = z.object({
