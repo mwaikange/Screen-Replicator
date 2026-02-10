@@ -19,13 +19,16 @@ export type Post = {
   userName: string;
   userAvatar: string;
   userTown: string;
-  type: "missing_person" | "incident" | "alert";
+  type: "missing_person" | "incident" | "alert" | "gender_based_violence" | "theft" | "suspicious_activity";
   title: string;
   description: string;
   images: string[];
   radius: number;
   createdAt: string;
   verified: boolean;
+  likes: number;
+  comments: number;
+  shares: number;
 };
 
 export type Group = {
