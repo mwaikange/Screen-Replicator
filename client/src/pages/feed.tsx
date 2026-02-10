@@ -93,6 +93,7 @@ function PostCard({ post }: { post: Post }) {
   const [, navigate] = useLocation();
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [shared, setShared] = useState(false);
 
   const typeLabels: Record<string, { label: string; color: string }> = {
     missing_person: { label: "Missing Person", color: "bg-destructive text-destructive-foreground" },
@@ -109,6 +110,17 @@ function PostCard({ post }: { post: Post }) {
     const target = e.target as HTMLElement;
     if (target.closest("button")) return;
     navigate(`/post/${post.id}`);
+  };
+
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: post.title,
+        text: post.description,
+        url: `${window.location.origin}/post/${post.id}`,
+      }).catch(() => {});
+    }
+    if (!shared) setShared(true);
   };
 
   return (
@@ -164,13 +176,21 @@ function PostCard({ post }: { post: Post }) {
             <Heart className={`w-5 h-5 ${liked ? "fill-destructive text-destructive" : "text-muted-foreground"}`} />
             <span className={liked ? "text-destructive font-medium" : "text-muted-foreground"}>{post.likes + (liked ? 1 : 0)}</span>
           </button>
-          <button className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid={`button-comment-${post.id}`}>
+          <button
+            className="flex items-center gap-1.5 text-sm text-muted-foreground"
+            onClick={() => navigate(`/post/${post.id}?tab=comments`)}
+            data-testid={`button-comment-${post.id}`}
+          >
             <MessageCircle className="w-5 h-5" />
             <span>{post.comments}</span>
           </button>
-          <button className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid={`button-share-${post.id}`}>
-            <Share2 className="w-5 h-5" />
-            <span>{post.shares}</span>
+          <button
+            className={`flex items-center gap-1.5 text-sm ${shared ? "text-primary font-medium" : "text-muted-foreground"}`}
+            onClick={handleShare}
+            data-testid={`button-share-${post.id}`}
+          >
+            <Share2 className={`w-5 h-5 ${shared ? "text-primary" : ""}`} />
+            <span>{post.shares + (shared ? 1 : 0)}</span>
           </button>
         </div>
         <button
