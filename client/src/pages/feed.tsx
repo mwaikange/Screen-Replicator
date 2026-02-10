@@ -5,7 +5,7 @@ import { BottomNav } from "@/components/bottom-nav";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { MapPin, Heart, MessageCircle, Share2, Bookmark, MoreHorizontal } from "lucide-react";
+import { MapPin, Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Globe, Megaphone } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Post } from "@shared/schema";
@@ -68,7 +68,12 @@ export default function FeedPage() {
             <PostSkeleton />
           </div>
         ) : posts && posts.length > 0 ? (
-          posts.filter((post) => post.id && post.type && post.userId && post.createdAt).map((post) => <PostCard key={post.id} post={post} />)
+          posts.filter((post) => post.id && post.type && post.userId && post.createdAt).map((post, index) => (
+            <div key={post.id}>
+              <PostCard post={post} />
+              {(index + 1) % 2 === 0 && <AdCard />}
+            </div>
+          ))
         ) : (
           <div className="px-4 py-8 text-center text-muted-foreground">
             No posts found
@@ -173,6 +178,33 @@ function PostCard({ post }: { post: Post }) {
         </button>
       </div>
     </div>
+  );
+}
+
+function AdCard() {
+  return (
+    <a
+      href="https://www.mwaikange.com/"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block bg-card border-y border-border"
+      data-testid="ad-card"
+    >
+      <div className="px-4 py-2 flex items-center gap-1.5 text-muted-foreground">
+        <Megaphone className="w-3.5 h-3.5" />
+        <span className="text-xs font-medium">Sponsored</span>
+      </div>
+      <div className="px-4 pb-3 flex items-center gap-3">
+        <div className="w-14 h-14 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+          <Globe className="w-7 h-7 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-base" data-testid="text-ad-title">Mwaikange</p>
+          <p className="text-muted-foreground text-sm leading-tight">Visit mwaikange.com for more information and services</p>
+          <p className="text-primary text-sm font-medium mt-1">www.mwaikange.com</p>
+        </div>
+      </div>
+    </a>
   );
 }
 

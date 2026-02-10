@@ -1,9 +1,14 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
+import { postsApi } from '../lib/api';
+import { Post } from '../lib/types';
 
 const appLogo = require('../../assets/logo.jpg');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const severityLegend = [
   { level: 'Critical', color: '#ef4444' },
@@ -11,6 +16,41 @@ const severityLegend = [
   { level: 'Medium', color: '#f59e0b' },
   { level: 'Low', color: '#fbbf24' },
 ];
+
+const typeLabels: Record<string, { label: string; color: string }> = {
+  missing_person: { label: 'Missing Person', color: '#ef4444' },
+  incident: { label: 'Crime Report', color: '#ef4444' },
+  alert: { label: 'Emergency Alert', color: '#ea580c' },
+  gender_based_violence: { label: 'Gender-Based Violence', color: '#9333ea' },
+  theft: { label: 'Theft', color: '#dc2626' },
+  suspicious_activity: { label: 'Suspicious Activity', color: '#ca8a04' },
+};
+
+function getSeverityFromType(type: string): 'critical' | 'high' | 'medium' | 'low' {
+  switch (type) {
+    case 'missing_person':
+    case 'gender_based_violence':
+      return 'critical';
+    case 'incident':
+    case 'theft':
+      return 'high';
+    case 'alert':
+      return 'medium';
+    case 'suspicious_activity':
+      return 'low';
+    default:
+      return 'medium';
+  }
+}
+
+const postPositions: Record<string, { top: number; left: number }> = {
+  '1': { top: 0.22, left: 0.45 },
+  '2': { top: 0.32, left: 0.25 },
+  '3': { top: 0.35, left: 0.55 },
+  '4': { top: 0.42, left: 0.38 },
+  '5': { top: 0.55, left: 0.65 },
+  '6': { top: 0.48, left: 0.15 },
+};
 
 function IncidentMarker({ severity }: { severity: 'critical' | 'high' | 'medium' | 'low' }) {
   const markerColors = {
@@ -34,6 +74,29 @@ function IncidentMarker({ severity }: { severity: 'critical' | 'high' | 'medium'
 }
 
 export default function MapScreen() {
+  const navigation = useNavigation<any>();
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+
+  useEffect(() => {
+    postsApi.getAll().then(res => setPosts(res.data));
+  }, []);
+
+  const handleMarkerPress = useCallback((post: Post) => {
+    setSelectedPost(post);
+  }, []);
+
+  const handleViewDetails = useCallback(() => {
+    if (selectedPost) {
+      navigation.navigate('IncidentDetails', { postId: selectedPost.id });
+      setSelectedPost(null);
+    }
+  }, [selectedPost, navigation]);
+
+  const handleClosePopup = useCallback(() => {
+    setSelectedPost(null);
+  }, []);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -74,12 +137,55 @@ export default function MapScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.markerPosition, { bottom: '30%', left: '25%' }]}>
-            <IncidentMarker severity="medium" />
-          </View>
-          <View style={[styles.markerPosition, { bottom: '30%', right: '25%' }]}>
-            <IncidentMarker severity="medium" />
-          </View>
+          <View style={styles.currentLocationDot} />
+
+          {posts.map((post) => {
+            const position = postPositions[post.id] || {
+              top: 0.3 + Math.random() * 0.4,
+              left: 0.1 + Math.random() * 0.7,
+            };
+            const severity = getSeverityFromType(post.type);
+            return (
+              <TouchableOpacity
+                key={post.id}
+                style={[
+                  styles.markerPosition,
+                  {
+                    top: `${position.top * 100}%` as any,
+                    left: `${position.left * 100}%` as any,
+                  },
+                ]}
+                onPress={() => handleMarkerPress(post)}
+                activeOpacity={0.8}
+              >
+                <IncidentMarker severity={severity} />
+              </TouchableOpacity>
+            );
+          })}
+
+          {selectedPost && (
+            <View style={styles.popupContainer}>
+              <View style={styles.popup}>
+                <TouchableOpacity style={styles.popupClose} onPress={handleClosePopup}>
+                  <Ionicons name="close" size={18} color={colors.mutedForeground} />
+                </TouchableOpacity>
+                <View style={[styles.popupBadge, { backgroundColor: typeLabels[selectedPost.type]?.color || '#ea580c' }]}>
+                  <Text style={styles.popupBadgeText}>
+                    {typeLabels[selectedPost.type]?.label || 'Alert'}
+                  </Text>
+                </View>
+                <Text style={styles.popupTitle} numberOfLines={3}>{selectedPost.title}</Text>
+                <View style={styles.popupLocation}>
+                  <Ionicons name="location-outline" size={14} color={colors.mutedForeground} />
+                  <Text style={styles.popupLocationText}>{selectedPost.userTown}</Text>
+                </View>
+                <Text style={styles.popupTown}>Town: {selectedPost.userTown}</Text>
+                <TouchableOpacity style={styles.viewDetailsButton} onPress={handleViewDetails}>
+                  <Text style={styles.viewDetailsText}>View Details</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
       </View>
     </SafeAreaView>
@@ -195,8 +301,21 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  currentLocationDot: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#3b82f6',
+    marginLeft: -7,
+    marginTop: -7,
+    zIndex: 5,
+  },
   markerPosition: {
     position: 'absolute',
+    zIndex: 10,
   },
   marker: {},
   markerOuter: {
@@ -233,5 +352,76 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#22c55e',
+  },
+  popupContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: spacing.md,
+    zIndex: 100,
+  },
+  popup: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  popupClose: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 1,
+    padding: 4,
+  },
+  popupBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  popupBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  popupTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.cardForeground,
+    lineHeight: 22,
+    marginBottom: 8,
+    paddingRight: 24,
+  },
+  popupLocation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  popupLocationText: {
+    fontSize: 13,
+    color: colors.mutedForeground,
+  },
+  popupTown: {
+    fontSize: 13,
+    color: colors.mutedForeground,
+    marginBottom: 12,
+  },
+  viewDetailsButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  viewDetailsText: {
+    color: colors.primaryForeground,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
