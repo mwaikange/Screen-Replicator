@@ -8,7 +8,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import appLogo from "@assets/image_1769491650275.png";
+import ngumuLogo from "@assets/Ngumu_Eye_Logo_1770731434682.jpg";
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
@@ -43,12 +43,11 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <img
-            src={appLogo}
+            src={ngumuLogo}
             alt="Ngumu's Eye"
-            className="w-24 h-24 mx-auto mb-4 object-contain"
+            className="w-24 h-24 mx-auto object-contain"
+            data-testid="img-login-logo"
           />
-          <h1 className="text-2xl font-bold">Ngumu's Eye</h1>
-          <p className="text-muted-foreground">Community Safety Platform</p>
         </div>
 
         <Card className="shadow-lg">

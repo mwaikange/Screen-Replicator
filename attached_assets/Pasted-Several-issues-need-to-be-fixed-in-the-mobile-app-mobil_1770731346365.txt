@@ -1,0 +1,30 @@
+Several issues need to be fixed in the mobile app (/mobile). Please address all of them:
+1. Fix the Splash/Launch Screen:
+
+The splash screen currently has a blue background with the logo — change ONLY the background color to white. Keep the logo exactly as it is.
+Do NOT touch the login page logo. The login page should still show the tagline "When the Community Sees, Everyone is Safer!" and the logo below it, exactly as it currently does.
+
+2. Fix the Login Page:
+
+The login page logo and tagline appear to have been removed or broken. Restore the logo image and the tagline "When the Community Sees, Everyone is Safer!" above the Sign In form, exactly as shown in the current web app login page.
+The logo should have a transparent/white background with no visible white box borders around it.
+
+3.Fix the Login Page in the mobile app (/mobile):
+
+The login page previously showed the Ngumu's Eye logo image above the Sign In form. It has been removed or broken. Restore it.
+Show ONLY the logo image — no tagline text, no "When the Community Sees, Everyone is Safer!" text. Just the logo by itself, centered above the Sign In form.
+The logo should have a transparent background with no visible white box or borders around it.
+Do NOT change anything else on the login page — keep the email field, password field, Sign In button, and "Don't have an account? Sign up" link exactly as they are.
+
+4. Fix Report/Incident Submission — Create Feed Post:
+
+When a user successfully submits an incident/report on the Report screen, it should:
+
+Show a success confirmation message
+Automatically create a new post on the Feed screen with the submitted incident details (title, description, category, location, any attached images)
+The new post should appear at the top of the Feed when the user navigates to it
+
+
+Since this is an offline/mock app, store the submitted reports in local state (React Context or AsyncStorage) and display them alongside the existing mock posts in the Feed.
+
+5. Do NOT change any other screens or styling. Only fix the specific issues listed above.

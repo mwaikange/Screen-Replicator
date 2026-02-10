@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { Pencil, Camera, Shield, Calendar } from "lucide-react";
+import { Pencil, Camera, Shield, Calendar, LogOut } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { User } from "@shared/schema";
 
 export default function ProfilePage() {
+  const [, setLocation] = useLocation();
   const { data: user, isLoading } = useQuery<User>({
     queryKey: ["/api/user"],
   });
@@ -131,6 +133,19 @@ export default function ProfilePage() {
                 My Case Deck
               </Button>
             </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setLocation("/")}
+              data-testid="button-sign-out"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
           </CardContent>
         </Card>
       </div>

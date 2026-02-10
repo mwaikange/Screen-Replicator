@@ -21,7 +21,7 @@ import { colors, spacing, fontSize } from '../lib/theme';
 import { authApi } from '../lib/api';
 import { RootStackParamList } from '../lib/types';
 
-const launcherLogo = require('../../assets/launcher.png');
+const ngumuLogo = require('../../assets/ngumu-eye-logo.jpg');
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -84,9 +84,7 @@ export default function LoginScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.logoContainer}>
-              <View style={styles.logoWrapper}>
-                <Image source={launcherLogo} style={styles.logoImage} resizeMode="contain" />
-              </View>
+              <Image source={ngumuLogo} style={styles.logoImage} resizeMode="contain" />
             </View>
 
             <View style={styles.formContainer}>
@@ -208,22 +206,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.lg,
   },
-  logoWrapper: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-  },
   logoImage: {
-    width: 200,
-    height: 200,
-    borderRadius: 12,
+    width: 120,
+    height: 120,
   },
   formContainer: {
     backgroundColor: colors.card,
