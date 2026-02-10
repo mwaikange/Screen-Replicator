@@ -35,11 +35,9 @@ export default function ReportPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [step, setStep] = useState(1);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
   const [locationSet, setLocationSet] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<{ name: string; dataUrl: string }[]>([]);
 
   const [formData, setFormData] = useState({
     type: "",
@@ -51,43 +49,6 @@ export default function ReportPage() {
     description: "",
     images: [] as string[],
   });
-
-  const uploadFiles = async (files: File[]): Promise<string[]> => {
-    const formPayload = new FormData();
-    files.forEach((file) => formPayload.append("files", file));
-
-    setIsUploading(true);
-    setUploadProgress(0);
-
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/upload");
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const percent = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(percent);
-        }
-      };
-
-      xhr.onload = () => {
-        setIsUploading(false);
-        if (xhr.status >= 200 && xhr.status < 300) {
-          const data = JSON.parse(xhr.responseText);
-          resolve(data.urls);
-        } else {
-          reject(new Error("Upload failed"));
-        }
-      };
-
-      xhr.onerror = () => {
-        setIsUploading(false);
-        reject(new Error("Upload failed"));
-      };
-
-      xhr.send(formPayload);
-    });
-  };
 
   const submitMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -129,16 +90,9 @@ export default function ReportPage() {
     if (step > 1) setStep(step - 1);
   };
 
-  const handleSubmit = async () => {
-    try {
-      let imageUrls = formData.images;
-      if (selectedFiles.length > 0) {
-        imageUrls = await uploadFiles(selectedFiles);
-      }
-      submitMutation.mutate({ ...formData, images: imageUrls });
-    } catch {
-      toast({ title: "Upload failed", description: "Could not upload files. Please try again.", variant: "destructive" });
-    }
+  const handleSubmit = () => {
+    const imageUrls = imagePreviews.map(p => p.dataUrl);
+    submitMutation.mutate({ ...formData, images: imageUrls });
   };
 
   const useCurrentLocation = () => {
@@ -177,11 +131,21 @@ export default function ReportPage() {
     const files = e.target.files;
     if (!files) return;
     const newFiles = Array.from(files);
-    setSelectedFiles((prev) => [...prev, ...newFiles]);
+    newFiles.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        if (dataUrl) {
+          setImagePreviews((prev) => [...prev, { name: file.name, dataUrl }]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const removeFile = (index: number) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    setImagePreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
   const getTypeLabel = (value: string) => incidentTypes.find((t) => t.value === value)?.label || "-";
@@ -362,13 +326,13 @@ export default function ReportPage() {
                   Upload Photos or Videos
                 </Button>
 
-                {selectedFiles.length > 0 && (
+                {imagePreviews.length > 0 && (
                   <div className="space-y-2">
-                    {selectedFiles.map((file, index) => (
+                    {imagePreviews.map((preview, index) => (
                       <div key={index} className="flex items-center justify-between gap-2 bg-muted rounded-md p-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          <FileText className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                          <span className="text-sm truncate" data-testid={`text-file-${index}`}>{file.name}</span>
+                          <img src={preview.dataUrl} alt={preview.name} className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                          <span className="text-sm truncate" data-testid={`text-file-${index}`}>{preview.name}</span>
                         </div>
                         <Button
                           size="icon"
@@ -437,8 +401,15 @@ export default function ReportPage() {
                   <p className="text-xs text-muted-foreground">Media</p>
                   <div className="flex items-center gap-2 text-sm" data-testid="review-media">
                     <FileText className="w-4 h-4 text-muted-foreground" />
-                    {selectedFiles.length > 0 ? `${selectedFiles.length} file(s) attached` : "No files attached"}
+                    {imagePreviews.length > 0 ? `${imagePreviews.length} file(s) attached` : "No files attached"}
                   </div>
+                  {imagePreviews.length > 0 && (
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {imagePreviews.map((preview, index) => (
+                        <img key={index} src={preview.dataUrl} alt={preview.name} className="w-16 h-16 rounded object-cover" />
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Town</p>
@@ -457,16 +428,6 @@ export default function ReportPage() {
                 </div>
               </div>
 
-              {isUploading && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Uploading media..</span>
-                    <span className="font-medium" data-testid="text-upload-percent">{uploadProgress}%</span>
-                  </div>
-                  <Progress value={uploadProgress} className="h-2" data-testid="progress-upload" />
-                </div>
-              )}
-
               <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md p-3">
                 <p className="text-xs text-amber-800 dark:text-amber-200">
                   By submitting this report, you confirm that the information provided is accurate to the best of your knowledge. False reports may result in account suspension.
@@ -474,20 +435,16 @@ export default function ReportPage() {
               </div>
 
               <div className="flex gap-3">
-                <Button variant="outline" className="flex-1" onClick={handleBack} disabled={isUploading || submitMutation.isPending} data-testid="button-back-3">
+                <Button variant="outline" className="flex-1" onClick={handleBack} disabled={submitMutation.isPending} data-testid="button-back-3">
                   <ChevronLeft className="w-4 h-4 mr-1" /> Back
                 </Button>
                 <Button
                   className="flex-1"
                   onClick={handleSubmit}
-                  disabled={isUploading || submitMutation.isPending}
+                  disabled={submitMutation.isPending}
                   data-testid="button-submit-report"
                 >
-                  {isUploading
-                    ? `Uploading ${uploadProgress}%`
-                    : submitMutation.isPending
-                      ? "Submitting..."
-                      : "Submit Report"}
+                  {submitMutation.isPending ? "Submitting..." : "Submit Report"}
                 </Button>
               </div>
             </CardContent>
