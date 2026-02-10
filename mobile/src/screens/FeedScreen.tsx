@@ -18,6 +18,8 @@ import { Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
 const appLogo = require('../../assets/logo.jpg');
+const mwaikangeLogo = require('../../assets/mwaikange-logo.png');
+const ngumuLogo = require('../../assets/ngumu-logo.jpg');
 
 const filterTabs = ['All', 'Nearby', 'Verified', 'Following'];
 
@@ -43,9 +45,9 @@ const typeLabels: Record<string, { label: string; color: string }> = {
   suspicious_activity: { label: 'Suspicious Activity', color: '#ca8a04' },
 };
 
-type FeedItem = { type: 'post'; data: Post } | { type: 'ad'; id: string };
+type FeedItem = { type: 'post'; data: Post } | { type: 'ad'; adType: 'mwaikange' | 'ngumu'; id: string };
 
-function AdCard() {
+function MwaikAngeAdCard() {
   const handlePress = () => {
     Linking.openURL('https://www.mwaikange.com/');
   };
@@ -58,7 +60,7 @@ function AdCard() {
       </View>
       <View style={styles.adBody}>
         <View style={styles.adIcon}>
-          <Ionicons name="globe-outline" size={28} color={colors.primary} />
+          <Image source={mwaikangeLogo} style={styles.adLogoImage} resizeMode="cover" />
         </View>
         <View style={styles.adContent}>
           <Text style={styles.adTitle}>Mwaikange</Text>
@@ -67,6 +69,31 @@ function AdCard() {
         </View>
       </View>
     </TouchableOpacity>
+  );
+}
+
+function NgumuAdCard() {
+  return (
+    <View style={styles.adCard}>
+      <View style={styles.adHeaderBetween}>
+        <View style={styles.adHeaderLeft}>
+          <Ionicons name="megaphone-outline" size={14} color={colors.mutedForeground} />
+          <Text style={styles.adLabel}>Sponsored</Text>
+        </View>
+        <View style={styles.adBadge}>
+          <Text style={styles.adBadgeText}>AD</Text>
+        </View>
+      </View>
+      <View style={styles.adBody}>
+        <View style={styles.adIcon}>
+          <Image source={ngumuLogo} style={styles.adLogoImage} resizeMode="cover" />
+        </View>
+        <View style={styles.adContent}>
+          <Text style={styles.adTitle}>Ngumu's Eye</Text>
+          <Text style={styles.adDescription}>Surveillance & Tracing Services CC</Text>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -229,10 +256,13 @@ export default function FeedScreen() {
 
   const feedItems: FeedItem[] = useMemo(() => {
     const items: FeedItem[] = [];
+    let adCount = 0;
     posts.forEach((post, index) => {
       items.push({ type: 'post', data: post });
       if ((index + 1) % 2 === 0 && index < posts.length - 1) {
-        items.push({ type: 'ad', id: `ad-${index}` });
+        const adType = adCount % 2 === 0 ? 'mwaikange' : 'ngumu';
+        items.push({ type: 'ad', adType, id: `ad-${index}` });
+        adCount++;
       }
     });
     return items;
@@ -240,7 +270,7 @@ export default function FeedScreen() {
 
   const renderItem = useCallback(({ item }: { item: FeedItem }) => {
     if (item.type === 'ad') {
-      return <AdCard />;
+      return item.adType === 'ngumu' ? <NgumuAdCard /> : <MwaikAngeAdCard />;
     }
     return (
       <PostCard
@@ -548,6 +578,35 @@ const styles = StyleSheet.create({
     backgroundColor: colors.muted,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  adLogoImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+  },
+  adHeaderBetween: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  adHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  adBadge: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  adBadgeText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: colors.mutedForeground,
   },
   adContent: {
     flex: 1,
