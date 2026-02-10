@@ -49,12 +49,19 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 - Password: password123
 
 ### Mobile App (mobile/)
-React Native Expo app that connects to the same backend API.
+React Native Expo app - fully offline with mock data replicating the web app exactly.
 
-- **App.tsx** - Main navigation setup with bottom tabs
-- **src/screens/** - All app screens (Login, Feed, Map, Report, Groups, Profile)
-- **src/lib/** - API client, theme, and types
-- **assets/** - App icons and splash screens
+- **App.tsx** - Main navigation setup with bottom tabs + IncidentDetails stack screen
+- **src/screens/** - All app screens:
+  - Login, Signup - Authentication
+  - FeedScreen - Posts with images, ad cards between every 2 posts (linking to mwaikange.com), clickable posts navigate to IncidentDetails
+  - IncidentDetailsScreen - Full post detail matching web post-detail.tsx (badges, details grid, upvote/downvote, like, share, follow, tabs for Timeline/Media/Comments with working comment posting)
+  - MapScreen, ReportScreen, GroupsScreen, ProfileScreen
+- **src/lib/api.ts** - Mock API with local images (post1-4.jpg), comments, timeline events, votes
+- **src/lib/types.ts** - Types including Comment, TimelineEvent, PostVotes
+- **assets/** - App icons, splash screens, post images (post1-4.jpg)
+
+**IMPORTANT**: Mobile app must always replicate web app 1:1 for all screens and sub-pages.
 
 #### Building the Mobile App
 ```bash
