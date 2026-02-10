@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, memo } from 'react';
+import { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,15 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, fontSize } from '../lib/theme';
-import { postsApi } from '../lib/api';
+import { colors, spacing } from '../lib/theme';
+import { postsApi, postImages } from '../lib/api';
 import { Post } from '../lib/types';
 import { Image } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
 const appLogo = require('../../assets/logo.jpg');
 
@@ -41,13 +43,41 @@ const typeLabels: Record<string, { label: string; color: string }> = {
   suspicious_activity: { label: 'Suspicious Activity', color: '#ca8a04' },
 };
 
-const PostCard = memo(function PostCard({ post }: { post: Post }) {
+type FeedItem = { type: 'post'; data: Post } | { type: 'ad'; id: string };
+
+function AdCard() {
+  const handlePress = () => {
+    Linking.openURL('https://www.mwaikange.com/');
+  };
+
+  return (
+    <TouchableOpacity style={styles.adCard} onPress={handlePress} activeOpacity={0.8}>
+      <View style={styles.adHeader}>
+        <Ionicons name="megaphone-outline" size={14} color={colors.mutedForeground} />
+        <Text style={styles.adLabel}>Sponsored</Text>
+      </View>
+      <View style={styles.adBody}>
+        <View style={styles.adIcon}>
+          <Ionicons name="globe-outline" size={28} color={colors.primary} />
+        </View>
+        <View style={styles.adContent}>
+          <Text style={styles.adTitle}>Mwaikange</Text>
+          <Text style={styles.adDescription}>Visit mwaikange.com for more information and services</Text>
+          <Text style={styles.adLink}>www.mwaikange.com</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+const PostCard = memo(function PostCard({ post, onPress }: { post: Post; onPress: () => void }) {
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
   const typeInfo = typeLabels[post.type] || typeLabels.alert;
+  const localImage = postImages[post.id];
 
   return (
-    <View style={styles.postCard}>
+    <TouchableOpacity style={styles.postCard} activeOpacity={0.9} onPress={onPress}>
       <View style={styles.postHeader}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{post.userName.charAt(0)}</Text>
@@ -81,19 +111,17 @@ const PostCard = memo(function PostCard({ post }: { post: Post }) {
         <Text style={styles.postDescription} numberOfLines={2}>{post.description}</Text>
       </View>
 
-      {post.images && post.images.length > 0 && (
-        <Image
-          source={{ uri: post.images[0] }}
-          style={styles.postImage}
-          resizeMode="cover"
-        />
-      )}
+      {localImage ? (
+        <Image source={localImage} style={styles.postImage} resizeMode="cover" />
+      ) : post.images && post.images.length > 0 && !post.images[0].startsWith('local:') ? (
+        <Image source={{ uri: post.images[0] }} style={styles.postImage} resizeMode="cover" />
+      ) : null}
 
       <View style={styles.engagementBar}>
         <View style={styles.engagementLeft}>
           <TouchableOpacity
             style={styles.engagementButton}
-            onPress={() => setLiked(!liked)}
+            onPress={(e) => { e.stopPropagation(); setLiked(!liked); }}
           >
             <Ionicons
               name={liked ? 'heart' : 'heart-outline'}
@@ -113,7 +141,7 @@ const PostCard = memo(function PostCard({ post }: { post: Post }) {
             <Text style={styles.engagementCount}>{post.shares}</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={() => setSaved(!saved)}>
+        <TouchableOpacity onPress={(e) => { e.stopPropagation(); setSaved(!saved); }}>
           <Ionicons
             name={saved ? 'bookmark' : 'bookmark-outline'}
             size={20}
@@ -121,7 +149,7 @@ const PostCard = memo(function PostCard({ post }: { post: Post }) {
           />
         </TouchableOpacity>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 });
 
@@ -154,10 +182,6 @@ const Header = memo(function Header() {
         <Text style={styles.headerTitle}>Community Feed</Text>
       </View>
       <View style={styles.headerRight}>
-        <TouchableOpacity style={styles.searchButton}>
-          <Ionicons name="search-outline" size={16} color={colors.mutedForeground} />
-          <Text style={styles.searchText}>Se</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={styles.notificationButton}>
           <Ionicons name="notifications-outline" size={20} color={colors.mutedForeground} />
           <View style={styles.notificationBadge} />
@@ -168,6 +192,7 @@ const Header = memo(function Header() {
 });
 
 export default function FeedScreen() {
+  const navigation = useNavigation<any>();
   const [activeFilter, setActiveFilter] = useState('All');
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -198,11 +223,37 @@ export default function FeedScreen() {
     setActiveFilter(tab);
   }, []);
 
-  const renderPost = useCallback(({ item }: { item: Post }) => (
-    <PostCard post={item} />
-  ), []);
+  const handlePostPress = useCallback((postId: string) => {
+    navigation.navigate('IncidentDetails', { postId });
+  }, [navigation]);
 
-  const keyExtractor = useCallback((item: Post) => item.id, []);
+  const feedItems: FeedItem[] = useMemo(() => {
+    const items: FeedItem[] = [];
+    posts.forEach((post, index) => {
+      items.push({ type: 'post', data: post });
+      if ((index + 1) % 2 === 0 && index < posts.length - 1) {
+        items.push({ type: 'ad', id: `ad-${index}` });
+      }
+    });
+    return items;
+  }, [posts]);
+
+  const renderItem = useCallback(({ item }: { item: FeedItem }) => {
+    if (item.type === 'ad') {
+      return <AdCard />;
+    }
+    return (
+      <PostCard
+        post={item.data}
+        onPress={() => handlePostPress(item.data.id)}
+      />
+    );
+  }, [handlePostPress]);
+
+  const keyExtractor = useCallback((item: FeedItem) => {
+    if (item.type === 'ad') return item.id;
+    return item.data.id;
+  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -227,8 +278,8 @@ export default function FeedScreen() {
         </View>
       ) : (
         <FlatList
-          data={posts}
-          renderItem={renderPost}
+          data={feedItems}
+          renderItem={renderItem}
           keyExtractor={keyExtractor}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -288,18 +339,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-  searchButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  searchText: {
-    fontSize: 14,
-    color: colors.mutedForeground,
   },
   notificationButton: {
     position: 'relative',
@@ -476,6 +515,58 @@ const styles = StyleSheet.create({
   },
   engagementCountLiked: {
     color: '#ef4444',
+    fontWeight: '500',
+  },
+  adCard: {
+    backgroundColor: colors.card,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 12,
+    padding: spacing.md,
+  },
+  adHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  adLabel: {
+    fontSize: 12,
+    color: colors.mutedForeground,
+    fontWeight: '500',
+  },
+  adBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  adIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    backgroundColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adContent: {
+    flex: 1,
+  },
+  adTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.cardForeground,
+    marginBottom: 2,
+  },
+  adDescription: {
+    fontSize: 13,
+    color: colors.mutedForeground,
+    lineHeight: 18,
+  },
+  adLink: {
+    fontSize: 13,
+    color: colors.primary,
+    marginTop: 4,
     fontWeight: '500',
   },
   emptyContainer: {

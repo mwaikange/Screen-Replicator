@@ -15,6 +15,7 @@ import MapScreen from './src/screens/MapScreen';
 import ReportScreen from './src/screens/ReportScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import IncidentDetailsScreen from './src/screens/IncidentDetailsScreen';
 import { colors } from './src/lib/theme';
 import { RootStackParamList, MainTabParamList } from './src/lib/types';
 
@@ -152,6 +153,11 @@ export default function App() {
             name="Main" 
             component={MainTabs}
             options={{ animation: 'fade' }}
+          />
+          <Stack.Screen 
+            name="IncidentDetails" 
+            component={IncidentDetailsScreen}
+            options={{ animation: 'slide_from_right' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

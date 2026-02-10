@@ -13,6 +13,12 @@ export type User = {
   town: string;
 };
 
+export type PostVotes = {
+  upvotes: number;
+  downvotes: number;
+  userVote: 'up' | 'down' | null;
+};
+
 export type Post = {
   id: string;
   userId: string;
@@ -29,6 +35,28 @@ export type Post = {
   likes: number;
   comments: number;
   shares: number;
+  votes?: PostVotes;
+};
+
+export type Comment = {
+  id: string;
+  postId: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  text: string;
+  imageUrl?: string;
+  createdAt: string;
+};
+
+export type TimelineEvent = {
+  id: string;
+  postId: string;
+  userId: string;
+  userName: string;
+  type: string;
+  description: string;
+  createdAt: string;
 };
 
 export type Group = {
@@ -44,6 +72,7 @@ export type RootStackParamList = {
   Login: undefined;
   Signup: undefined;
   Main: undefined;
+  IncidentDetails: { postId: string };
 };
 
 export type MainTabParamList = {
