@@ -6,9 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { userApi } from '../lib/api';
 import { User } from '../lib/types';
@@ -16,6 +18,7 @@ import { User } from '../lib/types';
 const appLogo = require('../../assets/logo.jpg');
 
 export default function ProfileScreen() {
+  const navigation = useNavigation<any>();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -136,6 +139,21 @@ export default function ProfileScreen() {
               <Text style={styles.primaryButtonText}>My Case Deck</Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        <View style={styles.signOutCard}>
+          <TouchableOpacity
+            style={styles.signOutButton}
+            onPress={() => {
+              Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Sign Out', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Login' }] }) },
+              ]);
+            }}
+          >
+            <Ionicons name="log-out-outline" size={18} color={colors.cardForeground} />
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.bottomSpacing} />
@@ -394,6 +412,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.primaryForeground,
+  },
+  signOutCard: {
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    padding: 20,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    paddingVertical: 12,
+  },
+  signOutText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.cardForeground,
   },
   bottomSpacing: {
     height: 80,

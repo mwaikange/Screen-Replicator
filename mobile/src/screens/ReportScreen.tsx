@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import { useNavigation } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { postsApi } from '../lib/api';
 
@@ -49,6 +50,7 @@ const Header = memo(function Header() {
 });
 
 export default function ReportScreen() {
+  const navigation = useNavigation<any>();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -137,14 +139,15 @@ export default function ReportScreen() {
     setLoading(true);
     try {
       await postsApi.create({ ...formData, images: selectedFiles });
-      Alert.alert('Report submitted', 'Your incident has been reported successfully', [
+      Alert.alert('Report submitted', 'Your incident has been reported successfully and is now visible in the Feed.', [
         {
-          text: 'OK',
+          text: 'View Feed',
           onPress: () => {
             setStep(1);
             setFormData({ type: '', town: '', latitude: 0, longitude: 0, radius: 200, title: '', description: '' });
             setSelectedFiles([]);
             setLocationSet(false);
+            navigation.navigate('Feed');
           },
         },
       ]);

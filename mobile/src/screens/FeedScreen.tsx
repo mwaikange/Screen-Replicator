@@ -15,7 +15,7 @@ import { colors, spacing } from '../lib/theme';
 import { postsApi, postImages } from '../lib/api';
 import { Post } from '../lib/types';
 import { Image } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 const appLogo = require('../../assets/logo.jpg');
 const mwaikangeLogo = require('../../assets/mwaikange-logo.png');
@@ -240,6 +240,12 @@ export default function FeedScreen() {
   useEffect(() => {
     fetchPosts();
   }, [fetchPosts]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchPosts();
+    }, [fetchPosts])
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
