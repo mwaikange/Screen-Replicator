@@ -21,7 +21,7 @@ import { colors, spacing, fontSize } from '../lib/theme';
 import { authApi } from '../lib/api';
 import { RootStackParamList } from '../lib/types';
 
-const appLogo = require('../../assets/logo.jpg');
+const launcherLogo = require('../../assets/launcher.png');
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -84,9 +84,9 @@ export default function LoginScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.logoContainer}>
-              <Image source={appLogo} style={styles.logoImage} resizeMode="contain" />
-              <Text style={styles.title}>Ngumu's Eye</Text>
-              <Text style={styles.subtitle}>Community Safety Platform</Text>
+              <View style={styles.logoWrapper}>
+                <Image source={launcherLogo} style={styles.logoImage} resizeMode="contain" />
+              </View>
             </View>
 
             <View style={styles.formContainer}>
@@ -206,23 +206,24 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  logoWrapper: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
   },
   logoImage: {
-    width: 96,
-    height: 96,
-    borderRadius: 20,
-    marginBottom: spacing.md,
-  },
-  title: {
-    fontSize: fontSize['2xl'],
-    fontWeight: 'bold',
-    color: colors.cardForeground,
-  },
-  subtitle: {
-    fontSize: fontSize.base,
-    color: colors.mutedForeground,
-    marginTop: spacing.xs,
+    width: 200,
+    height: 200,
+    borderRadius: 12,
   },
   formContainer: {
     backgroundColor: colors.card,

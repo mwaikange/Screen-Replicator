@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardForeground,
   },
   filterTabText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
     color: colors.mutedForeground,
   },
