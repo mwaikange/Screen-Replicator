@@ -29,8 +29,8 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 
 ## Features
 - **Authentication**: Email/password login and signup
-- **Feed**: View community posts with filters (All, Nearby, Verified, Following)
-- **Map**: Visual incident map with severity legend (Critical, High, Medium, Low)
+- **Feed**: View community posts with filters (All, Nearby, Verified, Following), ad cards (Mwaikange) after every 2 posts
+- **Map**: Visual incident map with clickable markers from posts, blue dot for current location, popup with View Details navigating to post detail
 - **Report**: 3-step form for reporting incidents with location
 - **Groups**: Join or create community watch groups
 - **Profile**: View user info, trust score, subscription status
@@ -56,10 +56,11 @@ React Native Expo app - fully offline with mock data replicating the web app exa
   - Login, Signup - Authentication
   - FeedScreen - Posts with images, ad cards between every 2 posts (linking to mwaikange.com), clickable posts navigate to IncidentDetails
   - IncidentDetailsScreen - Full post detail matching web post-detail.tsx (badges, details grid, upvote/downvote, like, share, follow, tabs for Timeline/Media/Comments with working comment posting)
-  - MapScreen, ReportScreen, GroupsScreen, ProfileScreen
+  - MapScreen - Incident markers from posts, blue dot for current location, clickable markers with popup and View Details navigation to IncidentDetails
+  - ReportScreen, GroupsScreen, ProfileScreen
 - **src/lib/api.ts** - Mock API with local images (post1-4.jpg), comments, timeline events, votes
 - **src/lib/types.ts** - Types including Comment, TimelineEvent, PostVotes
-- **assets/** - App icons, splash screens, post images (post1-4.jpg)
+- **assets/** - App icons, splash screens, post images (post1-4.jpg), launcher.png (login logo)
 
 **IMPORTANT**: Mobile app must always replicate web app 1:1 for all screens and sub-pages.
 
