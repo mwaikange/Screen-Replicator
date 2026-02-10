@@ -38,6 +38,7 @@ export default function ProfileScreen() {
     displayName: 'Ngobo D...',
     email: 'ngocbo@yopmail.com',
     phone: '+27781669885',
+    avatarUrl: '',
     level: 0,
     trustScore: 0,
     followers: 0,
@@ -45,6 +46,8 @@ export default function ProfileScreen() {
     subscriptionType: 'Individual 1 Month',
     subscriptionExpiry: '2/21/2026',
   };
+
+  const daysRemaining = 26;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -54,7 +57,7 @@ export default function ProfileScreen() {
           <Text style={styles.headerTitle}>Profile</Text>
         </View>
         <TouchableOpacity style={styles.notificationButton}>
-          <Ionicons name="notifications-outline" size={24} color={colors.mutedForeground} />
+          <Ionicons name="notifications-outline" size={20} color={colors.mutedForeground} />
           <View style={styles.notificationBadge} />
         </TouchableOpacity>
       </View>
@@ -64,7 +67,9 @@ export default function ProfileScreen() {
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
               <View style={styles.avatar}>
-                <Ionicons name="person" size={32} color={colors.mutedForeground} />
+                <Text style={styles.avatarText}>
+                  {displayUser.displayName?.charAt(0) || 'U'}
+                </Text>
               </View>
               <TouchableOpacity style={styles.cameraButton}>
                 <Ionicons name="camera" size={14} color={colors.primaryForeground} />
@@ -83,12 +88,12 @@ export default function ProfileScreen() {
           </View>
 
           <TouchableOpacity style={styles.editButton}>
-            <Ionicons name="pencil-outline" size={18} color={colors.cardForeground} />
+            <Ionicons name="pencil-outline" size={16} color={colors.cardForeground} />
             <Text style={styles.editButtonText}>Edit Display Name</Text>
           </TouchableOpacity>
 
           <View style={styles.trustScore}>
-            <Ionicons name="shield-checkmark-outline" size={18} color={colors.mutedForeground} />
+            <Ionicons name="shield-checkmark-outline" size={16} color={colors.mutedForeground} />
             <Text style={styles.trustScoreText}>Trust Score: {displayUser.trustScore}</Text>
           </View>
         </View>
@@ -121,7 +126,7 @@ export default function ProfileScreen() {
             <Text style={styles.expiryText}>Expires {displayUser.subscriptionExpiry}</Text>
           </View>
 
-          <Text style={styles.daysRemaining}>26 days remaining</Text>
+          <Text style={styles.daysRemaining}>{daysRemaining} days remaining</Text>
 
           <View style={styles.subscriptionButtons}>
             <TouchableOpacity style={styles.outlineButton}>
@@ -149,7 +154,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    height: 56,
     backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -157,7 +162,7 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 12,
   },
   headerLogo: {
     width: 36,
@@ -165,13 +170,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   headerTitle: {
-    fontSize: fontSize.lg,
+    fontSize: 18,
     fontWeight: '600',
     color: colors.cardForeground,
   },
   notificationButton: {
     position: 'relative',
-    padding: spacing.xs,
+    padding: 8,
   },
   notificationBadge: {
     position: 'absolute',
@@ -188,14 +193,11 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: spacing.lg,
+    borderRadius: 8,
+    padding: 20,
     marginBottom: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   profileHeader: {
     flexDirection: 'row',
@@ -212,18 +214,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarText: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: colors.mutedForeground,
+  },
   cameraButton: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
+    bottom: -4,
+    right: -4,
     width: 28,
     height: 28,
     borderRadius: 14,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.card,
   },
   profileInfo: {
     flex: 1,
@@ -232,95 +237,94 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    gap: 8,
+    marginBottom: 4,
+    flexWrap: 'wrap',
   },
   displayName: {
-    fontSize: fontSize.xl,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '700',
     color: colors.cardForeground,
   },
   levelBadge: {
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
     borderWidth: 1,
     borderColor: colors.border,
   },
   levelText: {
-    fontSize: fontSize.xs,
+    fontSize: 12,
     color: colors.mutedForeground,
   },
   email: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     color: colors.mutedForeground,
   },
   phone: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     color: colors.mutedForeground,
   },
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
+    gap: 8,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    padding: spacing.md,
+    borderRadius: 6,
+    paddingVertical: 12,
     marginTop: spacing.md,
   },
   editButtonText: {
-    fontSize: fontSize.base,
+    fontSize: 14,
     color: colors.cardForeground,
   },
   trustScore: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 8,
     marginTop: spacing.md,
   },
   trustScoreText: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     color: colors.mutedForeground,
   },
   statsCard: {
     flexDirection: 'row',
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: spacing.lg,
+    borderRadius: 8,
+    paddingVertical: spacing.md,
     marginBottom: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   statItem: {
     flex: 1,
     alignItems: 'center',
   },
   statNumber: {
-    fontSize: fontSize['2xl'],
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontWeight: '700',
     color: colors.cardForeground,
   },
   statLabel: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     color: colors.mutedForeground,
   },
   statDivider: {
     width: 1,
     backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
+    marginVertical: 4,
   },
   sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     color: colors.cardForeground,
+    marginBottom: 4,
   },
   sectionSubtitle: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     color: colors.mutedForeground,
     marginBottom: spacing.md,
   },
@@ -328,66 +332,66 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    marginBottom: 12,
   },
   subscriptionType: {
-    fontSize: fontSize.base,
+    fontSize: 14,
     fontWeight: '500',
     color: colors.cardForeground,
   },
   activeBadge: {
-    backgroundColor: colors.success,
-    paddingHorizontal: spacing.sm,
+    backgroundColor: '#22c55e',
+    paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
   },
   activeBadgeText: {
-    fontSize: fontSize.xs,
+    fontSize: 12,
     fontWeight: '600',
-    color: colors.primaryForeground,
+    color: '#ffffff',
   },
   expiryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    gap: 8,
+    marginBottom: 8,
   },
   expiryText: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     color: colors.mutedForeground,
   },
   daysRemaining: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     fontWeight: '500',
     color: colors.primary,
     marginBottom: spacing.md,
   },
   subscriptionButtons: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: 8,
   },
   outlineButton: {
     flex: 1,
     alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: 8,
+    paddingVertical: 12,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: colors.border,
   },
   outlineButtonText: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     fontWeight: '500',
     color: colors.cardForeground,
   },
   primaryButton: {
     flex: 1,
     alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: 8,
+    paddingVertical: 12,
+    borderRadius: 6,
     backgroundColor: colors.primary,
   },
   primaryButtonText: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.primaryForeground,
   },

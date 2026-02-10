@@ -5,163 +5,139 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Image,
   RefreshControl,
   ActivityIndicator,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { postsApi } from '../lib/api';
 import { Post } from '../lib/types';
+import { Image } from 'react-native';
 
 const appLogo = require('../../assets/logo.jpg');
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const filterTabs = ['All', 'Nearby', 'Verified', 'Following'];
 
-const PostCard = memo(function PostCard({ 
-  post, 
-  typeLabels 
-}: { 
-  post: Post; 
-  typeLabels: Record<string, { label: string; color: string }>;
-}) {
+function formatTimeAgo(dateString: string): string {
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffHours < 1) return 'Just now';
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return '1 day ago';
+  return `${diffDays} days ago`;
+}
+
+const typeLabels: Record<string, { label: string; color: string }> = {
+  missing_person: { label: 'Missing Person', color: '#ef4444' },
+  incident: { label: 'Crime Report', color: '#ef4444' },
+  alert: { label: 'Emergency Alert', color: '#ea580c' },
+  gender_based_violence: { label: 'Gender-Based Violence', color: '#9333ea' },
+  theft: { label: 'Theft', color: '#dc2626' },
+  suspicious_activity: { label: 'Suspicious Activity', color: '#ca8a04' },
+};
+
+const PostCard = memo(function PostCard({ post }: { post: Post }) {
+  const [liked, setLiked] = useState(false);
+  const [saved, setSaved] = useState(false);
   const typeInfo = typeLabels[post.type] || typeLabels.alert;
 
   return (
     <View style={styles.postCard}>
-      {post.images && post.images.length > 0 && (
-        <View style={styles.imageGrid}>
-          {post.images.slice(0, 2).map((img, idx) => (
-            <View key={idx} style={styles.imagePlaceholder}>
-              <Image 
-                source={{ uri: img }} 
-                style={styles.postImage}
-                resizeMode="cover"
-              />
-            </View>
-          ))}
+      <View style={styles.postHeader}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{post.userName.charAt(0)}</Text>
         </View>
-      )}
-      
-      <View style={styles.postContent}>
-        <View style={[styles.badge, { backgroundColor: typeInfo.color }]}>
-          <Text style={styles.badgeText}>{typeInfo.label}</Text>
+        <View style={styles.headerInfo}>
+          <View style={styles.nameRow}>
+            <Text style={styles.userName}>{post.userName}</Text>
+            {post.verified && (
+              <View style={styles.verifiedBadge}>
+                <Text style={styles.verifiedText}>Verified</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.locationTimeRow}>
+            <Ionicons name="location-outline" size={12} color={colors.mutedForeground} />
+            <Text style={styles.locationText}>{post.userTown}</Text>
+            <Text style={styles.separator}>-</Text>
+            <Text style={styles.timeText}>{formatTimeAgo(post.createdAt)}</Text>
+          </View>
         </View>
-        
+        <TouchableOpacity style={styles.moreButton}>
+          <Ionicons name="ellipsis-horizontal" size={20} color={colors.mutedForeground} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.postBody}>
+        <View style={[styles.typeBadge, { backgroundColor: typeInfo.color }]}>
+          <Text style={styles.typeBadgeText}>{typeInfo.label}</Text>
+        </View>
         <Text style={styles.postTitle}>{post.title}</Text>
-        <Text style={styles.postDescription} numberOfLines={2}>
-          {post.description}
-        </Text>
-        
-        <View style={styles.postMeta}>
-          <Text style={styles.postDate}>
-            {new Date(post.createdAt).toLocaleDateString() === new Date().toLocaleDateString() 
-              ? 'Today' 
-              : post.createdAt}
-          </Text>
-          <Text style={styles.postRadius}>{post.radius}m Radius</Text>
-        </View>
+        <Text style={styles.postDescription} numberOfLines={2}>{post.description}</Text>
+      </View>
 
-        <View style={styles.postFooter}>
-          <View style={styles.userInfo}>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={16} color={colors.mutedForeground} />
-            </View>
-            <View>
-              <Text style={styles.userName}>{post.userName}</Text>
-              <View style={styles.locationRow}>
-                <Ionicons name="location-outline" size={12} color={colors.mutedForeground} />
-                <Text style={styles.userTown}>{post.userTown}</Text>
-              </View>
-            </View>
-          </View>
-          <TouchableOpacity 
-            style={styles.followButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            accessibilityLabel="Follow user"
-            accessibilityRole="button"
+      {post.images && post.images.length > 0 && (
+        <Image
+          source={{ uri: post.images[0] }}
+          style={styles.postImage}
+          resizeMode="cover"
+        />
+      )}
+
+      <View style={styles.engagementBar}>
+        <View style={styles.engagementLeft}>
+          <TouchableOpacity
+            style={styles.engagementButton}
+            onPress={() => setLiked(!liked)}
           >
-            <Ionicons name="person-add-outline" size={16} color={colors.cardForeground} />
-            <Text style={styles.followText}>Follow</Text>
+            <Ionicons
+              name={liked ? 'heart' : 'heart-outline'}
+              size={20}
+              color={liked ? '#ef4444' : colors.mutedForeground}
+            />
+            <Text style={[styles.engagementCount, liked && styles.engagementCountLiked]}>
+              {post.likes + (liked ? 1 : 0)}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.engagementButton}>
+            <Ionicons name="chatbubble-outline" size={20} color={colors.mutedForeground} />
+            <Text style={styles.engagementCount}>{post.comments}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.engagementButton}>
+            <Ionicons name="share-social-outline" size={20} color={colors.mutedForeground} />
+            <Text style={styles.engagementCount}>{post.shares}</Text>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity onPress={() => setSaved(!saved)}>
+          <Ionicons
+            name={saved ? 'bookmark' : 'bookmark-outline'}
+            size={20}
+            color={saved ? colors.cardForeground : colors.mutedForeground}
+          />
+        </TouchableOpacity>
       </View>
     </View>
   );
 });
 
-const SamplePostCard = memo(function SamplePostCard() {
-  return (
-    <View style={styles.postCard}>
-      <View style={styles.imageGrid}>
-        <View style={styles.imagePlaceholder}>
-          <Ionicons name="image-outline" size={32} color={colors.mutedForeground} />
-        </View>
-        <View style={styles.imagePlaceholder}>
-          <Ionicons name="image-outline" size={32} color={colors.mutedForeground} />
-        </View>
-      </View>
-      
-      <View style={styles.postContent}>
-        <View style={[styles.badge, { backgroundColor: colors.destructive }]}>
-          <Text style={styles.badgeText}>Missing Person</Text>
-        </View>
-        
-        <Text style={styles.postTitle}>MISSING CHILD REPORT</Text>
-        <Text style={styles.postDescription} numberOfLines={2}>
-          Child is wearing a t-shirt and nappy only. No shoes so if seen please do contact the parents...
-        </Text>
-        
-        <View style={styles.postMeta}>
-          <Text style={styles.postDate}>Today</Text>
-          <Text style={styles.postRadius}>200m Radius</Text>
-        </View>
-
-        <View style={styles.postFooter}>
-          <View style={styles.userInfo}>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={16} color={colors.mutedForeground} />
-            </View>
-            <View>
-              <Text style={styles.userName}>Cykes man</Text>
-              <View style={styles.locationRow}>
-                <Ionicons name="location-outline" size={12} color={colors.mutedForeground} />
-                <Text style={styles.userTown}>Swakopmund</Text>
-              </View>
-            </View>
-          </View>
-          <TouchableOpacity 
-            style={styles.followButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="person-add-outline" size={16} color={colors.cardForeground} />
-            <Text style={styles.followText}>Follow</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  );
-});
-
-const FilterTab = memo(function FilterTab({ 
-  tab, 
-  isActive, 
-  onPress 
-}: { 
-  tab: string; 
-  isActive: boolean; 
+const FilterTab = memo(function FilterTab({
+  tab,
+  isActive,
+  onPress,
+}: {
+  tab: string;
+  isActive: boolean;
   onPress: () => void;
 }) {
   return (
     <TouchableOpacity
       style={[styles.filterTab, isActive && styles.filterTabActive]}
       onPress={onPress}
-      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-      accessibilityLabel={`Filter by ${tab}`}
-      accessibilityState={{ selected: isActive }}
     >
       <Text style={[styles.filterTabText, isActive && styles.filterTabTextActive]}>
         {tab}
@@ -177,15 +153,16 @@ const Header = memo(function Header() {
         <Image source={appLogo} style={styles.headerLogo} resizeMode="contain" />
         <Text style={styles.headerTitle}>Community Feed</Text>
       </View>
-      <TouchableOpacity 
-        style={styles.notificationButton}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        accessibilityLabel="Notifications"
-        accessibilityRole="button"
-      >
-        <Ionicons name="notifications-outline" size={24} color={colors.mutedForeground} />
-        <View style={styles.notificationBadge} />
-      </TouchableOpacity>
+      <View style={styles.headerRight}>
+        <TouchableOpacity style={styles.searchButton}>
+          <Ionicons name="search-outline" size={16} color={colors.mutedForeground} />
+          <Text style={styles.searchText}>Se</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.notificationButton}>
+          <Ionicons name="notifications-outline" size={20} color={colors.mutedForeground} />
+          <View style={styles.notificationBadge} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 });
@@ -195,12 +172,6 @@ export default function FeedScreen() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  const typeLabels: Record<string, { label: string; color: string }> = {
-    missing_person: { label: 'Missing Person', color: colors.destructive },
-    incident: { label: 'Incident', color: colors.warning },
-    alert: { label: 'Alert', color: colors.primary },
-  };
 
   const fetchPosts = useCallback(async () => {
     try {
@@ -228,71 +199,57 @@ export default function FeedScreen() {
   }, []);
 
   const renderPost = useCallback(({ item }: { item: Post }) => (
-    <PostCard post={item} typeLabels={typeLabels} />
-  ), [typeLabels]);
+    <PostCard post={item} />
+  ), []);
 
   const keyExtractor = useCallback((item: Post) => item.id, []);
-
-  const ListEmptyComponent = useCallback(() => (
-    loading ? (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    ) : (
-      <SamplePostCard />
-    )
-  ), [loading]);
-
-  const ListFooterComponent = useCallback(() => (
-    <View style={styles.bottomSpacing} />
-  ), []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Header />
 
       <View style={styles.filterContainer}>
-        <FlatList
-          horizontal
-          data={filterTabs}
-          keyExtractor={(item) => item}
-          showsHorizontalScrollIndicator={false}
-          renderItem={({ item }) => (
+        <View style={styles.filterRow}>
+          {filterTabs.map((tab) => (
             <FilterTab
-              tab={item}
-              isActive={activeFilter === item}
-              onPress={() => handleFilterPress(item)}
+              key={tab}
+              tab={tab}
+              isActive={activeFilter === tab}
+              onPress={() => handleFilterPress(tab)}
             />
-          )}
-          contentContainerStyle={styles.filterList}
-        />
+          ))}
+        </View>
       </View>
 
-      <FlatList
-        data={posts}
-        renderItem={renderPost}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
-        }
-        ListEmptyComponent={ListEmptyComponent}
-        ListFooterComponent={ListFooterComponent}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={5}
-        windowSize={5}
-        initialNumToRender={3}
-        getItemLayout={(data, index) => ({
-          length: 320,
-          offset: 320 * index,
-          index,
-        })}
-      />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={posts}
+          renderItem={renderPost}
+          keyExtractor={keyExtractor}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No posts found</Text>
+            </View>
+          }
+          ListFooterComponent={<View style={styles.bottomSpacing} />}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={5}
+          windowSize={5}
+          initialNumToRender={3}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -307,74 +264,83 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    height: 56,
     backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    minHeight: 56,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
   },
   headerLogo: {
     width: 36,
     height: 36,
     borderRadius: 8,
-    marginRight: spacing.sm,
   },
   headerTitle: {
-    fontSize: fontSize.lg,
+    fontSize: 18,
     fontWeight: '600',
     color: colors.cardForeground,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  searchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  searchText: {
+    fontSize: 14,
+    color: colors.mutedForeground,
+  },
   notificationButton: {
     position: 'relative',
-    padding: spacing.sm,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 8,
   },
   notificationBadge: {
     position: 'absolute',
-    top: 10,
-    right: 10,
+    top: 6,
+    right: 6,
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.destructive,
   },
   filterContainer: {
-    backgroundColor: colors.card,
-    paddingVertical: spacing.sm,
-  },
-  filterList: {
     paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.muted,
+    borderRadius: 20,
+    padding: 4,
   },
   filterTab: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 20,
-    backgroundColor: colors.muted,
-    marginRight: spacing.sm,
-    minHeight: 36,
-    justifyContent: 'center',
   },
   filterTabActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.cardForeground,
   },
   filterTabText: {
-    fontSize: fontSize.sm,
-    color: colors.cardForeground,
+    fontSize: 14,
     fontWeight: '500',
+    color: colors.mutedForeground,
   },
   filterTabTextActive: {
-    color: colors.primaryForeground,
-  },
-  content: {
-    padding: spacing.md,
-    paddingBottom: 100,
+    color: colors.card,
   },
   loadingContainer: {
     flex: 1,
@@ -384,120 +350,141 @@ const styles = StyleSheet.create({
   },
   postCard: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    marginBottom: spacing.md,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  imageGrid: {
-    flexDirection: 'row',
-    height: 160,
-  },
-  imagePlaceholder: {
-    flex: 1,
-    backgroundColor: colors.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    margin: 1,
-  },
-  postImage: {
-    width: '100%',
-    height: '100%',
-  },
-  postContent: {
-    padding: spacing.md,
-  },
-  badge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 4,
-    marginBottom: spacing.sm,
-  },
-  badgeText: {
-    fontSize: fontSize.xs,
-    fontWeight: '600',
-    color: colors.primaryForeground,
-  },
-  postTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: 'bold',
-    color: colors.cardForeground,
-    marginBottom: spacing.xs,
-  },
-  postDescription: {
-    fontSize: fontSize.sm,
-    color: colors.mutedForeground,
-    marginBottom: spacing.sm,
-    lineHeight: 20,
-  },
-  postMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  postDate: {
-    fontSize: fontSize.sm,
-    color: colors.mutedForeground,
-  },
-  postRadius: {
-    fontSize: fontSize.sm,
-    color: colors.mutedForeground,
-  },
-  postFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 12,
   },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  userName: {
-    fontSize: fontSize.sm,
-    fontWeight: '500',
-    color: colors.cardForeground,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  userTown: {
-    fontSize: fontSize.xs,
-    color: colors.mutedForeground,
-    marginLeft: 2,
-  },
-  followButton: {
+  postHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: 44,
+    paddingVertical: 12,
+    gap: 12,
   },
-  followText: {
-    fontSize: fontSize.sm,
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.mutedForeground,
+  },
+  headerInfo: {
+    flex: 1,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  userName: {
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.cardForeground,
-    marginLeft: spacing.xs,
+  },
+  verifiedBadge: {
+    backgroundColor: colors.muted,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  verifiedText: {
+    fontSize: 12,
+    color: colors.cardForeground,
+  },
+  locationTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  locationText: {
+    fontSize: 12,
+    color: colors.mutedForeground,
+  },
+  separator: {
+    fontSize: 12,
+    color: colors.mutedForeground,
+    marginHorizontal: 4,
+  },
+  timeText: {
+    fontSize: 12,
+    color: colors.mutedForeground,
+  },
+  moreButton: {
+    padding: 4,
+  },
+  postBody: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: 12,
+  },
+  typeBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  typeBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  postTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.cardForeground,
+    lineHeight: 22,
+  },
+  postDescription: {
+    fontSize: 14,
+    color: colors.mutedForeground,
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  postImage: {
+    width: '100%',
+    height: 300,
+  },
+  engagementBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  engagementLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+  },
+  engagementButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  engagementCount: {
+    fontSize: 14,
+    color: colors.mutedForeground,
+  },
+  engagementCountLiked: {
+    color: '#ef4444',
+    fontWeight: '500',
+  },
+  emptyContainer: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+    color: colors.mutedForeground,
   },
   bottomSpacing: {
     height: 20,

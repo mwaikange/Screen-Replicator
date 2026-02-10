@@ -19,15 +19,19 @@ import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { postsApi } from '../lib/api';
-import { useNavigation } from '@react-navigation/native';
 
 const appLogo = require('../../assets/logo.jpg');
 
 const incidentTypes = [
-  { value: 'missing_person', label: 'Missing Person', icon: 'person-outline' },
-  { value: 'incident', label: 'Incident', icon: 'warning-outline' },
-  { value: 'alert', label: 'Alert', icon: 'megaphone-outline' },
+  { value: 'missing_person', label: 'Missing Person' },
+  { value: 'incident', label: 'Crime Report' },
+  { value: 'alert', label: 'Emergency Alert' },
+  { value: 'gender_based_violence', label: 'Gender-Based Violence' },
+  { value: 'theft', label: 'Theft' },
+  { value: 'suspicious_activity', label: 'Suspicious Activity' },
 ];
+
+const stepLabels = ['Type & Location', 'Details & Media', 'Review'];
 
 const Header = memo(function Header() {
   return (
@@ -36,11 +40,8 @@ const Header = memo(function Header() {
         <Image source={appLogo} style={styles.headerLogo} resizeMode="contain" />
         <Text style={styles.headerTitle}>Report Incident</Text>
       </View>
-      <TouchableOpacity 
-        style={styles.notificationButton}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Ionicons name="notifications-outline" size={24} color={colors.mutedForeground} />
+      <TouchableOpacity style={styles.notificationButton}>
+        <Ionicons name="notifications-outline" size={20} color={colors.mutedForeground} />
         <View style={styles.notificationBadge} />
       </TouchableOpacity>
     </View>
@@ -48,11 +49,11 @@ const Header = memo(function Header() {
 });
 
 export default function ReportScreen() {
-  const navigation = useNavigation();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
-  const [images, setImages] = useState<string[]>([]);
+  const [locationSet, setLocationSet] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     type: '',
     town: '',
@@ -62,51 +63,51 @@ export default function ReportScreen() {
     title: '',
     description: '',
   });
-  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const validateStep1 = useCallback(() => {
-    const newErrors: Record<string, string> = {};
-    if (!formData.type) newErrors.type = 'Please select an incident type';
-    if (!formData.town.trim()) newErrors.town = 'Please enter a town';
-    if (formData.radius < 50 || formData.radius > 5000) {
-      newErrors.radius = 'Radius must be between 50 and 5000 meters';
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [formData]);
+  const canContinueStep1 = formData.type !== '' && formData.town.trim() !== '';
+  const canContinueStep2 = formData.title.trim() !== '';
 
-  const validateStep2 = useCallback(() => {
-    const newErrors: Record<string, string> = {};
-    if (!formData.title.trim()) newErrors.title = 'Please enter a title';
-    if (!formData.description.trim()) newErrors.description = 'Please enter a description';
-    if (formData.description.length < 20) {
-      newErrors.description = 'Description must be at least 20 characters';
+  const handleNext = () => {
+    if (step === 1 && !canContinueStep1) {
+      Alert.alert('Required Fields', 'Select an incident type and enter your town');
+      return;
     }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [formData]);
+    if (step === 2 && !canContinueStep2) {
+      Alert.alert('Required Field', 'A brief title for the incident is required');
+      return;
+    }
+    Keyboard.dismiss();
+    if (step < 3) setStep(step + 1);
+  };
+
+  const handleBack = () => {
+    if (step > 1) setStep(step - 1);
+  };
 
   const useCurrentLocation = useCallback(async () => {
     setLocationLoading(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to report incidents');
+        setFormData(prev => ({ ...prev, latitude: -21.9699, longitude: 16.9028 }));
+        setLocationSet(true);
+        Alert.alert('Location set', 'Default location used (geolocation unavailable)');
         return;
       }
-
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
-      
       setFormData(prev => ({
         ...prev,
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude: parseFloat(location.coords.latitude.toFixed(4)),
+        longitude: parseFloat(location.coords.longitude.toFixed(4)),
       }));
-      Alert.alert('Success', 'Location captured successfully');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to get your location. Please try again.');
+      setLocationSet(true);
+      Alert.alert('Location set', 'Your current location has been captured');
+    } catch {
+      setFormData(prev => ({ ...prev, latitude: -21.9699, longitude: 16.9028 }));
+      setLocationSet(true);
+      Alert.alert('Location set', 'Default location used (geolocation unavailable)');
     } finally {
       setLocationLoading(false);
     }
@@ -118,90 +119,66 @@ export default function ReportScreen() {
       Alert.alert('Permission Denied', 'Photo library access is required');
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       quality: 0.8,
-      selectionLimit: 5,
     });
-
     if (!result.canceled) {
-      setImages(prev => [...prev, ...result.assets.map(a => a.uri)].slice(0, 5));
+      setSelectedFiles(prev => [...prev, ...result.assets.map(a => a.uri)]);
     }
   }, []);
 
-  const takePhoto = useCallback(async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Camera access is required');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      setImages(prev => [...prev, result.assets[0].uri].slice(0, 5));
-    }
-  }, []);
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
 
   const handleSubmit = useCallback(async () => {
     setLoading(true);
     try {
-      await postsApi.create({ ...formData, images });
-      Alert.alert('Success', 'Report submitted successfully', [
-        { text: 'OK', onPress: () => {
-          setStep(1);
-          setFormData({
-            type: '',
-            town: '',
-            latitude: 0,
-            longitude: 0,
-            radius: 200,
-            title: '',
-            description: '',
-          });
-          setImages([]);
-        }}
+      await postsApi.create({ ...formData, images: selectedFiles });
+      Alert.alert('Report submitted', 'Your incident has been reported successfully', [
+        {
+          text: 'OK',
+          onPress: () => {
+            setStep(1);
+            setFormData({ type: '', town: '', latitude: 0, longitude: 0, radius: 200, title: '', description: '' });
+            setSelectedFiles([]);
+            setLocationSet(false);
+          },
+        },
       ]);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to submit report. Please try again.');
+    } catch {
+      Alert.alert('Failed to submit', 'Please try again');
     } finally {
       setLoading(false);
     }
-  }, [formData, images]);
+  }, [formData, selectedFiles]);
 
-  const goToStep = useCallback((nextStep: number) => {
-    if (nextStep === 2 && !validateStep1()) return;
-    if (nextStep === 3 && !validateStep2()) return;
-    Keyboard.dismiss();
-    setStep(nextStep);
-  }, [validateStep1, validateStep2]);
+  const getTypeLabel = (value: string) => incidentTypes.find((t) => t.value === value)?.label || '-';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Header />
 
       <View style={styles.progressContainer}>
-        <Text style={styles.stepText}>Step {step} of 3</Text>
-        <Text style={styles.stepLabel}>
-          {step === 1 ? 'Type & Location' : step === 2 ? 'Details' : 'Media & Review'}
-        </Text>
+        <View style={styles.progressHeader}>
+          <Text style={styles.stepText}>Step {step} of 3</Text>
+          <Text style={styles.stepLabel}>{stepLabels[step - 1]}</Text>
+        </View>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${(step / 3) * 100}%` }]} />
         </View>
       </View>
 
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView 
-            style={styles.content}
+          <ScrollView
+            style={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
@@ -213,165 +190,170 @@ export default function ReportScreen() {
                 </Text>
 
                 <Text style={styles.label}>Incident Type</Text>
-                <View style={styles.selectContainer}>
+                <View style={styles.pickerContainer}>
                   {incidentTypes.map((type) => (
                     <TouchableOpacity
                       key={type.value}
                       style={[
-                        styles.selectOption,
-                        formData.type === type.value && styles.selectOptionActive,
-                        errors.type && styles.selectOptionError,
+                        styles.pickerOption,
+                        formData.type === type.value && styles.pickerOptionActive,
                       ]}
-                      onPress={() => {
-                        setFormData(prev => ({ ...prev, type: type.value }));
-                        setErrors(prev => ({ ...prev, type: '' }));
-                      }}
-                      accessibilityLabel={type.label}
-                      accessibilityState={{ selected: formData.type === type.value }}
+                      onPress={() => setFormData(prev => ({ ...prev, type: type.value }))}
                     >
-                      <Ionicons 
-                        name={type.icon as any} 
-                        size={20} 
-                        color={formData.type === type.value ? colors.primary : colors.mutedForeground} 
-                      />
-                      <Text
-                        style={[
-                          styles.selectOptionText,
-                          formData.type === type.value && styles.selectOptionTextActive,
-                        ]}
-                      >
-                        {type.label}
-                      </Text>
+                      <View style={[styles.radio, formData.type === type.value && styles.radioActive]}>
+                        {formData.type === type.value && <View style={styles.radioDot} />}
+                      </View>
+                      <Text style={[
+                        styles.pickerOptionText,
+                        formData.type === type.value && styles.pickerOptionTextActive,
+                      ]}>{type.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
-                {errors.type ? <Text style={styles.errorText}>{errors.type}</Text> : null}
 
                 <Text style={styles.label}>Town</Text>
                 <TextInput
-                  style={[styles.input, errors.town && styles.inputError]}
+                  style={styles.input}
                   placeholder="Enter nearest town"
                   placeholderTextColor={colors.mutedForeground}
                   value={formData.town}
-                  onChangeText={(text) => {
-                    setFormData(prev => ({ ...prev, town: text }));
-                    setErrors(prev => ({ ...prev, town: '' }));
-                  }}
-                  returnKeyType="next"
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, town: text }))}
                   autoCapitalize="words"
                 />
-                {errors.town ? (
-                  <Text style={styles.errorText}>{errors.town}</Text>
-                ) : (
-                  <Text style={styles.hint}>Enter the nearest town or city</Text>
-                )}
+                <Text style={styles.hint}>Enter the nearest town or city</Text>
 
                 <Text style={styles.label}>Location</Text>
-                <TouchableOpacity 
-                  style={styles.locationButton} 
-                  onPress={useCurrentLocation}
-                  disabled={locationLoading}
-                  accessibilityLabel="Use current location"
-                >
-                  <Ionicons 
-                    name={formData.latitude ? "checkmark-circle" : "location-outline"} 
-                    size={20} 
-                    color={formData.latitude ? colors.success : colors.cardForeground} 
-                  />
-                  <Text style={styles.locationButtonText}>
-                    {locationLoading ? 'Getting location...' : 
-                     formData.latitude ? 'Location captured' : 'Use Current Location'}
-                  </Text>
-                </TouchableOpacity>
+                {locationSet ? (
+                  <View>
+                    <View style={styles.locationSuccess}>
+                      <Ionicons name="checkmark-circle" size={16} color="#16a34a" />
+                      <Text style={styles.locationSuccessText}>
+                        Location set: {formData.latitude}, {formData.longitude}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.outlineButton}
+                      onPress={useCurrentLocation}
+                      disabled={locationLoading}
+                    >
+                      <Ionicons name="location-outline" size={16} color={colors.cardForeground} />
+                      <Text style={styles.outlineButtonText}>Update Location</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.greenButton}
+                    onPress={useCurrentLocation}
+                    disabled={locationLoading}
+                  >
+                    <Ionicons name="location-outline" size={16} color="#ffffff" />
+                    <Text style={styles.greenButtonText}>
+                      {locationLoading ? 'Getting location...' : 'Use Current Location'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 <Text style={styles.label}>Alert Radius (meters)</Text>
                 <TextInput
-                  style={[styles.input, errors.radius && styles.inputError]}
-                  placeholder="200"
-                  placeholderTextColor={colors.mutedForeground}
+                  style={styles.input}
                   value={formData.radius.toString()}
                   onChangeText={(text) => {
                     const value = parseInt(text.replace(/[^0-9]/g, '')) || 0;
                     setFormData(prev => ({ ...prev, radius: value }));
-                    setErrors(prev => ({ ...prev, radius: '' }));
                   }}
                   keyboardType="number-pad"
-                  returnKeyType="done"
                   maxLength={4}
                 />
-                {errors.radius ? (
-                  <Text style={styles.errorText}>{errors.radius}</Text>
-                ) : (
-                  <Text style={styles.hint}>People within this radius will be notified (50-5000m)</Text>
-                )}
+                <Text style={styles.hint}>People within this radius will be notified</Text>
 
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={() => goToStep(2)}
-                  accessibilityLabel="Continue to step 2"
+                <TouchableOpacity
+                  style={[styles.button, !canContinueStep1 && styles.buttonDisabled]}
+                  onPress={handleNext}
+                  disabled={!canContinueStep1}
                 >
                   <Text style={styles.buttonText}>Continue</Text>
-                  <Ionicons name="chevron-forward" size={20} color={colors.primaryForeground} />
+                  <Ionicons name="chevron-forward" size={16} color={colors.primaryForeground} />
                 </TouchableOpacity>
               </View>
             )}
 
             {step === 2 && (
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>Provide Details</Text>
-                <Text style={styles.cardSubtitle}>Describe the incident in detail</Text>
+                <Text style={styles.cardTitle}>Incident Details</Text>
+                <Text style={styles.cardSubtitle}>
+                  Provide a clear description and upload photos or videos
+                </Text>
 
                 <Text style={styles.label}>Title</Text>
                 <TextInput
-                  style={[styles.input, errors.title && styles.inputError]}
-                  placeholder="Brief title for the report"
+                  style={styles.input}
+                  placeholder="Brief summary of the incident"
                   placeholderTextColor={colors.mutedForeground}
                   value={formData.title}
                   onChangeText={(text) => {
-                    setFormData(prev => ({ ...prev, title: text }));
-                    setErrors(prev => ({ ...prev, title: '' }));
+                    if (text.length <= 100) setFormData(prev => ({ ...prev, title: text }));
                   }}
-                  returnKeyType="next"
                   maxLength={100}
                 />
-                {errors.title ? <Text style={styles.errorText}>{errors.title}</Text> : null}
+                <Text style={styles.hint}>{formData.title.length}/100 characters</Text>
 
-                <Text style={styles.label}>Description</Text>
+                <Text style={styles.label}>Description (Optional)</Text>
                 <TextInput
-                  style={[styles.input, styles.textArea, errors.description && styles.inputError]}
-                  placeholder="Provide detailed information about the incident..."
+                  style={[styles.input, styles.textArea]}
+                  placeholder="Provide more details about what happened..."
                   placeholderTextColor={colors.mutedForeground}
                   value={formData.description}
                   onChangeText={(text) => {
-                    setFormData(prev => ({ ...prev, description: text }));
-                    setErrors(prev => ({ ...prev, description: '' }));
+                    if (text.length <= 1000) setFormData(prev => ({ ...prev, description: text }));
                   }}
                   multiline
-                  numberOfLines={5}
+                  numberOfLines={4}
                   textAlignVertical="top"
                   maxLength={1000}
                 />
-                {errors.description ? (
-                  <Text style={styles.errorText}>{errors.description}</Text>
-                ) : (
-                  <Text style={styles.hint}>{formData.description.length}/1000 characters</Text>
+                <Text style={styles.hint}>{formData.description.length}/1000 characters</Text>
+
+                <Text style={styles.label}>Photos & Videos (Optional)</Text>
+                <TouchableOpacity style={styles.uploadButton} onPress={pickImage}>
+                  <Ionicons name="cloud-upload-outline" size={16} color={colors.cardForeground} />
+                  <Text style={styles.uploadButtonText}>Upload Photos or Videos</Text>
+                </TouchableOpacity>
+
+                {selectedFiles.length > 0 && (
+                  <View style={styles.fileList}>
+                    {selectedFiles.map((file, index) => (
+                      <View key={index} style={styles.fileItem}>
+                        <View style={styles.fileInfo}>
+                          <Ionicons name="document-outline" size={16} color={colors.mutedForeground} />
+                          <Text style={styles.fileName} numberOfLines={1}>File {index + 1}</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => removeFile(index)}>
+                          <Ionicons name="close" size={16} color={colors.mutedForeground} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
                 )}
 
+                <View style={styles.fileRequirements}>
+                  <Text style={styles.fileReqTitle}>File Requirements:</Text>
+                  <Text style={styles.fileReqText}>Images: JPG, PNG (max 10MB, auto-compressed)</Text>
+                  <Text style={styles.fileReqText}>Videos: MP4, MOV (max 25MB)</Text>
+                  <Text style={styles.fileReqText}>Multiple files allowed</Text>
+                </View>
+
                 <View style={styles.buttonRow}>
-                  <TouchableOpacity 
-                    style={styles.outlineButton} 
-                    onPress={() => goToStep(1)}
-                    accessibilityLabel="Go back to step 1"
-                  >
-                    <Text style={styles.outlineButtonText}>Back</Text>
+                  <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+                    <Ionicons name="chevron-back" size={16} color={colors.cardForeground} />
+                    <Text style={styles.backButtonText}>Back</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.button, { flex: 1 }]} 
-                    onPress={() => goToStep(3)}
-                    accessibilityLabel="Continue to step 3"
+                  <TouchableOpacity
+                    style={[styles.button, { flex: 1 }, !canContinueStep2 && styles.buttonDisabled]}
+                    onPress={handleNext}
+                    disabled={!canContinueStep2}
                   >
                     <Text style={styles.buttonText}>Continue</Text>
-                    <Ionicons name="chevron-forward" size={20} color={colors.primaryForeground} />
+                    <Ionicons name="chevron-forward" size={16} color={colors.primaryForeground} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -379,77 +361,67 @@ export default function ReportScreen() {
 
             {step === 3 && (
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>Add Media</Text>
-                <Text style={styles.cardSubtitle}>Upload photos or videos (optional, max 5)</Text>
+                <Text style={styles.cardTitle}>Review & Submit</Text>
+                <Text style={styles.cardSubtitle}>
+                  Please review your report before submitting
+                </Text>
 
-                <View style={styles.mediaButtons}>
-                  <TouchableOpacity 
-                    style={styles.mediaButton}
-                    onPress={pickImage}
-                    accessibilityLabel="Upload photo from gallery"
-                  >
-                    <Ionicons name="cloud-upload-outline" size={24} color={colors.cardForeground} />
-                    <Text style={styles.mediaButtonText}>Upload Photo</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.mediaButton}
-                    onPress={takePhoto}
-                    accessibilityLabel="Take photo with camera"
-                  >
-                    <Ionicons name="camera-outline" size={24} color={colors.cardForeground} />
-                    <Text style={styles.mediaButtonText}>Take Photo</Text>
-                  </TouchableOpacity>
+                <View style={styles.reviewSection}>
+                  <View style={styles.reviewItem}>
+                    <Text style={styles.reviewLabel}>Type</Text>
+                    <Text style={styles.reviewValue}>{getTypeLabel(formData.type)}</Text>
+                  </View>
+                  <View style={styles.reviewItem}>
+                    <Text style={styles.reviewLabel}>Title</Text>
+                    <Text style={styles.reviewValue}>{formData.title || '-'}</Text>
+                  </View>
+                  <View style={styles.reviewItem}>
+                    <Text style={styles.reviewLabel}>Description</Text>
+                    <Text style={styles.reviewValueSmall}>{formData.description || '-'}</Text>
+                  </View>
+                  <View style={styles.reviewItem}>
+                    <Text style={styles.reviewLabel}>Media</Text>
+                    <View style={styles.reviewRow}>
+                      <Ionicons name="document-outline" size={16} color={colors.mutedForeground} />
+                      <Text style={styles.reviewValueSmall}>
+                        {selectedFiles.length > 0 ? `${selectedFiles.length} file(s) attached` : 'No files attached'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.reviewItem}>
+                    <Text style={styles.reviewLabel}>Town</Text>
+                    <Text style={styles.reviewValue}>{formData.town || '-'}</Text>
+                  </View>
+                  <View style={styles.reviewItem}>
+                    <Text style={styles.reviewLabel}>Location</Text>
+                    <View style={styles.reviewRow}>
+                      <Ionicons name="location-outline" size={16} color={colors.mutedForeground} />
+                      <Text style={styles.reviewValueSmall}>
+                        {locationSet ? `${formData.latitude}, ${formData.longitude}` : 'Not set'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.reviewItem}>
+                    <Text style={styles.reviewLabel}>Alert Radius</Text>
+                    <Text style={styles.reviewValue}>{formData.radius} meters</Text>
+                  </View>
                 </View>
 
-                {images.length > 0 && (
-                  <View style={styles.imagePreviewContainer}>
-                    <Text style={styles.imageCount}>{images.length}/5 images added</Text>
-                  </View>
-                )}
-
-                <View style={styles.summary}>
-                  <Text style={styles.summaryTitle}>Review Summary</Text>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Type:</Text>
-                    <Text style={styles.summaryValue}>
-                      {incidentTypes.find((t) => t.value === formData.type)?.label || '-'}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Town:</Text>
-                    <Text style={styles.summaryValue}>{formData.town || '-'}</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Radius:</Text>
-                    <Text style={styles.summaryValue}>{formData.radius}m</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Title:</Text>
-                    <Text style={styles.summaryValue} numberOfLines={1}>
-                      {formData.title || '-'}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Location:</Text>
-                    <Text style={styles.summaryValue}>
-                      {formData.latitude ? 'Captured' : 'Not set'}
-                    </Text>
-                  </View>
+                <View style={styles.warningBox}>
+                  <Text style={styles.warningText}>
+                    By submitting this report, you confirm that the information provided is accurate to the best of your knowledge. False reports may result in account suspension.
+                  </Text>
                 </View>
 
                 <View style={styles.buttonRow}>
-                  <TouchableOpacity 
-                    style={styles.outlineButton} 
-                    onPress={() => goToStep(2)}
-                    accessibilityLabel="Go back to step 2"
-                  >
-                    <Text style={styles.outlineButtonText}>Back</Text>
+                  <TouchableOpacity style={styles.backButton} onPress={handleBack} disabled={loading}>
+                    <Ionicons name="chevron-back" size={16} color={colors.cardForeground} />
+                    <Text style={styles.backButtonText}>Back</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.button, { flex: 1 }, loading && styles.buttonDisabled]}
                     onPress={handleSubmit}
                     disabled={loading}
-                    accessibilityLabel="Submit report"
                   >
                     <Text style={styles.buttonText}>
                       {loading ? 'Submitting...' : 'Submit Report'}
@@ -480,57 +452,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    height: 56,
     backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    minHeight: 56,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
   },
   headerLogo: {
     width: 36,
     height: 36,
     borderRadius: 8,
-    marginRight: spacing.sm,
   },
   headerTitle: {
-    fontSize: fontSize.lg,
+    fontSize: 18,
     fontWeight: '600',
     color: colors.cardForeground,
   },
   notificationButton: {
     position: 'relative',
-    padding: spacing.sm,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 8,
   },
   notificationBadge: {
     position: 'absolute',
-    top: 10,
-    right: 10,
+    top: 6,
+    right: 6,
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.destructive,
   },
   progressContainer: {
-    padding: spacing.md,
-    backgroundColor: colors.card,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   stepText: {
-    fontSize: fontSize.sm,
-    fontWeight: '500',
-    color: colors.cardForeground,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
   stepLabel: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     color: colors.mutedForeground,
-    marginBottom: spacing.sm,
   },
   progressBar: {
     height: 6,
@@ -542,202 +514,268 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 3,
   },
-  content: {
+  scrollContent: {
     flex: 1,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
   },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderRadius: 8,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   cardTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     color: colors.cardForeground,
-    marginBottom: spacing.xs,
+    marginBottom: 4,
   },
   cardSubtitle: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     color: colors.mutedForeground,
-    marginBottom: spacing.lg,
+    marginBottom: 20,
   },
   label: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     fontWeight: '500',
     color: colors.cardForeground,
-    marginBottom: spacing.xs,
-    marginTop: spacing.md,
+    marginBottom: 8,
+    marginTop: 20,
   },
   input: {
     backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    padding: spacing.md,
-    fontSize: fontSize.base,
+    borderRadius: 6,
+    padding: 12,
+    fontSize: 14,
     color: colors.cardForeground,
-    minHeight: 48,
-  },
-  inputError: {
-    borderColor: colors.destructive,
+    minHeight: 44,
   },
   textArea: {
-    minHeight: 120,
-    paddingTop: spacing.md,
+    minHeight: 100,
+    paddingTop: 12,
   },
   hint: {
-    fontSize: fontSize.xs,
+    fontSize: 12,
     color: colors.mutedForeground,
-    marginTop: spacing.xs,
+    marginTop: 4,
   },
-  errorText: {
-    fontSize: fontSize.xs,
-    color: colors.destructive,
-    marginTop: spacing.xs,
+  pickerContainer: {
+    gap: 8,
   },
-  selectContainer: {
-    gap: spacing.sm,
-  },
-  selectOption: {
+  pickerOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: 8,
+    padding: 12,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.background,
-    minHeight: 52,
+    gap: 12,
   },
-  selectOptionActive: {
+  pickerOptionActive: {
     borderColor: colors.primary,
     backgroundColor: colors.primary + '10',
   },
-  selectOptionError: {
-    borderColor: colors.destructive,
-  },
-  selectOptionText: {
-    fontSize: fontSize.base,
+  pickerOptionText: {
+    fontSize: 14,
     color: colors.cardForeground,
-    marginLeft: spacing.sm,
   },
-  selectOptionTextActive: {
+  pickerOptionTextActive: {
     color: colors.primary,
     fontWeight: '500',
   },
-  locationButton: {
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioActive: {
+    borderColor: colors.primary,
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  locationSuccess: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: 8,
+    gap: 8,
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    borderRadius: 6,
+    padding: 12,
+    marginBottom: 8,
+  },
+  locationSuccessText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#15803d',
+  },
+  greenButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
+    backgroundColor: '#22c55e',
+    borderRadius: 6,
+    padding: 12,
+  },
+  greenButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#ffffff',
+  },
+  outlineButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.background,
-    minHeight: 52,
+    borderRadius: 6,
+    padding: 12,
   },
-  locationButtonText: {
-    fontSize: fontSize.base,
+  outlineButtonText: {
+    fontSize: 14,
     color: colors.cardForeground,
-    marginLeft: spacing.sm,
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    padding: 12,
+  },
+  uploadButtonText: {
+    fontSize: 14,
+    color: colors.cardForeground,
+  },
+  fileList: {
+    gap: 8,
+    marginTop: 12,
+  },
+  fileItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.muted,
+    borderRadius: 6,
+    padding: 8,
+  },
+  fileInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  fileName: {
+    fontSize: 14,
+    color: colors.cardForeground,
+    flex: 1,
+  },
+  fileRequirements: {
+    backgroundColor: colors.muted,
+    borderRadius: 6,
+    padding: 12,
+    marginTop: 12,
+  },
+  fileReqTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.cardForeground,
+    marginBottom: 4,
+  },
+  fileReqText: {
+    fontSize: 12,
+    color: colors.mutedForeground,
+    marginTop: 2,
+  },
+  reviewSection: {
+    gap: 16,
+  },
+  reviewItem: {},
+  reviewLabel: {
+    fontSize: 12,
+    color: colors.mutedForeground,
+    marginBottom: 2,
+  },
+  reviewValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.cardForeground,
+  },
+  reviewValueSmall: {
+    fontSize: 14,
+    color: colors.cardForeground,
+  },
+  reviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  warningBox: {
+    backgroundColor: '#fefce8',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: 6,
+    padding: 12,
+    marginTop: 20,
+  },
+  warningText: {
+    fontSize: 12,
+    color: '#92400e',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
   },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 8,
-    padding: spacing.md,
-    marginTop: spacing.lg,
-    minHeight: 52,
+    borderRadius: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 20,
+    gap: 4,
   },
   buttonDisabled: {
-    opacity: 0.7,
+    opacity: 0.5,
   },
   buttonText: {
     color: colors.primaryForeground,
-    fontSize: fontSize.base,
+    fontSize: 14,
     fontWeight: '600',
-    marginRight: spacing.xs,
   },
-  outlineButton: {
-    flex: 1,
+  backButton: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
-    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
-    minHeight: 52,
-  },
-  outlineButtonText: {
-    color: colors.cardForeground,
-    fontSize: fontSize.base,
-    fontWeight: '500',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  mediaButtons: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  mediaButton: {
+    borderRadius: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    minHeight: 80,
+    gap: 4,
   },
-  mediaButtonText: {
-    fontSize: fontSize.xs,
+  backButtonText: {
+    fontSize: 14,
     color: colors.cardForeground,
-    marginTop: spacing.xs,
-  },
-  imagePreviewContainer: {
-    marginTop: spacing.md,
-  },
-  imageCount: {
-    fontSize: fontSize.sm,
-    color: colors.primary,
-    fontWeight: '500',
-  },
-  summary: {
-    backgroundColor: colors.muted,
-    borderRadius: 8,
-    padding: spacing.md,
-    marginTop: spacing.lg,
-  },
-  summaryTitle: {
-    fontSize: fontSize.base,
-    fontWeight: '600',
-    color: colors.cardForeground,
-    marginBottom: spacing.sm,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 4,
-  },
-  summaryLabel: {
-    fontSize: fontSize.sm,
-    color: colors.mutedForeground,
-  },
-  summaryValue: {
-    fontSize: fontSize.sm,
-    color: colors.cardForeground,
-    maxWidth: '60%',
-    textAlign: 'right',
   },
   bottomSpacing: {
     height: 100,
