@@ -5,7 +5,7 @@ import { BottomNav } from "@/components/bottom-nav";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { MapPin, Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Globe, Megaphone } from "lucide-react";
+import { MapPin, Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Megaphone } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Post } from "@shared/schema";
@@ -68,12 +68,15 @@ export default function FeedPage() {
             <PostSkeleton />
           </div>
         ) : posts && posts.length > 0 ? (
-          posts.filter((post) => post.id && post.type && post.userId && post.createdAt).map((post, index) => (
-            <div key={post.id}>
-              <PostCard post={post} />
-              {(index + 1) % 2 === 0 && <AdCard />}
-            </div>
-          ))
+          posts.filter((post) => post.id && post.type && post.userId && post.createdAt).map((post, index) => {
+            const adIndex = Math.floor(index / 2);
+            return (
+              <div key={post.id}>
+                <PostCard post={post} />
+                {(index + 1) % 2 === 0 && (adIndex % 2 === 0 ? <MwaikAngeAdCard /> : <NgumuAdCard />)}
+              </div>
+            );
+          })
         ) : (
           <div className="px-4 py-8 text-center text-muted-foreground">
             No posts found
@@ -181,7 +184,7 @@ function PostCard({ post }: { post: Post }) {
   );
 }
 
-function AdCard() {
+function MwaikAngeAdCard() {
   return (
     <a
       href="https://www.mwaikange.com/"
@@ -195,8 +198,8 @@ function AdCard() {
         <span className="text-xs font-medium">Sponsored</span>
       </div>
       <div className="px-4 pb-3 flex items-center gap-3">
-        <div className="w-14 h-14 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-          <Globe className="w-7 h-7 text-primary" />
+        <div className="w-14 h-14 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <img src="/images/mwaikange-logo.png" alt="Mwaikange" className="w-full h-full object-cover" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-bold text-base" data-testid="text-ad-title">Mwaikange</p>
@@ -205,6 +208,32 @@ function AdCard() {
         </div>
       </div>
     </a>
+  );
+}
+
+function NgumuAdCard() {
+  return (
+    <div
+      className="block bg-card border-y border-border"
+      data-testid="ad-card-ngumu"
+    >
+      <div className="px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <Megaphone className="w-3.5 h-3.5" />
+          <span className="text-xs font-medium">Sponsored</span>
+        </div>
+        <Badge variant="outline" className="text-xs py-0 px-1.5">AD</Badge>
+      </div>
+      <div className="px-4 pb-3 flex items-center gap-3">
+        <div className="w-14 h-14 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <img src="/images/ngumu-logo.jpg" alt="Ngumu's Eye" className="w-full h-full object-cover" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-bold text-base" data-testid="text-ad-title-ngumu">Ngumu's Eye</p>
+          <p className="text-muted-foreground text-sm leading-tight">Surveillance & Tracing Services CC</p>
+        </div>
+      </div>
+    </div>
   );
 }
 

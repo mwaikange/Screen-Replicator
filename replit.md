@@ -29,7 +29,7 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 
 ## Features
 - **Authentication**: Email/password login and signup
-- **Feed**: View community posts with filters (All, Nearby, Verified, Following), ad cards (Mwaikange) after every 2 posts
+- **Feed**: View community posts with filters (All, Nearby, Verified, Following), ad cards (Mwaikange) after every 2 posts, alternating with Ngumu's Eye ads
 - **Map**: Visual incident map with clickable markers from posts, blue dot for current location, popup with View Details navigating to post detail
 - **Report**: 3-step form for reporting incidents with location
 - **Groups**: Join or create community watch groups
@@ -54,13 +54,13 @@ React Native Expo app - fully offline with mock data replicating the web app exa
 - **App.tsx** - Main navigation setup with bottom tabs + IncidentDetails stack screen
 - **src/screens/** - All app screens:
   - Login, Signup - Authentication
-  - FeedScreen - Posts with images, ad cards between every 2 posts (linking to mwaikange.com), clickable posts navigate to IncidentDetails
+  - FeedScreen - Posts with images, ad cards between every 2 posts (alternating Mwaikange and Ngumu ads), clickable posts navigate to IncidentDetails
   - IncidentDetailsScreen - Full post detail matching web post-detail.tsx (badges, details grid, upvote/downvote, like, share, follow, tabs for Timeline/Media/Comments with working comment posting)
   - MapScreen - Incident markers from posts, blue dot for current location, clickable markers with popup and View Details navigation to IncidentDetails
   - ReportScreen, GroupsScreen, ProfileScreen
 - **src/lib/api.ts** - Mock API with local images (post1-4.jpg), comments, timeline events, votes
 - **src/lib/types.ts** - Types including Comment, TimelineEvent, PostVotes
-- **assets/** - App icons, splash screens, post images (post1-4.jpg), launcher.png (login logo)
+- **assets/** - App icons, splash screens, post images (post1-4.jpg), launcher.png (login logo), mwaikange-logo.png, ngumu-logo.jpg
 
 **IMPORTANT**: Mobile app must always replicate web app 1:1 for all screens and sub-pages.
 
