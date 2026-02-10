@@ -50,7 +50,7 @@ export default function GroupsScreen() {
           <Text style={styles.headerTitle}>Community Groups</Text>
         </View>
         <TouchableOpacity style={styles.notificationButton}>
-          <Ionicons name="notifications-outline" size={24} color={colors.mutedForeground} />
+          <Ionicons name="notifications-outline" size={20} color={colors.mutedForeground} />
           <View style={styles.notificationBadge} />
         </TouchableOpacity>
       </View>
@@ -62,14 +62,14 @@ export default function GroupsScreen() {
         }
       >
         <View style={styles.titleSection}>
-          <View>
+          <View style={styles.titleLeft}>
             <Text style={styles.sectionTitle}>Your Communities</Text>
             <Text style={styles.sectionSubtitle}>
               Join local groups for better coordination
             </Text>
           </View>
           <TouchableOpacity style={styles.createButton}>
-            <Ionicons name="add" size={18} color={colors.primaryForeground} />
+            <Ionicons name="add" size={16} color={colors.primaryForeground} />
             <Text style={styles.createButtonText}>Create Group</Text>
           </TouchableOpacity>
         </View>
@@ -78,17 +78,11 @@ export default function GroupsScreen() {
           groups.map((group) => <GroupCard key={group.id} group={group} />)
         ) : (
           <>
-            <SampleGroupCard
-              name="Kudu watchers"
-              area="Gobabis"
-              isPublic={true}
-              memberCount={4}
+            <GroupCard
+              group={{ id: 's1', name: 'Kudu watchers', area: 'Gobabis', isPublic: true, memberCount: 4, createdBy: '' }}
             />
-            <SampleGroupCard
-              name="Outjo herero location neighborhood watch"
-              area="067"
-              isPublic={false}
-              memberCount={6}
+            <GroupCard
+              group={{ id: 's2', name: 'Outjo herero location neighborhood watch', area: '067', isPublic: false, memberCount: 6, createdBy: '' }}
             />
           </>
         )}
@@ -108,7 +102,7 @@ function GroupCard({ group }: { group: Group }) {
           <Ionicons name="location-outline" size={16} color={colors.mutedForeground} />
           <Text style={styles.metaText}>Area: {group.area}</Text>
         </View>
-        <View style={[styles.badge, group.isPublic ? styles.badgePublic : styles.badgePrivate]}>
+        <View style={styles.badge}>
           <Ionicons
             name={group.isPublic ? 'globe-outline' : 'lock-closed-outline'}
             size={12}
@@ -134,51 +128,6 @@ function GroupCard({ group }: { group: Group }) {
   );
 }
 
-function SampleGroupCard({
-  name,
-  area,
-  isPublic,
-  memberCount,
-}: {
-  name: string;
-  area: string;
-  isPublic: boolean;
-  memberCount: number;
-}) {
-  return (
-    <View style={styles.groupCard}>
-      <Text style={styles.groupName}>{name}</Text>
-      <View style={styles.groupMeta}>
-        <View style={styles.metaItem}>
-          <Ionicons name="location-outline" size={16} color={colors.mutedForeground} />
-          <Text style={styles.metaText}>Area: {area}</Text>
-        </View>
-        <View style={[styles.badge, isPublic ? styles.badgePublic : styles.badgePrivate]}>
-          <Ionicons
-            name={isPublic ? 'globe-outline' : 'lock-closed-outline'}
-            size={12}
-            color={colors.cardForeground}
-          />
-          <Text style={styles.badgeText}>{isPublic ? 'Public' : 'Private'}</Text>
-        </View>
-      </View>
-      <View style={styles.memberInfo}>
-        <Ionicons name="people-outline" size={16} color={colors.mutedForeground} />
-        <Text style={styles.memberText}>{memberCount} members</Text>
-      </View>
-      <TouchableOpacity
-        style={[styles.joinButton, !isPublic && styles.joinButtonOutline]}
-      >
-        <Text
-          style={[styles.joinButtonText, !isPublic && styles.joinButtonTextOutline]}
-        >
-          {isPublic ? 'Join Group' : 'Request to Join'}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -189,7 +138,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    height: 56,
     backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -197,7 +146,7 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 12,
   },
   headerLogo: {
     width: 36,
@@ -205,13 +154,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   headerTitle: {
-    fontSize: fontSize.lg,
+    fontSize: 18,
     fontWeight: '600',
     color: colors.cardForeground,
   },
   notificationButton: {
     position: 'relative',
-    padding: spacing.xs,
+    padding: 8,
   },
   notificationBadge: {
     position: 'absolute',
@@ -230,96 +179,92 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: spacing.lg,
+    marginBottom: 24,
+    gap: spacing.md,
+  },
+  titleLeft: {
+    flex: 1,
   },
   sectionTitle: {
-    fontSize: fontSize.xl,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '700',
     color: colors.cardForeground,
   },
   sectionSubtitle: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     color: colors.mutedForeground,
-    marginTop: spacing.xs,
+    marginTop: 4,
   },
   createButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: 4,
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderRadius: 6,
   },
   createButtonText: {
     color: colors.primaryForeground,
-    fontSize: fontSize.sm,
+    fontSize: 14,
     fontWeight: '600',
   },
   groupCard: {
     backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: spacing.lg,
+    borderRadius: 8,
+    padding: 20,
     marginBottom: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   groupName: {
-    fontSize: fontSize.lg,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     color: colors.cardForeground,
-    marginBottom: spacing.sm,
+    marginBottom: 8,
   },
   groupMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: 12,
     marginBottom: spacing.md,
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: 4,
   },
   metaText: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     color: colors.mutedForeground,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.muted,
+    paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
   },
-  badgePublic: {
-    backgroundColor: colors.muted,
-  },
-  badgePrivate: {
-    backgroundColor: colors.muted,
-  },
   badgeText: {
-    fontSize: fontSize.xs,
+    fontSize: 12,
     color: colors.cardForeground,
   },
   memberInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: 4,
     marginBottom: spacing.md,
   },
   memberText: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
     color: colors.mutedForeground,
   },
   joinButton: {
     backgroundColor: colors.primary,
-    borderRadius: 8,
-    padding: spacing.md,
+    borderRadius: 6,
+    paddingVertical: 12,
     alignItems: 'center',
   },
   joinButtonOutline: {
@@ -329,7 +274,7 @@ const styles = StyleSheet.create({
   },
   joinButtonText: {
     color: colors.primaryForeground,
-    fontSize: fontSize.base,
+    fontSize: 14,
     fontWeight: '600',
   },
   joinButtonTextOutline: {
