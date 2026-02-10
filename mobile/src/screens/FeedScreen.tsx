@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Linking,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -97,11 +98,21 @@ function NgumuAdCard() {
   );
 }
 
-const PostCard = memo(function PostCard({ post, onPress }: { post: Post; onPress: () => void }) {
+const PostCard = memo(function PostCard({ post, onPress, onCommentPress }: { post: Post; onPress: () => void; onCommentPress: () => void }) {
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [shared, setShared] = useState(false);
   const typeInfo = typeLabels[post.type] || typeLabels.alert;
   const localImage = postImages[post.id];
+
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `${post.title}\n\n${post.description}\n\nShared via Ngumu's Eye`,
+      });
+    } catch {}
+    if (!shared) setShared(true);
+  };
 
   return (
     <TouchableOpacity style={styles.postCard} activeOpacity={0.9} onPress={onPress}>
@@ -159,13 +170,15 @@ const PostCard = memo(function PostCard({ post, onPress }: { post: Post; onPress
               {post.likes + (liked ? 1 : 0)}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.engagementButton}>
+          <TouchableOpacity style={styles.engagementButton} onPress={onCommentPress}>
             <Ionicons name="chatbubble-outline" size={20} color={colors.mutedForeground} />
             <Text style={styles.engagementCount}>{post.comments}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.engagementButton}>
-            <Ionicons name="share-social-outline" size={20} color={colors.mutedForeground} />
-            <Text style={styles.engagementCount}>{post.shares}</Text>
+          <TouchableOpacity style={styles.engagementButton} onPress={handleShare}>
+            <Ionicons name="share-social-outline" size={20} color={shared ? colors.primary : colors.mutedForeground} />
+            <Text style={[styles.engagementCount, shared && { color: colors.primary, fontWeight: '600' }]}>
+              {post.shares + (shared ? 1 : 0)}
+            </Text>
           </TouchableOpacity>
         </View>
         <TouchableOpacity onPress={(e) => { e.stopPropagation(); setSaved(!saved); }}>
@@ -260,6 +273,10 @@ export default function FeedScreen() {
     navigation.navigate('IncidentDetails', { postId });
   }, [navigation]);
 
+  const handleCommentPress = useCallback((postId: string) => {
+    navigation.navigate('IncidentDetails', { postId, initialTab: 'comments' });
+  }, [navigation]);
+
   const feedItems: FeedItem[] = useMemo(() => {
     const items: FeedItem[] = [];
     let adCount = 0;
@@ -282,9 +299,10 @@ export default function FeedScreen() {
       <PostCard
         post={item.data}
         onPress={() => handlePostPress(item.data.id)}
+        onCommentPress={() => handleCommentPress(item.data.id)}
       />
     );
-  }, [handlePostPress]);
+  }, [handlePostPress, handleCommentPress]);
 
   const keyExtractor = useCallback((item: FeedItem) => {
     if (item.type === 'ad') return item.id;

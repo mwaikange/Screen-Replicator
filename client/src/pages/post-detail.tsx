@@ -43,8 +43,14 @@ function formatTimeAgo(dateString: string): string {
 export default function PostDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
-  const [activeTab, setActiveTab] = useState<"timeline" | "media" | "comments">("timeline");
+  const initialTab = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "comments" ? "comments" : "timeline";
+  const [activeTab, setActiveTab] = useState<"timeline" | "media" | "comments">(initialTab as "timeline" | "media" | "comments");
   const [commentText, setCommentText] = useState("");
+  const [following, setFollowing] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [shared, setShared] = useState(false);
+  const [userVote, setUserVote] = useState<"up" | "down" | null>(null);
+  const [voteDeltas, setVoteDeltas] = useState({ up: 0, down: 0 });
   const { toast } = useToast();
 
   const { data: post, isLoading: postLoading } = useQuery<PostWithVotes>({
@@ -59,25 +65,18 @@ export default function PostDetailPage() {
     queryKey: ["/api/posts", id, "timeline"],
   });
 
-  const voteMutation = useMutation({
-    mutationFn: async (vote: "up" | "down") => {
-      const res = await apiRequest("POST", `/api/posts/${id}/vote`, { vote });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/posts", id] });
-    },
-  });
-
-  const likeMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/posts/${id}/like`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/posts", id] });
-    },
-  });
+  const handleVote = (vote: "up" | "down") => {
+    if (userVote === vote) {
+      setVoteDeltas(prev => ({ ...prev, [vote]: prev[vote === "up" ? "up" : "down"] - 1 }));
+      setUserVote(null);
+    } else {
+      if (userVote) {
+        setVoteDeltas(prev => ({ ...prev, [userVote === "up" ? "up" : "down"]: prev[userVote === "up" ? "up" : "down"] - 1 }));
+      }
+      setVoteDeltas(prev => ({ ...prev, [vote === "up" ? "up" : "down"]: prev[vote === "up" ? "up" : "down"] + 1 }));
+      setUserVote(vote);
+    }
+  };
 
   const commentMutation = useMutation({
     mutationFn: async (data: { text: string; imageUrl?: string | null }) => {
@@ -196,42 +195,79 @@ export default function PostDetailPage() {
           <div className="flex items-center gap-4 mb-4">
             <div className="flex items-center gap-2">
               <button
-                className={`flex items-center gap-1 text-sm px-2 py-1 rounded-md border border-border ${post.votes?.userVote === "up" ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground"}`}
-                onClick={() => voteMutation.mutate("up")}
-                disabled={voteMutation.isPending}
+                className={`flex items-center gap-1 text-sm px-2 py-1 rounded-md border border-border ${userVote === "up" ? "bg-primary/10 text-primary border-primary" : "text-muted-foreground"}`}
+                onClick={() => handleVote("up")}
                 data-testid="button-upvote"
               >
                 <ThumbsUp className="w-4 h-4" />
-                <span>{post.votes?.upvotes || 0}</span>
+                <span>{(post.votes?.upvotes || 0) + voteDeltas.up}</span>
               </button>
               <button
-                className={`flex items-center gap-1 text-sm px-2 py-1 rounded-md border border-border ${post.votes?.userVote === "down" ? "bg-destructive/10 text-destructive border-destructive" : "text-muted-foreground"}`}
-                onClick={() => voteMutation.mutate("down")}
-                disabled={voteMutation.isPending}
+                className={`flex items-center gap-1 text-sm px-2 py-1 rounded-md border border-border ${userVote === "down" ? "bg-destructive/10 text-destructive border-destructive" : "text-muted-foreground"}`}
+                onClick={() => handleVote("down")}
                 data-testid="button-downvote"
               >
                 <ThumbsDown className="w-4 h-4" />
-                <span>{post.votes?.downvotes || 0}</span>
+                <span>{(post.votes?.downvotes || 0) + voteDeltas.down}</span>
               </button>
             </div>
             <button
-              className={`flex items-center gap-1 text-sm ${post.likes > 0 ? "text-destructive" : "text-muted-foreground"}`}
-              onClick={() => likeMutation.mutate()}
-              disabled={likeMutation.isPending}
+              className={`flex items-center gap-1 text-sm ${liked ? "text-destructive" : "text-muted-foreground"}`}
+              onClick={() => setLiked(!liked)}
               data-testid="button-like"
             >
-              <Heart className={`w-4 h-4 ${post.likes > 0 ? "fill-destructive" : ""}`} />
-              <span>{post.likes}</span>
+              <Heart className={`w-4 h-4 ${liked ? "fill-destructive" : ""}`} />
+              <span>{post.likes + (liked ? 1 : 0)}</span>
             </button>
-            <button className="flex items-center gap-1 text-sm text-muted-foreground" data-testid="button-share">
+            <button
+              className={`flex items-center gap-1 text-sm ${shared ? "text-primary" : "text-muted-foreground"}`}
+              onClick={() => {
+                if (navigator.share) {
+                  navigator.share({
+                    title: post.title,
+                    text: post.description,
+                    url: `${window.location.origin}/post/${post.id}`,
+                  }).catch(() => {});
+                }
+                if (!shared) setShared(true);
+              }}
+              data-testid="button-share"
+            >
               <Share2 className="w-4 h-4" />
-              <span>{post.shares}</span>
+              <span>{post.shares + (shared ? 1 : 0)}</span>
             </button>
           </div>
 
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" data-testid="button-follow">Follow</Button>
-            <Button variant="outline" size="sm" data-testid="button-share-action">Share</Button>
+            <Button
+              variant={following ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setFollowing(!following);
+                toast({ title: following ? "Unfollowed this incident" : "Following this incident" });
+              }}
+              data-testid="button-follow"
+            >
+              {following ? "Following" : "Follow"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (navigator.share) {
+                  navigator.share({
+                    title: post.title,
+                    text: post.description,
+                    url: `${window.location.origin}/post/${post.id}`,
+                  }).catch(() => {});
+                }
+                if (!shared) setShared(true);
+                toast({ title: "Share options opened" });
+              }}
+              data-testid="button-share-action"
+            >
+              Share
+            </Button>
           </div>
         </div>
       </div>

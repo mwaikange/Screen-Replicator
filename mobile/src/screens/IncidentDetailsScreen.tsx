@@ -44,15 +44,16 @@ function formatTimeAgo(dateString: string): string {
 }
 
 export default function IncidentDetailsScreen({ route, navigation }: any) {
-  const { postId } = route.params;
+  const { postId, initialTab } = route.params;
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'timeline' | 'media' | 'comments'>('timeline');
+  const [activeTab, setActiveTab] = useState<'timeline' | 'media' | 'comments'>(initialTab || 'timeline');
   const [commentText, setCommentText] = useState('');
   const [liked, setLiked] = useState(false);
   const [following, setFollowing] = useState(false);
+  const [shared, setShared] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -77,12 +78,7 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
     setPost(res.data);
   };
 
-  const handleLike = async () => {
-    if (!liked) {
-      await postsApi.like(postId);
-      const res = await postsApi.getById(postId);
-      setPost(res.data);
-    }
+  const handleLike = () => {
     setLiked(!liked);
   };
 
@@ -92,6 +88,7 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
         message: `${post?.title}\n\n${post?.description}\n\nShared via Ngumu's Eye`,
       });
     } catch {}
+    if (!shared) setShared(true);
   };
 
   const handleSubmitComment = async () => {
@@ -269,23 +266,28 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
                 <Ionicons
                   name={liked ? 'heart' : 'heart-outline'}
                   size={16}
-                  color={liked || post.likes > 0 ? '#ef4444' : colors.mutedForeground}
+                  color={liked ? '#ef4444' : colors.mutedForeground}
                 />
-                <Text style={[styles.likeCount, (liked || post.likes > 0) && { color: '#ef4444' }]}>
-                  {post.likes}
+                <Text style={[styles.likeCount, liked && { color: '#ef4444' }]}>
+                  {post.likes + (liked ? 1 : 0)}
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-                <Ionicons name="share-social-outline" size={16} color={colors.mutedForeground} />
-                <Text style={styles.shareCount}>{post.shares}</Text>
+                <Ionicons name="share-social-outline" size={16} color={shared ? colors.primary : colors.mutedForeground} />
+                <Text style={[styles.shareCount, shared && { color: colors.primary }]}>
+                  {post.shares + (shared ? 1 : 0)}
+                </Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.actionButtons}>
               <TouchableOpacity
                 style={[styles.actionButton, following && styles.actionButtonActive]}
-                onPress={() => setFollowing(!following)}
+                onPress={() => {
+                  setFollowing(!following);
+                  Alert.alert(following ? 'Unfollowed' : 'Following', following ? 'You unfollowed this incident' : 'You are now following this incident');
+                }}
               >
                 <Text style={[styles.actionButtonText, following && styles.actionButtonTextActive]}>
                   {following ? 'Following' : 'Follow'}
