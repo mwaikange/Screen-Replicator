@@ -16,6 +16,9 @@ import ReportScreen from './src/screens/ReportScreen';
 import GroupsScreen from './src/screens/GroupsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import IncidentDetailsScreen from './src/screens/IncidentDetailsScreen';
+import SubscribeScreen from './src/screens/SubscribeScreen';
+import GroupChatScreen from './src/screens/GroupChatScreen';
+import CreateGroupScreen from './src/screens/CreateGroupScreen';
 import { colors } from './src/lib/theme';
 import { RootStackParamList, MainTabParamList } from './src/lib/types';
 
@@ -157,6 +160,21 @@ export default function App() {
           <Stack.Screen 
             name="IncidentDetails" 
             component={IncidentDetailsScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen 
+            name="Subscribe" 
+            component={SubscribeScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen 
+            name="GroupChat" 
+            component={GroupChatScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen 
+            name="CreateGroup" 
+            component={CreateGroupScreen}
             options={{ animation: 'slide_from_right' }}
           />
         </Stack.Navigator>

@@ -132,7 +132,7 @@ export default function ProfileScreen() {
           <Text style={styles.daysRemaining}>{daysRemaining} days remaining</Text>
 
           <View style={styles.subscriptionButtons}>
-            <TouchableOpacity style={styles.outlineButton}>
+            <TouchableOpacity style={styles.outlineButton} onPress={() => navigation.navigate('Subscribe')}>
               <Text style={styles.outlineButtonText}>Renew / Upgrade</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.primaryButton}>

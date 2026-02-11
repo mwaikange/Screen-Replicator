@@ -12,28 +12,37 @@ A mobile-first community safety platform for reporting incidents, tracking missi
   - `feed.tsx` - Community feed with posts
   - `map.tsx` - Incident map with severity markers
   - `report.tsx` - Multi-step incident reporting form
-  - `groups.tsx` - Community groups listing
+  - `groups.tsx` - Community groups listing with create group dialog
+  - `group-chat.tsx` - Group chat page with messages, members modal, settings modal (creator), join requests
   - `profile.tsx` - User profile and subscription
   - `subscribe.tsx` - Subscription plans with WhatsApp payment redirect
+  - `post-detail.tsx` - Post detail with comments, timeline, voting
 
 - **components/**
   - `bottom-nav.tsx` - Mobile bottom navigation bar
   - `page-header.tsx` - Page header with logo and notifications
 
 ### Backend (server/)
-- `index.ts` - Express server with session middleware
-- `routes.ts` - API endpoints for auth, posts, groups, user
-- `storage.ts` - In-memory storage with sample data
+- `index.ts` - Express server with session middleware, 20MB body limit
+- `routes.ts` - API endpoints for auth, posts, groups, group chat, members, join requests
+- `storage.ts` - In-memory storage with sample data including group members, messages, and join requests
 
 ### Shared (shared/)
-- `schema.ts` - TypeScript types and Zod schemas for data validation
+- `schema.ts` - TypeScript types and Zod schemas for data validation (User, Post, Group, Comment, TimelineEvent, PostVotes, GroupMessage, GroupMember, GroupJoinRequest)
 
 ## Features
 - **Authentication**: Email/password login and signup
 - **Feed**: View community posts with filters (All, Nearby, Verified, Following), ad cards (Mwaikange) after every 2 posts, alternating with Ngumu's Eye ads
 - **Map**: Visual incident map with clickable markers from posts, blue dot for current location, popup with View Details navigating to post detail
 - **Report**: 3-step form for reporting incidents with location
-- **Groups**: Join or create community watch groups
+- **Groups**: Full group management system:
+  - Create new groups (public or private) with name and area
+  - Group chat with real-time messaging
+  - Members list with role display (creator/admin/member)
+  - Creator can: edit settings, remove members, approve/deny join requests, delete group
+  - Public groups: instant join
+  - Private groups: request-to-join with approval flow
+  - Leave group option for non-creator members
 - **Profile**: View user info, trust score, subscription status, Renew/Upgrade navigates to /subscribe
 - **Subscribe**: Subscription plans page with 12 plans across 3 categories (Individual: 1/3/6/12 months, Family: 1/3/6/12 months, Tourist: 5/10/14/30 days), active subscription banner at top, Pay Now buttons redirect to WhatsApp with pre-filled message including plan name and price, WhatsApp contact card at bottom
 
@@ -43,8 +52,27 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 - `GET /api/user` - Get current user profile
 - `GET /api/posts` - Get all posts
 - `POST /api/posts` - Create new post
+- `GET /api/posts/:id` - Get single post with votes
+- `GET /api/posts/:id/comments` - Get post comments
+- `POST /api/posts/:id/comments` - Add comment
+- `GET /api/posts/:id/timeline` - Get post timeline
+- `POST /api/posts/:id/vote` - Vote on post
+- `POST /api/posts/:id/like` - Toggle like on post
+- `POST /api/upload` - Upload files
 - `GET /api/groups` - Get all groups
 - `POST /api/groups` - Create new group
+- `GET /api/groups/:id` - Get group with membership status
+- `PATCH /api/groups/:id` - Update group settings
+- `DELETE /api/groups/:id` - Delete group
+- `GET /api/groups/:id/messages` - Get group messages
+- `POST /api/groups/:id/messages` - Send group message
+- `GET /api/groups/:id/members` - Get group members
+- `POST /api/groups/:id/join` - Join or request to join group
+- `POST /api/groups/:id/leave` - Leave group
+- `DELETE /api/groups/:id/members/:userId` - Remove member (creator only)
+- `GET /api/groups/:id/requests` - Get pending join requests
+- `POST /api/groups/:id/requests/:requestId/approve` - Approve join request
+- `POST /api/groups/:id/requests/:requestId/deny` - Deny join request
 
 ## Test Credentials
 - Email: ngocbo@yopmail.com
@@ -53,15 +81,20 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 ### Mobile App (mobile/)
 React Native Expo app - fully offline with mock data replicating the web app exactly.
 
-- **App.tsx** - Main navigation setup with bottom tabs + IncidentDetails stack screen
+- **App.tsx** - Main navigation setup with bottom tabs + stack screens (IncidentDetails, Subscribe, GroupChat, CreateGroup)
 - **src/screens/** - All app screens:
   - Login, Signup - Authentication
   - FeedScreen - Posts with images, ad cards between every 2 posts (alternating Mwaikange and Ngumu ads), clickable posts navigate to IncidentDetails
   - IncidentDetailsScreen - Full post detail matching web post-detail.tsx (badges, details grid, upvote/downvote, like, share, follow, tabs for Timeline/Media/Comments with working comment posting)
   - MapScreen - Incident markers from posts, blue dot for current location, clickable markers with popup and View Details navigation to IncidentDetails
-  - ReportScreen, GroupsScreen, ProfileScreen
-- **src/lib/api.ts** - Mock API with local images (post1-4.jpg), comments, timeline events, votes
-- **src/lib/types.ts** - Types including Comment, TimelineEvent, PostVotes
+  - ReportScreen - 3-step report form, submits to local mock feed
+  - GroupsScreen - Groups listing with Create Group and Open/Join buttons
+  - CreateGroupScreen - Form to create new group (name, area, public/private toggle)
+  - GroupChatScreen - Full group chat with messages, members modal, settings modal (creator), join/request flow
+  - ProfileScreen - User profile, Renew/Upgrade navigates to Subscribe
+  - SubscribeScreen - 12 subscription plans matching web exactly, WhatsApp payment redirect
+- **src/lib/api.ts** - Mock API with local images (post1-4.jpg), comments, timeline events, votes, group messages, group members
+- **src/lib/types.ts** - Types including Comment, TimelineEvent, PostVotes, GroupMessage, GroupMember
 - **assets/** - App icons, splash screens, post images (post1-4.jpg), launcher.png (login logo), mwaikange-logo.png, ngumu-logo.jpg
 
 **IMPORTANT**: Mobile app must always replicate web app 1:1 for all screens and sub-pages.

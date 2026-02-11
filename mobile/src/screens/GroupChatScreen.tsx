@@ -1,0 +1,874 @@
+import { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  Modal,
+  ScrollView,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Image,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { colors, spacing } from '../lib/theme';
+import { groupsApi } from '../lib/api';
+import { Group, GroupMessage, GroupMember, GroupJoinRequest } from '../lib/types';
+
+const appLogo = require('../../assets/logo.jpg');
+
+function formatTime(dateString: string) {
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  if (diffHours < 1) return 'Just now';
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return '1 day ago';
+  return `${diffDays} days ago`;
+}
+
+export default function GroupChatScreen() {
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const { groupId } = route.params;
+
+  const [group, setGroup] = useState<Group | null>(null);
+  const [messages, setMessages] = useState<GroupMessage[]>([]);
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [isMember, setIsMember] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [messageText, setMessageText] = useState('');
+  const [showMembers, setShowMembers] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showRequests, setShowRequests] = useState(false);
+
+  const [joinRequests, setJoinRequests] = useState<GroupJoinRequest[]>([]);
+  const [editName, setEditName] = useState('');
+  const [editArea, setEditArea] = useState('');
+  const [editIsPublic, setEditIsPublic] = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [requestPending, setRequestPending] = useState(false);
+
+  const flatListRef = useRef<FlatList>(null);
+
+  const loadData = async () => {
+    const [groupRes, messagesRes, membersRes] = await Promise.all([
+      groupsApi.getById(groupId),
+      groupsApi.getMessages(groupId),
+      groupsApi.getMembers(groupId),
+    ]);
+    setGroup(groupRes.data);
+    setMessages(messagesRes.data);
+    setMembers(membersRes.data);
+
+    const currentUserId = 'local-user';
+    const memberEntry = membersRes.data.find((m: GroupMember) => m.userId === currentUserId);
+    setIsMember(!!memberEntry);
+    setUserRole(memberEntry?.role || null);
+
+    if (memberEntry?.role === 'creator') {
+      const reqRes = await groupsApi.getJoinRequests(groupId);
+      setJoinRequests(reqRes.data);
+    }
+
+    if (groupRes.data) {
+      setEditName(groupRes.data.name);
+      setEditArea(groupRes.data.area);
+      setEditIsPublic(groupRes.data.isPublic);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [groupId]);
+
+  const handleSend = async () => {
+    if (!messageText.trim()) return;
+    await groupsApi.sendMessage(groupId, messageText.trim());
+    setMessageText('');
+    const res = await groupsApi.getMessages(groupId);
+    setMessages(res.data);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const handleJoin = async () => {
+    const res = await groupsApi.join(groupId);
+    if (res.data.status === 'joined') {
+      Alert.alert('Joined', 'You have joined the group!');
+      loadData();
+    } else if (res.data.status === 'requested') {
+      setRequestPending(true);
+      Alert.alert('Requested', 'Your join request has been sent. The group creator will review it.');
+    }
+  };
+
+  const handleApproveRequest = async (requestId: string) => {
+    await groupsApi.approveRequest(groupId, requestId);
+    const reqRes = await groupsApi.getJoinRequests(groupId);
+    setJoinRequests(reqRes.data);
+    const membersRes = await groupsApi.getMembers(groupId);
+    setMembers(membersRes.data);
+    const groupRes = await groupsApi.getById(groupId);
+    setGroup(groupRes.data);
+  };
+
+  const handleDenyRequest = async (requestId: string) => {
+    await groupsApi.denyRequest(groupId, requestId);
+    const reqRes = await groupsApi.getJoinRequests(groupId);
+    setJoinRequests(reqRes.data);
+  };
+
+  const handleLeave = async () => {
+    await groupsApi.leave(groupId);
+    setShowMembers(false);
+    loadData();
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    await groupsApi.removeMember(groupId, userId);
+    const res = await groupsApi.getMembers(groupId);
+    setMembers(res.data);
+    const groupRes = await groupsApi.getById(groupId);
+    setGroup(groupRes.data);
+  };
+
+  const handleSaveSettings = async () => {
+    await groupsApi.update(groupId, {
+      name: editName,
+      area: editArea,
+      isPublic: editIsPublic,
+    });
+    setShowSettings(false);
+    loadData();
+  };
+
+  const handleDeleteGroup = async () => {
+    await groupsApi.deleteGroup(groupId);
+    navigation.goBack();
+  };
+
+  const renderMessage = ({ item }: { item: GroupMessage }) => (
+    <View style={styles.messageRow}>
+      <View style={styles.messageAvatar}>
+        <Text style={styles.messageAvatarText}>{item.userName.charAt(0)}</Text>
+      </View>
+      <View style={styles.messageContent}>
+        <View style={styles.messageHeader}>
+          <Text style={styles.messageName}>{item.userName}</Text>
+          <Text style={styles.messageTime}>{formatTime(item.createdAt)}</Text>
+        </View>
+        <Text style={styles.messageText}>{item.text}</Text>
+      </View>
+    </View>
+  );
+
+  if (!group) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color={colors.cardForeground} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={22} color={colors.cardForeground} />
+        </TouchableOpacity>
+        <View style={styles.headerInfo}>
+          <Text style={styles.headerTitle} numberOfLines={1}>{group.name}</Text>
+          <View style={styles.headerMeta}>
+            <Ionicons
+              name={group.isPublic ? 'globe-outline' : 'lock-closed-outline'}
+              size={12}
+              color={colors.mutedForeground}
+            />
+            <Text style={styles.headerMetaText}>{group.memberCount} members</Text>
+            <Text style={styles.headerMetaText}>-</Text>
+            <Text style={styles.headerMetaText}>Area: {group.area}</Text>
+          </View>
+        </View>
+        <TouchableOpacity onPress={() => setShowMembers(true)} style={styles.headerButton}>
+          <Ionicons name="people-outline" size={22} color={colors.cardForeground} />
+        </TouchableOpacity>
+        {userRole === 'creator' && (
+          <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.headerButton}>
+            <Ionicons name="settings-outline" size={22} color={colors.cardForeground} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {!isMember ? (
+        <View style={styles.joinContainer}>
+          <View style={styles.joinCard}>
+            <Ionicons name="people-outline" size={48} color={colors.mutedForeground} />
+            <Text style={styles.joinTitle}>{group.name}</Text>
+            <Text style={styles.joinSubtitle}>
+              {group.isPublic ? 'Public' : 'Private'} group - {group.memberCount} members
+            </Text>
+            <Text style={styles.joinSubtitle}>Area: {group.area}</Text>
+            <TouchableOpacity
+              style={[styles.joinButton, !group.isPublic && styles.joinButtonOutline, requestPending && styles.joinButtonDisabled]}
+              onPress={handleJoin}
+              disabled={requestPending}
+            >
+              <Text style={[styles.joinButtonText, !group.isPublic && styles.joinButtonTextOutline]}>
+                {requestPending ? 'Request Pending' : group.isPublic ? 'Join Group' : 'Request to Join'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        <KeyboardAvoidingView
+          style={styles.chatContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={0}
+        >
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            style={styles.messagesList}
+            contentContainerStyle={styles.messagesContent}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            ListEmptyComponent={
+              <View style={styles.emptyMessages}>
+                <Text style={styles.emptyMessagesText}>No messages yet. Start the conversation!</Text>
+              </View>
+            }
+          />
+          <View style={styles.inputBar}>
+            <TextInput
+              style={styles.messageInput}
+              placeholder="Type a message..."
+              placeholderTextColor={colors.mutedForeground}
+              value={messageText}
+              onChangeText={setMessageText}
+              multiline={false}
+            />
+            <TouchableOpacity
+              style={[styles.sendButton, !messageText.trim() && styles.sendButtonDisabled]}
+              onPress={handleSend}
+              disabled={!messageText.trim()}
+            >
+              <Ionicons name="send" size={18} color={colors.primaryForeground} />
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      )}
+
+      <Modal visible={showMembers} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Members ({members.length})</Text>
+              <TouchableOpacity onPress={() => setShowMembers(false)}>
+                <Ionicons name="close" size={24} color={colors.cardForeground} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              {members.map((member) => (
+                <View key={member.id} style={styles.memberRow}>
+                  <View style={styles.memberAvatar}>
+                    <Text style={styles.memberAvatarText}>{member.userName.charAt(0)}</Text>
+                  </View>
+                  <View style={styles.memberInfo}>
+                    <Text style={styles.memberName}>{member.userName}</Text>
+                    <Text style={styles.memberRole}>{member.role}</Text>
+                  </View>
+                  {userRole === 'creator' && member.role !== 'creator' && (
+                    <TouchableOpacity onPress={() => handleRemoveMember(member.userId)} style={styles.removeButton}>
+                      <Ionicons name="person-remove-outline" size={18} color={colors.destructive} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+            {isMember && userRole !== 'creator' && (
+              <TouchableOpacity style={styles.leaveButton} onPress={handleLeave}>
+                <Ionicons name="log-out-outline" size={18} color={colors.cardForeground} />
+                <Text style={styles.leaveButtonText}>Leave Group</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showSettings} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Group Settings</Text>
+              <TouchableOpacity onPress={() => { setShowSettings(false); setConfirmDelete(false); }}>
+                <Ionicons name="close" size={24} color={colors.cardForeground} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.settingsField}>
+                <Text style={styles.settingsLabel}>Group Name</Text>
+                <TextInput
+                  style={styles.settingsInput}
+                  value={editName}
+                  onChangeText={setEditName}
+                />
+              </View>
+              <View style={styles.settingsField}>
+                <Text style={styles.settingsLabel}>Area</Text>
+                <TextInput
+                  style={styles.settingsInput}
+                  value={editArea}
+                  onChangeText={setEditArea}
+                />
+              </View>
+              <View style={styles.settingsToggleRow}>
+                <Text style={styles.settingsLabel}>Public Group</Text>
+                <TouchableOpacity
+                  style={[styles.toggle, editIsPublic && styles.toggleActive]}
+                  onPress={() => setEditIsPublic(!editIsPublic)}
+                >
+                  <View style={[styles.toggleThumb, editIsPublic && styles.toggleThumbActive]} />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={styles.saveButton} onPress={handleSaveSettings}>
+                <Text style={styles.saveButtonText}>Save Changes</Text>
+              </TouchableOpacity>
+
+              {!group.isPublic && (
+                <TouchableOpacity
+                  style={styles.requestsButton}
+                  onPress={() => {
+                    setShowSettings(false);
+                    setShowRequests(true);
+                  }}
+                >
+                  <Ionicons name="person-add-outline" size={16} color={colors.cardForeground} />
+                  <Text style={styles.requestsButtonText}>View Join Requests ({joinRequests.length})</Text>
+                </TouchableOpacity>
+              )}
+
+              <View style={styles.deleteSection}>
+                {confirmDelete ? (
+                  <View>
+                    <Text style={styles.deleteWarning}>Are you sure? This action cannot be undone.</Text>
+                    <View style={styles.deleteActions}>
+                      <TouchableOpacity
+                        style={styles.cancelDeleteButton}
+                        onPress={() => setConfirmDelete(false)}
+                      >
+                        <Text style={styles.cancelDeleteText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.confirmDeleteButton}
+                        onPress={handleDeleteGroup}
+                      >
+                        <Ionicons name="trash-outline" size={16} color={colors.destructiveForeground} />
+                        <Text style={styles.confirmDeleteText}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => setConfirmDelete(true)}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={colors.destructive} />
+                    <Text style={styles.deleteButtonText}>Delete Group</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showRequests} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Join Requests ({joinRequests.length})</Text>
+              <TouchableOpacity onPress={() => setShowRequests(false)}>
+                <Ionicons name="close" size={24} color={colors.cardForeground} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              {joinRequests.length === 0 ? (
+                <Text style={styles.emptyRequestsText}>No pending requests</Text>
+              ) : (
+                joinRequests.map((request) => (
+                  <View key={request.id} style={styles.requestRow}>
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberAvatarText}>{request.userName.charAt(0)}</Text>
+                    </View>
+                    <View style={styles.memberInfo}>
+                      <Text style={styles.memberName}>{request.userName}</Text>
+                      <Text style={styles.memberRole}>{formatTime(request.createdAt)}</Text>
+                    </View>
+                    <View style={styles.requestActions}>
+                      <TouchableOpacity
+                        style={styles.approveButton}
+                        onPress={() => handleApproveRequest(request.id)}
+                      >
+                        <Ionicons name="checkmark" size={18} color={colors.primaryForeground} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.denyButton}
+                        onPress={() => handleDenyRequest(request.id)}
+                      >
+                        <Ionicons name="close" size={18} color={colors.destructive} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    height: 56,
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: 8,
+  },
+  backButton: {
+    padding: 4,
+  },
+  headerInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.cardForeground,
+  },
+  headerMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  headerMetaText: {
+    fontSize: 11,
+    color: colors.mutedForeground,
+  },
+  headerButton: {
+    padding: 6,
+  },
+  joinContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  joinCard: {
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    width: '100%',
+    maxWidth: 340,
+  },
+  joinTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.cardForeground,
+    marginTop: 16,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  joinSubtitle: {
+    fontSize: 14,
+    color: colors.mutedForeground,
+    marginBottom: 4,
+  },
+  joinButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    marginTop: 16,
+    width: '100%',
+    alignItems: 'center',
+  },
+  joinButtonOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  joinButtonText: {
+    color: colors.primaryForeground,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  joinButtonTextOutline: {
+    color: colors.cardForeground,
+  },
+  chatContainer: {
+    flex: 1,
+  },
+  messagesList: {
+    flex: 1,
+  },
+  messagesContent: {
+    padding: spacing.md,
+    paddingBottom: 8,
+  },
+  emptyMessages: {
+    paddingVertical: 48,
+    alignItems: 'center',
+  },
+  emptyMessagesText: {
+    fontSize: 14,
+    color: colors.mutedForeground,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    gap: 10,
+  },
+  messageAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageAvatarText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.mutedForeground,
+  },
+  messageContent: {
+    flex: 1,
+  },
+  messageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  messageName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.cardForeground,
+  },
+  messageTime: {
+    fontSize: 11,
+    color: colors.mutedForeground,
+  },
+  messageText: {
+    fontSize: 14,
+    color: colors.cardForeground,
+    lineHeight: 20,
+  },
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    backgroundColor: colors.card,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  messageInput: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: colors.cardForeground,
+  },
+  sendButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.md,
+  },
+  modalCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    width: '100%',
+    maxHeight: '80%',
+    maxWidth: 400,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.cardForeground,
+  },
+  modalBody: {
+    padding: 20,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  memberAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberAvatarText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.mutedForeground,
+  },
+  memberInfo: {
+    flex: 1,
+  },
+  memberName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.cardForeground,
+  },
+  memberRole: {
+    fontSize: 12,
+    color: colors.mutedForeground,
+    textTransform: 'capitalize',
+  },
+  removeButton: {
+    padding: 6,
+  },
+  leaveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  leaveButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.cardForeground,
+  },
+  settingsField: {
+    marginBottom: 16,
+  },
+  settingsLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.cardForeground,
+    marginBottom: 6,
+  },
+  settingsInput: {
+    backgroundColor: colors.background,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.cardForeground,
+  },
+  settingsToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  toggle: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.muted,
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  toggleActive: {
+    backgroundColor: colors.primary,
+  },
+  toggleThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.card,
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  saveButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 6,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  saveButtonText: {
+    color: colors.primaryForeground,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  requestsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  requestsButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.cardForeground,
+  },
+  deleteSection: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 16,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    paddingVertical: 12,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.destructive,
+  },
+  deleteWarning: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.destructive,
+    marginBottom: 12,
+  },
+  deleteActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  cancelDeleteButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  cancelDeleteText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.cardForeground,
+  },
+  confirmDeleteButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.destructive,
+    borderRadius: 6,
+    paddingVertical: 10,
+  },
+  confirmDeleteText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.destructiveForeground,
+  },
+  emptyRequestsText: {
+    fontSize: 14,
+    color: colors.mutedForeground,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  joinButtonDisabled: {
+    opacity: 0.6,
+  },
+  requestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  approveButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  denyButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

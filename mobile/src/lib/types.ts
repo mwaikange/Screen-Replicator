@@ -68,11 +68,44 @@ export type Group = {
   createdBy: string;
 };
 
+export type GroupMessage = {
+  id: string;
+  groupId: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  text: string;
+  createdAt: string;
+};
+
+export type GroupMember = {
+  id: string;
+  groupId: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  role: 'creator' | 'admin' | 'member';
+  joinedAt: string;
+};
+
+export type GroupJoinRequest = {
+  id: string;
+  groupId: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  status: 'pending' | 'approved' | 'denied';
+  createdAt: string;
+};
+
 export type RootStackParamList = {
   Login: undefined;
   Signup: undefined;
   Main: undefined;
   IncidentDetails: { postId: string };
+  Subscribe: undefined;
+  GroupChat: { groupId: string };
+  CreateGroup: undefined;
 };
 
 export type MainTabParamList = {
