@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   RefreshControl,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { groupsApi } from '../lib/api';
 import { Group } from '../lib/types';
@@ -17,6 +19,7 @@ import { Group } from '../lib/types';
 const appLogo = require('../../assets/logo.jpg');
 
 export default function GroupsScreen() {
+  const navigation = useNavigation<any>();
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -37,8 +40,27 @@ export default function GroupsScreen() {
     fetchGroups();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      fetchGroups();
+    }, [])
+  );
+
   const onRefresh = () => {
     setRefreshing(true);
+    fetchGroups();
+  };
+
+  const handleJoin = async (group: Group) => {
+    const res = await groupsApi.join(group.id);
+    if (res.data.status === 'joined') {
+      Alert.alert('Joined', 'You have joined the group!');
+      navigation.navigate('GroupChat', { groupId: group.id });
+    } else if (res.data.status === 'requested') {
+      Alert.alert('Requested', 'Your join request has been sent.');
+    } else if (res.data.status === 'already_member') {
+      navigation.navigate('GroupChat', { groupId: group.id });
+    }
     fetchGroups();
   };
 
@@ -68,23 +90,28 @@ export default function GroupsScreen() {
               Join local groups for better coordination
             </Text>
           </View>
-          <TouchableOpacity style={styles.createButton}>
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => navigation.navigate('CreateGroup')}
+          >
             <Ionicons name="add" size={16} color={colors.primaryForeground} />
             <Text style={styles.createButtonText}>Create Group</Text>
           </TouchableOpacity>
         </View>
 
         {groups.length > 0 ? (
-          groups.map((group) => <GroupCard key={group.id} group={group} />)
+          groups.map((group) => (
+            <GroupCard
+              key={group.id}
+              group={group}
+              onOpen={() => navigation.navigate('GroupChat', { groupId: group.id })}
+              onJoin={() => handleJoin(group)}
+            />
+          ))
         ) : (
-          <>
-            <GroupCard
-              group={{ id: 's1', name: 'Kudu watchers', area: 'Gobabis', isPublic: true, memberCount: 4, createdBy: '' }}
-            />
-            <GroupCard
-              group={{ id: 's2', name: 'Outjo herero location neighborhood watch', area: '067', isPublic: false, memberCount: 6, createdBy: '' }}
-            />
-          </>
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No groups yet. Create one to get started!</Text>
+          </View>
         )}
 
         <View style={styles.bottomSpacing} />
@@ -93,7 +120,7 @@ export default function GroupsScreen() {
   );
 }
 
-function GroupCard({ group }: { group: Group }) {
+function GroupCard({ group, onOpen, onJoin }: { group: Group; onOpen: () => void; onJoin: () => void }) {
   return (
     <View style={styles.groupCard}>
       <Text style={styles.groupName}>{group.name}</Text>
@@ -115,15 +142,22 @@ function GroupCard({ group }: { group: Group }) {
         <Ionicons name="people-outline" size={16} color={colors.mutedForeground} />
         <Text style={styles.memberText}>{group.memberCount} members</Text>
       </View>
-      <TouchableOpacity
-        style={[styles.joinButton, !group.isPublic && styles.joinButtonOutline]}
-      >
-        <Text
-          style={[styles.joinButtonText, !group.isPublic && styles.joinButtonTextOutline]}
+      <View style={styles.buttonRow}>
+        <TouchableOpacity style={styles.openButton} onPress={onOpen}>
+          <Ionicons name="chatbubble-outline" size={16} color={colors.cardForeground} />
+          <Text style={styles.openButtonText}>Open</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.joinButton, !group.isPublic && styles.joinButtonOutline]}
+          onPress={onJoin}
         >
-          {group.isPublic ? 'Join Group' : 'Request to Join'}
-        </Text>
-      </TouchableOpacity>
+          <Text
+            style={[styles.joinButtonText, !group.isPublic && styles.joinButtonTextOutline]}
+          >
+            {group.isPublic ? 'Join Group' : 'Request to Join'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -261,7 +295,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.mutedForeground,
   },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  openButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    paddingVertical: 12,
+  },
+  openButtonText: {
+    color: colors.cardForeground,
+    fontSize: 14,
+    fontWeight: '600',
+  },
   joinButton: {
+    flex: 1,
     backgroundColor: colors.primary,
     borderRadius: 6,
     paddingVertical: 12,
@@ -279,6 +334,14 @@ const styles = StyleSheet.create({
   },
   joinButtonTextOutline: {
     color: colors.cardForeground,
+  },
+  emptyContainer: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+    color: colors.mutedForeground,
   },
   bottomSpacing: {
     height: 80,

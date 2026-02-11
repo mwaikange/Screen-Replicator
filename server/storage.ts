@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { User, Post, Group, Comment, TimelineEvent, PostVotes, InsertUser, InsertPost, InsertGroup, InsertComment } from "@shared/schema";
+import type { User, Post, Group, Comment, TimelineEvent, PostVotes, InsertUser, InsertPost, InsertGroup, InsertComment, GroupMessage, InsertGroupMessage, GroupMember, GroupJoinRequest } from "@shared/schema";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -9,7 +9,19 @@ export interface IStorage {
   getPost(id: string): Promise<Post | undefined>;
   createPost(post: InsertPost, userId: string): Promise<Post>;
   getGroups(): Promise<Group[]>;
+  getGroup(id: string): Promise<Group | undefined>;
   createGroup(group: InsertGroup, userId: string): Promise<Group>;
+  updateGroup(id: string, data: Partial<InsertGroup>): Promise<Group | undefined>;
+  deleteGroup(id: string): Promise<boolean>;
+  getGroupMessages(groupId: string): Promise<GroupMessage[]>;
+  createGroupMessage(groupId: string, userId: string, message: InsertGroupMessage): Promise<GroupMessage>;
+  getGroupMembers(groupId: string): Promise<GroupMember[]>;
+  addGroupMember(groupId: string, userId: string, role: GroupMember["role"]): Promise<GroupMember>;
+  removeGroupMember(groupId: string, userId: string): Promise<boolean>;
+  isGroupMember(groupId: string, userId: string): Promise<boolean>;
+  getGroupJoinRequests(groupId: string): Promise<GroupJoinRequest[]>;
+  createJoinRequest(groupId: string, userId: string): Promise<GroupJoinRequest>;
+  updateJoinRequest(requestId: string, status: "approved" | "denied"): Promise<GroupJoinRequest | undefined>;
   getComments(postId: string): Promise<Comment[]>;
   createComment(postId: string, userId: string, comment: InsertComment): Promise<Comment>;
   getTimeline(postId: string): Promise<TimelineEvent[]>;
@@ -27,6 +39,9 @@ export class MemStorage implements IStorage {
   private timeline: Map<string, TimelineEvent>;
   private votes: Map<string, { upvotes: Set<string>; downvotes: Set<string> }>;
   private postLikes: Map<string, Set<string>>;
+  private groupMessages: Map<string, GroupMessage>;
+  private groupMembers: Map<string, GroupMember>;
+  private groupJoinRequests: Map<string, GroupJoinRequest>;
 
   constructor() {
     this.users = new Map();
@@ -36,6 +51,9 @@ export class MemStorage implements IStorage {
     this.timeline = new Map();
     this.votes = new Map();
     this.postLikes = new Map();
+    this.groupMessages = new Map();
+    this.groupMembers = new Map();
+    this.groupJoinRequests = new Map();
     
     this.seedData();
   }
@@ -256,6 +274,50 @@ export class MemStorage implements IStorage {
     this.votes.set("post-2", { upvotes: new Set(["user-1", "user-2"]), downvotes: new Set() });
     this.votes.set("post-3", { upvotes: new Set(), downvotes: new Set() });
     this.votes.set("post-4", { upvotes: new Set(["user-3"]), downvotes: new Set() });
+
+    const seedMember = (groupId: string, userId: string, role: GroupMember["role"]) => {
+      const id = randomUUID();
+      const user = this.users.get(userId);
+      const member: GroupMember = {
+        id,
+        groupId,
+        userId,
+        userName: user?.displayName || "Unknown",
+        userAvatar: user?.avatarUrl || "",
+        role,
+        joinedAt: new Date().toISOString(),
+      };
+      this.groupMembers.set(id, member);
+    };
+
+    seedMember("group-1", "user-1", "creator");
+    seedMember("group-1", "user-2", "member");
+    seedMember("group-1", "user-3", "member");
+    seedMember("group-2", "user-2", "creator");
+    seedMember("group-3", "user-1", "creator");
+    seedMember("group-3", "user-3", "member");
+    seedMember("group-4", "user-3", "creator");
+
+    const seedMessage = (groupId: string, userId: string, text: string, minutesAgo: number) => {
+      const id = randomUUID();
+      const user = this.users.get(userId);
+      const msg: GroupMessage = {
+        id,
+        groupId,
+        userId,
+        userName: user?.displayName || "Unknown",
+        userAvatar: user?.avatarUrl || "",
+        text,
+        createdAt: new Date(Date.now() - minutesAgo * 60000).toISOString(),
+      };
+      this.groupMessages.set(id, msg);
+    };
+
+    seedMessage("group-1", "user-1", "Welcome to Kudu watchers! Stay alert.", 120);
+    seedMessage("group-1", "user-2", "Spotted suspicious activity near the main road.", 60);
+    seedMessage("group-1", "user-3", "Thanks for the heads up, will keep watch.", 30);
+    seedMessage("group-3", "user-1", "Neighborhood watch meeting this Saturday.", 180);
+    seedMessage("group-3", "user-3", "Count me in!", 90);
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -332,6 +394,10 @@ export class MemStorage implements IStorage {
     return Array.from(this.groups.values());
   }
 
+  async getGroup(id: string): Promise<Group | undefined> {
+    return this.groups.get(id);
+  }
+
   async createGroup(insertGroup: InsertGroup, userId: string): Promise<Group> {
     const id = randomUUID();
     const group: Group = {
@@ -343,7 +409,130 @@ export class MemStorage implements IStorage {
       createdBy: userId
     };
     this.groups.set(id, group);
+    await this.addGroupMember(id, userId, "creator");
     return group;
+  }
+
+  async updateGroup(id: string, data: Partial<InsertGroup>): Promise<Group | undefined> {
+    const group = this.groups.get(id);
+    if (!group) return undefined;
+    if (data.name !== undefined) group.name = data.name;
+    if (data.area !== undefined) group.area = data.area;
+    if (data.isPublic !== undefined) group.isPublic = data.isPublic;
+    return group;
+  }
+
+  async deleteGroup(id: string): Promise<boolean> {
+    if (!this.groups.has(id)) return false;
+    this.groups.delete(id);
+    for (const [key, member] of this.groupMembers) {
+      if (member.groupId === id) this.groupMembers.delete(key);
+    }
+    for (const [key, msg] of this.groupMessages) {
+      if (msg.groupId === id) this.groupMessages.delete(key);
+    }
+    for (const [key, req] of this.groupJoinRequests) {
+      if (req.groupId === id) this.groupJoinRequests.delete(key);
+    }
+    return true;
+  }
+
+  async getGroupMessages(groupId: string): Promise<GroupMessage[]> {
+    const messages = Array.from(this.groupMessages.values()).filter(m => m.groupId === groupId);
+    messages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return messages;
+  }
+
+  async createGroupMessage(groupId: string, userId: string, message: InsertGroupMessage): Promise<GroupMessage> {
+    const user = await this.getUser(userId);
+    const id = randomUUID();
+    const msg: GroupMessage = {
+      id,
+      groupId,
+      userId,
+      userName: user?.displayName || "Anonymous",
+      userAvatar: user?.avatarUrl || "",
+      text: message.text,
+      createdAt: new Date().toISOString(),
+    };
+    this.groupMessages.set(id, msg);
+    return msg;
+  }
+
+  async getGroupMembers(groupId: string): Promise<GroupMember[]> {
+    return Array.from(this.groupMembers.values()).filter(m => m.groupId === groupId);
+  }
+
+  async addGroupMember(groupId: string, userId: string, role: GroupMember["role"]): Promise<GroupMember> {
+    const existing = Array.from(this.groupMembers.values()).find(m => m.groupId === groupId && m.userId === userId);
+    if (existing) return existing;
+    const user = await this.getUser(userId);
+    const id = randomUUID();
+    const member: GroupMember = {
+      id,
+      groupId,
+      userId,
+      userName: user?.displayName || "Unknown",
+      userAvatar: user?.avatarUrl || "",
+      role,
+      joinedAt: new Date().toISOString(),
+    };
+    this.groupMembers.set(id, member);
+    const group = this.groups.get(groupId);
+    if (group) group.memberCount = (await this.getGroupMembers(groupId)).length;
+    return member;
+  }
+
+  async removeGroupMember(groupId: string, userId: string): Promise<boolean> {
+    for (const [key, member] of this.groupMembers) {
+      if (member.groupId === groupId && member.userId === userId) {
+        this.groupMembers.delete(key);
+        const group = this.groups.get(groupId);
+        if (group) group.memberCount = (await this.getGroupMembers(groupId)).length;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async isGroupMember(groupId: string, userId: string): Promise<boolean> {
+    return Array.from(this.groupMembers.values()).some(m => m.groupId === groupId && m.userId === userId);
+  }
+
+  async getGroupJoinRequests(groupId: string): Promise<GroupJoinRequest[]> {
+    return Array.from(this.groupJoinRequests.values())
+      .filter(r => r.groupId === groupId && r.status === "pending")
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async createJoinRequest(groupId: string, userId: string): Promise<GroupJoinRequest> {
+    const existing = Array.from(this.groupJoinRequests.values()).find(
+      r => r.groupId === groupId && r.userId === userId && r.status === "pending"
+    );
+    if (existing) return existing;
+    const user = await this.getUser(userId);
+    const id = randomUUID();
+    const request: GroupJoinRequest = {
+      id,
+      groupId,
+      userId,
+      userName: user?.displayName || "Unknown",
+      userAvatar: user?.avatarUrl || "",
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    this.groupJoinRequests.set(id, request);
+    return request;
+  }
+
+  async updateJoinRequest(requestId: string, status: "approved" | "denied"): Promise<GroupJoinRequest | undefined> {
+    const request = this.groupJoinRequests.get(requestId);
+    if (!request) return undefined;
+    request.status = status;
+    if (status === "approved") {
+      await this.addGroupMember(request.groupId, request.userId, "member");
+    }
+    return request;
   }
 
   async getComments(postId: string): Promise<Comment[]> {

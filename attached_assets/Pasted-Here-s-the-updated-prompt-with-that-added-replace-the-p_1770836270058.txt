@@ -1,0 +1,110 @@
+Here's the updated prompt with that added — replace the previous one with this:
+
+---
+
+**CRITICAL: Everything below must be implemented on BOTH the web app (`/client`) AND the mobile app (`/mobile`). The mobile app must mirror the web app exactly. Do not implement anything only on web. After making ANY change to the web app, immediately make the same change in the mobile app.**
+
+---
+
+**1. GROUPS FEATURE — Full Implementation with Sub-Pages:**
+
+**A. Groups List Page (main Groups screen):**
+- Header: "Your Communities" with subtitle "Join local groups for better coordination"
+- "+ Create Group" button in the header area (blue, with plus icon)
+- List of group cards, each showing:
+  - Group name (bold)
+  - Area code with location pin icon (e.g. "Area: +886")
+  - Visibility badge: "Public" with globe icon or "Private" with lock icon
+  - Member count with people icon (e.g. "0 members")
+  - "Creator" badge (orange/red text) if the logged-in user created the group
+  - Button at bottom of card:
+    - **"Open Group"** (blue filled button) — if user is already a member or creator
+    - **"Join Group"** (blue filled button) — if group is public and user hasn't joined
+    - **"Request to Join"** (blue filled button) — if group is private and user hasn't joined
+
+**B. Create Group Page (opens when user taps "+ Create Group"):**
+- Header: Ngumu's Eye logo + "Create Group" title + notification bell
+- Form card titled "Create a Community Group" with subtitle "Set up a new neighborhood or community group for better coordination"
+- Fields:
+  - **Group Name** — text input, placeholder "e.g., Windhoek Central Neighborhood"
+  - **Area Code (Geohash Prefix)** — text input, placeholder "e.g., kqe8w (6-7 characters)" with helper text "This defines the geographic area your group covers"
+  - **Visibility** — dropdown/picker with options: "Public - Anyone can join" and "Private - Approval required"
+- Two buttons at bottom: "Cancel" (outlined) and "Create Group" (blue filled)
+- On submit, new group is created and user becomes the creator/admin, then redirect back to Groups list
+
+**C. Group Chat Page (opens when user taps "Open Group" or "Join Group" on a public group):**
+- Header with back arrow (<), settings gear icon (top right), group logo/avatar, group name (bold), and info row showing: area code, "Public"/"Private" badge, member count
+- Chat area in the middle:
+  - If no messages: show grey chat icon with "No messages yet" and "Start the conversation!" text
+  - If messages exist: show message bubbles with sender name, text/image, timestamp
+- Bottom input bar:
+  - Image/photo attach button (left side, gallery icon)
+  - Text input field with placeholder "Message"
+  - Send button (blue circle with arrow icon, right side)
+- Users can type messages and send photos — like a group chat
+- Support image uploads up to **20MB**
+
+**D. Group Settings/Management (ONLY visible to group creator):**
+- Settings gear icon in group chat header — ONLY shown if logged-in user is the group creator
+- Tapping gear icon opens a modal/popup titled "Manage [Group Name]" with subtitle "Approve requests and manage members"
+- Two tabs: **"Requests"** and **"Members (count)"**
+  - Requests tab: shows list of users requesting to join, with Approve/Deny buttons. If none: "No pending requests"
+  - Members tab: shows list of current group members
+
+**E. Request to Join Flow (for private groups):**
+- When user taps "Request to Join" on a private group card, they are taken to the Group Chat Page
+- At the top of the chat area, show a large blue "Join Group" button
+- Chat area shows "No messages yet" with "Join the group to chat!" text
+- User CANNOT type any messages until they are accepted to the group — the message input should be disabled/hidden
+- After tapping "Join Group", the button changes to "Request Pending" (disabled state)
+- The group creator will see this request in their Settings > Requests tab
+
+---
+
+**2. REPORT SUBMISSION TO FEED — FIX ON MOBILE:**
+- The web app was recently fixed so that when a report/incident is submitted, it creates a post on the Feed immediately. Images are converted to local preview data (no server upload needed) so submission always works.
+- **This exact same functionality is NOT working on the mobile app yet. It MUST be implemented on mobile now.**
+- On the mobile Report screen:
+  - The image upload/attach button must work — user taps it, selects images, and sees thumbnail previews with filenames below the upload button
+  - On the review step before submitting, show preview thumbnails of attached images
+  - Images are stored in memory (base64 or local URI) — no server upload
+  - When user submits the report, it MUST create a new post on the Feed screen with all details: title, description, category badge, location, and the attached images
+  - The new post appears at the top of the Feed immediately
+  - Image uploads must support up to **20MB** file size
+- Store submitted reports in React Context so they persist during the session and show alongside mock posts in the Feed
+
+---
+
+**3. SUBSCRIPTION PAGE on Profile:**
+- Profile page must include a Subscription section matching the web app:
+  - "Subscription" header with "Active membership" subtitle
+  - Plan name (e.g. "Individual 1 Month") with "Active" badge (green/blue)
+  - Calendar icon + expiry date
+  - Days remaining in blue text
+  - Two buttons: "Renew / Upgrade" (outlined) and "My Case Deck" (blue filled)
+- This is mock/sample data for the demo
+- Must show on both web and mobile
+
+---
+
+**4. SIGN OUT on Profile:**
+- Profile page must have a "Sign Out" button at the bottom
+- Tapping it clears user session and returns to Login screen
+- Must work on both web and mobile
+
+---
+
+**5. IMAGE SIZE LIMIT:**
+- Increase maximum image upload size to **20MB** everywhere across the entire app — report submissions, group chat image uploads, profile pictures
+- Apply on both web and mobile
+
+---
+
+**6. MANDATORY — Mobile Must Match Web At All Times:**
+- Every single screen, sub-page, modal, popup, and component that exists in the web app MUST also exist and work identically in the mobile app (`/mobile`)
+- The mobile app uses mock/offline data — store everything (groups, messages, members, requests, submitted reports) in React Context or AsyncStorage
+- Include sample/mock groups in initial data so screens aren't empty (e.g. "Windhoek Central Watch" as public group user created, "Katutura Kudumo Str. Awareness" as private group user hasn't joined)
+- Do NOT leave any feature as web-only
+- After completing ALL changes, do a final review of every mobile screen to confirm it matches the web app
+
+---

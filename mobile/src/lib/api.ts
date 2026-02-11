@@ -1,4 +1,4 @@
-import { User, Post, Group, Comment, TimelineEvent } from './types';
+import { User, Post, Group, Comment, TimelineEvent, GroupMessage, GroupMember, GroupJoinRequest } from './types';
 
 let currentUser: User | null = null;
 
@@ -303,6 +303,67 @@ const sampleGroups: Group[] = [
   },
 ];
 
+const sampleGroupMessages: GroupMessage[] = [
+  {
+    id: 'gm1',
+    groupId: 'g1',
+    userId: 'user1',
+    userName: 'Ngobo D.',
+    userAvatar: '',
+    text: 'Welcome to Kudu watchers! Stay alert.',
+    createdAt: new Date(Date.now() - 7200000).toISOString(),
+  },
+  {
+    id: 'gm2',
+    groupId: 'g1',
+    userId: 'user2',
+    userName: 'Cykes man',
+    userAvatar: '',
+    text: 'Spotted suspicious activity near the main road.',
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: 'gm3',
+    groupId: 'g1',
+    userId: 'user3',
+    userName: 'Dezzy',
+    userAvatar: '',
+    text: 'Thanks for the heads up, will keep watch.',
+    createdAt: new Date(Date.now() - 1800000).toISOString(),
+  },
+  {
+    id: 'gm4',
+    groupId: 'g3',
+    userId: 'user3',
+    userName: 'Maria N.',
+    userAvatar: '',
+    text: 'Neighborhood watch meeting this Saturday.',
+    createdAt: new Date(Date.now() - 10800000).toISOString(),
+  },
+  {
+    id: 'gm5',
+    groupId: 'g3',
+    userId: 'user1',
+    userName: 'Ngobo D.',
+    userAvatar: '',
+    text: 'Count me in!',
+    createdAt: new Date(Date.now() - 5400000).toISOString(),
+  },
+];
+
+const sampleGroupMembers: GroupMember[] = [
+  { id: 'gm-m1', groupId: 'g1', userId: 'user1', userName: 'Ngobo D.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 30).toISOString() },
+  { id: 'gm-m2', groupId: 'g1', userId: 'user2', userName: 'Cykes man', userAvatar: '', role: 'member', joinedAt: new Date(Date.now() - 86400000 * 20).toISOString() },
+  { id: 'gm-m3', groupId: 'g1', userId: 'user3', userName: 'Dezzy', userAvatar: '', role: 'member', joinedAt: new Date(Date.now() - 86400000 * 10).toISOString() },
+  { id: 'gm-m4', groupId: 'g2', userId: 'user2', userName: 'Cykes man', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 25).toISOString() },
+  { id: 'gm-m5', groupId: 'g3', userId: 'user3', userName: 'Maria N.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 15).toISOString() },
+  { id: 'gm-m6', groupId: 'g3', userId: 'user1', userName: 'Ngobo D.', userAvatar: '', role: 'member', joinedAt: new Date(Date.now() - 86400000 * 5).toISOString() },
+  { id: 'gm-m7', groupId: 'g4', userId: 'user4', userName: 'John K.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 12).toISOString() },
+  { id: 'gm-m8', groupId: 'g5', userId: 'user5', userName: 'Priscilla T.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 8).toISOString() },
+];
+
+const sampleGroupJoinRequests: GroupJoinRequest[] = [];
+
 const localPosts = [...samplePosts];
 const localComments: Record<string, Comment[]> = { ...sampleComments };
 
@@ -438,6 +499,126 @@ export const groupsApi = {
   getAll: () => {
     return makeResponse(sampleGroups);
   },
+  getById: (id: string) => {
+    const group = sampleGroups.find(g => g.id === id);
+    return makeResponse(group || null);
+  },
+  getMessages: (groupId: string) => {
+    return makeResponse(sampleGroupMessages.filter(m => m.groupId === groupId));
+  },
+  sendMessage: (groupId: string, text: string) => {
+    const msg: GroupMessage = {
+      id: 'gm-' + Date.now(),
+      groupId,
+      userId: currentUser?.id || 'local-user',
+      userName: currentUser?.displayName || 'Anonymous',
+      userAvatar: '',
+      text,
+      createdAt: new Date().toISOString(),
+    };
+    sampleGroupMessages.push(msg);
+    return makeResponse(msg);
+  },
+  getMembers: (groupId: string) => {
+    return makeResponse(sampleGroupMembers.filter(m => m.groupId === groupId));
+  },
+  join: (groupId: string) => {
+    const group = sampleGroups.find(g => g.id === groupId);
+    if (!group) return makeResponse({ joined: false, status: 'not_found' });
+    const userId = currentUser?.id || 'local-user';
+    const existing = sampleGroupMembers.find(m => m.groupId === groupId && m.userId === userId);
+    if (existing) return makeResponse({ joined: true, status: 'already_member' });
+    if (group.isPublic) {
+      const member: GroupMember = {
+        id: 'gm-m-' + Date.now(),
+        groupId,
+        userId,
+        userName: currentUser?.displayName || 'Anonymous',
+        userAvatar: '',
+        role: 'member',
+        joinedAt: new Date().toISOString(),
+      };
+      sampleGroupMembers.push(member);
+      group.memberCount += 1;
+      return makeResponse({ joined: true, status: 'joined' });
+    }
+    const existingRequest = sampleGroupJoinRequests.find(r => r.groupId === groupId && r.userId === userId && r.status === 'pending');
+    if (!existingRequest) {
+      const request: GroupJoinRequest = {
+        id: 'gjr-' + Date.now(),
+        groupId,
+        userId,
+        userName: currentUser?.displayName || 'Anonymous',
+        userAvatar: '',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+      sampleGroupJoinRequests.push(request);
+    }
+    return makeResponse({ joined: false, status: 'requested' });
+  },
+  leave: (groupId: string) => {
+    const userId = currentUser?.id || 'local-user';
+    const idx = sampleGroupMembers.findIndex(m => m.groupId === groupId && m.userId === userId);
+    if (idx !== -1) {
+      sampleGroupMembers.splice(idx, 1);
+      const group = sampleGroups.find(g => g.id === groupId);
+      if (group) group.memberCount = Math.max(0, group.memberCount - 1);
+    }
+    return makeResponse({ success: true });
+  },
+  update: (groupId: string, data: { name?: string; area?: string; isPublic?: boolean }) => {
+    const group = sampleGroups.find(g => g.id === groupId);
+    if (group) {
+      if (data.name !== undefined) group.name = data.name;
+      if (data.area !== undefined) group.area = data.area;
+      if (data.isPublic !== undefined) group.isPublic = data.isPublic;
+    }
+    return makeResponse(group || null);
+  },
+  deleteGroup: (groupId: string) => {
+    const idx = sampleGroups.findIndex(g => g.id === groupId);
+    if (idx !== -1) sampleGroups.splice(idx, 1);
+    return makeResponse({ success: true });
+  },
+  removeMember: (groupId: string, userId: string) => {
+    const idx = sampleGroupMembers.findIndex(m => m.groupId === groupId && m.userId === userId);
+    if (idx !== -1) {
+      sampleGroupMembers.splice(idx, 1);
+      const group = sampleGroups.find(g => g.id === groupId);
+      if (group) group.memberCount = Math.max(0, group.memberCount - 1);
+    }
+    return makeResponse({ success: true });
+  },
+  getJoinRequests: (groupId: string) => {
+    return makeResponse(sampleGroupJoinRequests.filter(r => r.groupId === groupId && r.status === 'pending'));
+  },
+  approveRequest: (groupId: string, requestId: string) => {
+    const request = sampleGroupJoinRequests.find(r => r.id === requestId && r.groupId === groupId);
+    if (request) {
+      request.status = 'approved';
+      const member: GroupMember = {
+        id: 'gm-m-' + Date.now(),
+        groupId,
+        userId: request.userId,
+        userName: request.userName,
+        userAvatar: request.userAvatar,
+        role: 'member',
+        joinedAt: new Date().toISOString(),
+      };
+      sampleGroupMembers.push(member);
+      const group = sampleGroups.find(g => g.id === groupId);
+      if (group) group.memberCount += 1;
+    }
+    return makeResponse({ success: true });
+  },
+  denyRequest: (groupId: string, requestId: string) => {
+    const request = sampleGroupJoinRequests.find(r => r.id === requestId && r.groupId === groupId);
+    if (request) {
+      request.status = 'denied';
+    }
+    return makeResponse({ success: true });
+  },
   create: (data: any) => {
     const newGroup: Group = {
       id: 'group-' + Date.now(),
@@ -448,6 +629,16 @@ export const groupsApi = {
       createdBy: currentUser?.id || 'local-user',
     };
     sampleGroups.push(newGroup);
+    const creatorMember: GroupMember = {
+      id: 'gm-m-' + Date.now(),
+      groupId: newGroup.id,
+      userId: currentUser?.id || 'local-user',
+      userName: currentUser?.displayName || 'Anonymous',
+      userAvatar: '',
+      role: 'creator',
+      joinedAt: new Date().toISOString(),
+    };
+    sampleGroupMembers.push(creatorMember);
     return makeResponse(newGroup);
   },
 };

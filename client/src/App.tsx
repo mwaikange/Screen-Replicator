@@ -9,6 +9,7 @@ import FeedPage from "@/pages/feed";
 import MapPage from "@/pages/map";
 import ReportPage from "@/pages/report";
 import GroupsPage from "@/pages/groups";
+import GroupChatPage from "@/pages/group-chat";
 import ProfilePage from "@/pages/profile";
 import SubscribePage from "@/pages/subscribe";
 import PostDetailPage from "@/pages/post-detail";
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/map" component={MapPage} />
       <Route path="/report" component={ReportPage} />
       <Route path="/groups" component={GroupsPage} />
+      <Route path="/groups/:id" component={GroupChatPage} />
       <Route path="/profile" component={ProfilePage} />
       <Route path="/subscribe" component={SubscribePage} />
       <Route component={NotFound} />

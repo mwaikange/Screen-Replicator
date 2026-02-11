@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, loginSchema, insertPostSchema, insertGroupSchema, insertCommentSchema } from "@shared/schema";
+import { insertUserSchema, loginSchema, insertPostSchema, insertGroupSchema, insertCommentSchema, insertGroupMessageSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
@@ -212,6 +212,139 @@ export async function registerRoutes(
       const userId = req.session.userId || "user-1";
       const result = await storage.toggleLikePost(req.params.id, userId);
       res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/groups/:id", async (req, res) => {
+    try {
+      const group = await storage.getGroup(req.params.id);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      const userId = req.session.userId || "user-1";
+      const isMember = await storage.isGroupMember(group.id, userId);
+      const members = await storage.getGroupMembers(group.id);
+      const userMember = members.find(m => m.userId === userId);
+      res.json({ ...group, isMember, userRole: userMember?.role || null });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/groups/:id/messages", async (req, res) => {
+    try {
+      const messages = await storage.getGroupMessages(req.params.id);
+      res.json(messages);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/groups/:id/messages", async (req, res) => {
+    try {
+      const parsed = insertGroupMessageSchema.parse(req.body);
+      const userId = req.session.userId || "user-1";
+      const message = await storage.createGroupMessage(req.params.id, userId, parsed);
+      res.status(201).json(message);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid input", errors: error.errors });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/groups/:id/members", async (req, res) => {
+    try {
+      const members = await storage.getGroupMembers(req.params.id);
+      res.json(members);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/groups/:id/join", async (req, res) => {
+    try {
+      const userId = req.session.userId || "user-1";
+      const group = await storage.getGroup(req.params.id);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      const isMember = await storage.isGroupMember(group.id, userId);
+      if (isMember) return res.status(400).json({ message: "Already a member" });
+      if (group.isPublic) {
+        const member = await storage.addGroupMember(group.id, userId, "member");
+        res.json({ joined: true, member });
+      } else {
+        const request = await storage.createJoinRequest(group.id, userId);
+        res.json({ joined: false, request });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/groups/:id/leave", async (req, res) => {
+    try {
+      const userId = req.session.userId || "user-1";
+      await storage.removeGroupMember(req.params.id, userId);
+      res.json({ left: true });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/groups/:id/requests", async (req, res) => {
+    try {
+      const requests = await storage.getGroupJoinRequests(req.params.id);
+      res.json(requests);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/groups/:id/requests/:requestId/approve", async (req, res) => {
+    try {
+      const result = await storage.updateJoinRequest(req.params.requestId, "approved");
+      if (!result) return res.status(404).json({ message: "Request not found" });
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/groups/:id/requests/:requestId/deny", async (req, res) => {
+    try {
+      const result = await storage.updateJoinRequest(req.params.requestId, "denied");
+      if (!result) return res.status(404).json({ message: "Request not found" });
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/groups/:id", async (req, res) => {
+    try {
+      const group = await storage.updateGroup(req.params.id, req.body);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      res.json(group);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/groups/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteGroup(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Group not found" });
+      res.json({ deleted: true });
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/groups/:id/members/:userId", async (req, res) => {
+    try {
+      const removed = await storage.removeGroupMember(req.params.id, req.params.userId);
+      res.json({ removed });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
     }
