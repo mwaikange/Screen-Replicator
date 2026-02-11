@@ -35,7 +35,7 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 - **Report**: 3-step form for reporting incidents with location
 - **Groups**: Join or create community watch groups
 - **Profile**: View user info, trust score, subscription status, Renew/Upgrade navigates to /subscribe
-- **Subscribe**: Subscription plans page with 6 tiers (Individual, Family, Tourist, Business), Pay Now and WhatsApp buttons redirect to WhatsApp with pre-filled message including plan name and price
+- **Subscribe**: Subscription plans page with 12 plans across 3 categories (Individual: 1/3/6/12 months, Family: 1/3/6/12 months, Tourist: 5/10/14/30 days), active subscription banner at top, Pay Now buttons redirect to WhatsApp with pre-filled message including plan name and price, WhatsApp contact card at bottom
 
 ## API Endpoints
 - `POST /api/auth/login` - Authenticate user
