@@ -14,6 +14,7 @@ A mobile-first community safety platform for reporting incidents, tracking missi
   - `report.tsx` - Multi-step incident reporting form
   - `groups.tsx` - Community groups listing
   - `profile.tsx` - User profile and subscription
+  - `subscribe.tsx` - Subscription plans with WhatsApp payment redirect
 
 - **components/**
   - `bottom-nav.tsx` - Mobile bottom navigation bar
@@ -33,7 +34,8 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 - **Map**: Visual incident map with clickable markers from posts, blue dot for current location, popup with View Details navigating to post detail
 - **Report**: 3-step form for reporting incidents with location
 - **Groups**: Join or create community watch groups
-- **Profile**: View user info, trust score, subscription status
+- **Profile**: View user info, trust score, subscription status, Renew/Upgrade navigates to /subscribe
+- **Subscribe**: Subscription plans page with 6 tiers (Individual, Family, Tourist, Business), Pay Now and WhatsApp buttons redirect to WhatsApp with pre-filled message including plan name and price
 
 ## API Endpoints
 - `POST /api/auth/login` - Authenticate user

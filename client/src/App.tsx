@@ -10,6 +10,7 @@ import MapPage from "@/pages/map";
 import ReportPage from "@/pages/report";
 import GroupsPage from "@/pages/groups";
 import ProfilePage from "@/pages/profile";
+import SubscribePage from "@/pages/subscribe";
 import PostDetailPage from "@/pages/post-detail";
 import NotFound from "@/pages/not-found";
 
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/report" component={ReportPage} />
       <Route path="/groups" component={GroupsPage} />
       <Route path="/profile" component={ProfilePage} />
+      <Route path="/subscribe" component={SubscribePage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -126,7 +126,7 @@ export default function ProfilePage() {
             <p className="text-sm text-primary font-medium mb-4">{daysRemaining} days remaining</p>
 
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" data-testid="button-renew">
+              <Button variant="outline" className="flex-1" onClick={() => setLocation("/subscribe")} data-testid="button-renew">
                 Renew / Upgrade
               </Button>
               <Button className="flex-1" data-testid="button-case-deck">
