@@ -24,7 +24,7 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 
 ### Backend (server/)
 - `index.ts` - Express server with session middleware, 20MB body limit
-- `supabase.ts` - Server-side Supabase client using EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY
+- `supabase.ts` - Server-side Supabase client using EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY; exports `getAuthClient(token)` for per-request authenticated clients
 - `routes.ts` - API endpoints all backed by Supabase (auth, posts/incidents, groups, group chat, members, join requests, avatar upload)
 - `storage.ts` - Legacy in-memory storage (no longer imported or used)
 
@@ -128,9 +128,13 @@ React Native Expo app integrated with Supabase backend (https://app.ngumus-eye.s
 ### Supabase Integration
 - **Config**: `app.config.js` passes env vars via `expo.extra`; `supabase.ts` reads via `expo-constants` (`Constants.expoConfig.extra`)
 - **Auth**: signInWithPassword / signUp with expo-secure-store for session persistence
-- **Database tables**: profiles, incidents, incident_types, incident_media, incident_comments, incident_likes, incident_votes, incident_timeline, groups, group_members, group_messages, group_join_requests, user_subscriptions, cases, tracked_devices, support_requests
+- **Database tables**: profiles, incidents, incident_types, incident_media, incident_comments, incident_likes, incident_votes, incident_timeline, groups, group_members, group_messages, group_requests, user_subscriptions, cases, tracked_devices, support_requests
+- **Groups schema**: `id, name, geohash_prefix, visibility, created_at, created_by` (NOT area/is_public/member_count); member count via `group_members(count)` sub-select
+- **Group messages schema**: `id, group_id, user_id, message, image_url, created_at` (column is `message`, NOT `content`)
 - **Incidents schema**: `id, type_id, title, description, town, lat, lng, status, verification_level, created_at, created_by` with FK to `incident_types(id, code, label, severity)`, `profiles:created_by(...)`, and related `incident_media(id, path, mime)`
-- **RPCs**: create_group_with_creator, request_join_group, approve_group_request
+- **Image URLs**: `incident_media.path` is relative; construct full URL: `{SUPABASE_URL}/storage/v1/object/public/incident-media/{path}`
+- **RPCs**: create_group_with_creator (p_name, p_geohash_prefix, p_visibility), request_join_group (p_group_id), approve_group_request (p_request_id)
+- **RLS**: All data queries require authenticated Supabase client (use `getAuthClient(accessToken)` from server/supabase.ts)
 - **File uploads**: POST to https://app.ngumus-eye.site/api/upload with Bearer token
 - **Environment secrets**: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY, EXPO_PUBLIC_SITE_URL (passed through app.config.js extra)
 

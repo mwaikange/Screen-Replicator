@@ -1,10 +1,23 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { supabase } from "./supabase";
+import { supabase, getAuthClient } from "./supabase";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
 import { randomUUID } from "crypto";
+
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
+
+function getStorageUrl(bucket: string, filePath: string): string {
+  if (!filePath) return "";
+  if (filePath.startsWith("http")) return filePath;
+  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${filePath}`;
+}
+
+function getClient(req: any) {
+  const token = req.session?.accessToken;
+  return token ? getAuthClient(token) : supabase;
+}
 
 const uploadStorage = multer.diskStorage({
   destination: path.resolve(process.cwd(), "attached_assets"),
@@ -135,13 +148,14 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Not authenticated" });
       }
 
-      const { data: profile } = await supabase
+      const db = getClient(req);
+      const { data: profile } = await db
         .from("profiles")
         .select("*")
         .eq("id", userId)
         .single();
 
-      const { data: subscription } = await supabase
+      const { data: subscription } = await db
         .from("user_subscriptions")
         .select("*")
         .eq("user_id", userId)
@@ -174,7 +188,8 @@ export async function registerRoutes(
 
   app.get("/api/posts", async (req, res) => {
     try {
-      let query = supabase
+      const db = getClient(req);
+      let query = db
         .from("incidents")
         .select(`
           id, type_id, title, description, town, lat, lng,
@@ -205,9 +220,9 @@ export async function registerRoutes(
       let voteMap: Record<string, { upvotes: number; downvotes: number; userVote: string | null }> = {};
 
       if (postIds.length > 0) {
-        const { data: likes } = await supabase.from("incident_likes").select("incident_id").in("incident_id", postIds);
-        const { data: comments } = await supabase.from("incident_comments").select("incident_id").in("incident_id", postIds);
-        const { data: votes } = await supabase.from("incident_votes").select("incident_id, vote_type, user_id").in("incident_id", postIds);
+        const { data: likes } = await db.from("incident_likes").select("incident_id").in("incident_id", postIds);
+        const { data: comments } = await db.from("incident_comments").select("incident_id").in("incident_id", postIds);
+        const { data: votes } = await db.from("incident_votes").select("incident_id, vote_type, user_id").in("incident_id", postIds);
 
         (likes || []).forEach((l: any) => { likeMap[l.incident_id] = (likeMap[l.incident_id] || 0) + 1; });
         (comments || []).forEach((c: any) => { commentMap[c.incident_id] = (commentMap[c.incident_id] || 0) + 1; });
@@ -223,7 +238,7 @@ export async function registerRoutes(
         const profile = Array.isArray(item.profiles) ? item.profiles[0] : item.profiles;
         const incidentType = Array.isArray(item.incident_types) ? item.incident_types[0] : item.incident_types;
         const media = item.incident_media || [];
-        const images = media.map((m: any) => m.path).filter(Boolean);
+        const images = media.map((m: any) => getStorageUrl("incident-media", m.path)).filter(Boolean);
         const v = voteMap[item.id];
         return {
           id: item.id,
@@ -257,7 +272,8 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { data, error } = await supabase
+      const db = getClient(req);
+      const { data, error } = await db
         .from("incidents")
         .insert({
           created_by: userId,
@@ -281,7 +297,7 @@ export async function registerRoutes(
 
       if (req.body.images && req.body.images.length > 0) {
         for (const imgUrl of req.body.images) {
-          await supabase.from("incident_media").insert({
+          await db.from("incident_media").insert({
             incident_id: data.id,
             path: imgUrl,
             mime: "image/jpeg",
@@ -317,7 +333,8 @@ export async function registerRoutes(
 
   app.get("/api/posts/:id", async (req, res) => {
     try {
-      const { data, error } = await supabase
+      const db = getClient(req);
+      const { data, error } = await db
         .from("incidents")
         .select(`
           id, type_id, title, description, town, lat, lng,
@@ -335,11 +352,11 @@ export async function registerRoutes(
       const profile = Array.isArray((data as any).profiles) ? (data as any).profiles[0] : (data as any).profiles;
       const incidentType = Array.isArray((data as any).incident_types) ? (data as any).incident_types[0] : (data as any).incident_types;
       const media = (data as any).incident_media || [];
-      const images = media.map((m: any) => m.path).filter(Boolean);
+      const images = media.map((m: any) => getStorageUrl("incident-media", m.path)).filter(Boolean);
 
-      const { count: likeCount } = await supabase.from("incident_likes").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id);
-      const { count: commentCount } = await supabase.from("incident_comments").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id);
-      const { data: votesData } = await supabase.from("incident_votes").select("vote_type, user_id").eq("incident_id", req.params.id);
+      const { count: likeCount } = await db.from("incident_likes").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id);
+      const { count: commentCount } = await db.from("incident_comments").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id);
+      const { data: votesData } = await db.from("incident_votes").select("vote_type, user_id").eq("incident_id", req.params.id);
 
       let upvotes = 0, downvotes = 0, userVote: string | null = null;
       (votesData || []).forEach((v: any) => {
@@ -374,7 +391,8 @@ export async function registerRoutes(
 
   app.get("/api/posts/:id/comments", async (req, res) => {
     try {
-      const { data, error } = await supabase
+      const db = getClient(req);
+      const { data, error } = await db
         .from("incident_comments")
         .select(`id, incident_id, user_id, content, image_url, created_at, profiles:user_id(display_name, avatar_url)`)
         .eq("incident_id", req.params.id)
@@ -406,7 +424,8 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { data, error } = await supabase
+      const db = getClient(req);
+      const { data, error } = await db
         .from("incident_comments")
         .insert({
           incident_id: req.params.id,
@@ -436,7 +455,8 @@ export async function registerRoutes(
 
   app.get("/api/posts/:id/timeline", async (req, res) => {
     try {
-      const { data, error } = await supabase
+      const db = getClient(req);
+      const { data, error } = await db
         .from("incident_timeline")
         .select(`id, incident_id, user_id, event_type, description, created_at, profiles:user_id(display_name)`)
         .eq("incident_id", req.params.id)
@@ -467,10 +487,11 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
+      const db = getClient(req);
       const { vote } = req.body;
       if (vote !== "up" && vote !== "down") return res.status(400).json({ message: "Vote must be 'up' or 'down'" });
 
-      const { data: existing } = await supabase
+      const { data: existing } = await db
         .from("incident_votes")
         .select("id, vote_type")
         .eq("incident_id", req.params.id)
@@ -479,15 +500,15 @@ export async function registerRoutes(
 
       if (existing) {
         if (existing.vote_type === vote) {
-          await supabase.from("incident_votes").delete().eq("id", existing.id);
+          await db.from("incident_votes").delete().eq("id", existing.id);
         } else {
-          await supabase.from("incident_votes").update({ vote_type: vote }).eq("id", existing.id);
+          await db.from("incident_votes").update({ vote_type: vote }).eq("id", existing.id);
         }
       } else {
-        await supabase.from("incident_votes").insert({ incident_id: req.params.id, user_id: userId, vote_type: vote });
+        await db.from("incident_votes").insert({ incident_id: req.params.id, user_id: userId, vote_type: vote });
       }
 
-      const { data: allVotes } = await supabase.from("incident_votes").select("vote_type, user_id").eq("incident_id", req.params.id);
+      const { data: allVotes } = await db.from("incident_votes").select("vote_type, user_id").eq("incident_id", req.params.id);
       let upvotes = 0, downvotes = 0, userVote: string | null = null;
       (allVotes || []).forEach((v: any) => {
         if (v.vote_type === "up") upvotes++;
@@ -505,7 +526,8 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { data: existing } = await supabase
+      const db = getClient(req);
+      const { data: existing } = await db
         .from("incident_likes")
         .select("id")
         .eq("incident_id", req.params.id)
@@ -513,12 +535,12 @@ export async function registerRoutes(
         .maybeSingle();
 
       if (existing) {
-        await supabase.from("incident_likes").delete().eq("id", existing.id);
+        await db.from("incident_likes").delete().eq("id", existing.id);
       } else {
-        await supabase.from("incident_likes").insert({ incident_id: req.params.id, user_id: userId });
+        await db.from("incident_likes").insert({ incident_id: req.params.id, user_id: userId });
       }
 
-      const { count } = await supabase.from("incident_likes").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id);
+      const { count } = await db.from("incident_likes").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id);
       res.json({ liked: !existing, likes: count || 0 });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -533,8 +555,9 @@ export async function registerRoutes(
       const file = req.file;
       if (!file) return res.status(400).json({ message: "No file uploaded" });
 
+      const db = getClient(req);
       const avatarUrl = `/attached_assets/${file.filename}`;
-      const { error } = await supabase
+      const { error } = await db
         .from("profiles")
         .update({ avatar_url: avatarUrl })
         .eq("id", userId);
@@ -559,23 +582,47 @@ export async function registerRoutes(
 
   app.get("/api/groups", async (req, res) => {
     try {
-      const { data, error } = await supabase
+      const db = getClient(req);
+      const { data, error } = await db
         .from("groups")
-        .select("id, name, area, is_public, member_count, created_by")
+        .select(`
+          id, name, geohash_prefix, visibility, created_at, created_by,
+          group_members(count)
+        `)
         .order("created_at", { ascending: false });
 
-      if (error) return res.status(500).json({ message: error.message });
+      if (error) {
+        console.error("Groups fetch error:", error);
+        return res.status(500).json({ message: error.message });
+      }
 
-      const groups = (data || []).map((g: any) => ({
-        id: g.id,
-        name: g.name,
-        area: g.area || "",
-        isPublic: g.is_public ?? true,
-        memberCount: g.member_count || 0,
-        createdBy: g.created_by,
-      }));
+      const userId = req.session.userId;
+      let membershipSet = new Set<string>();
+      if (userId) {
+        const { data: memberships } = await db
+          .from("group_members")
+          .select("group_id")
+          .eq("user_id", userId);
+        (memberships || []).forEach((m: any) => membershipSet.add(m.group_id));
+      }
+
+      const groups = (data || []).map((g: any) => {
+        const memberCountArr = g.group_members;
+        const memberCount = Array.isArray(memberCountArr) && memberCountArr.length > 0
+          ? memberCountArr[0].count : 0;
+        return {
+          id: g.id,
+          name: g.name,
+          area: g.geohash_prefix || "",
+          isPublic: g.visibility === "public",
+          memberCount,
+          createdBy: g.created_by,
+          isMember: membershipSet.has(g.id),
+        };
+      });
       res.json(groups);
     } catch (error) {
+      console.error("Groups error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -585,11 +632,11 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { data, error } = await supabase.rpc("create_group_with_creator", {
+      const db = getClient(req);
+      const { data, error } = await db.rpc("create_group_with_creator", {
         p_name: req.body.name,
-        p_area: req.body.area,
-        p_is_public: req.body.isPublic ?? true,
-        p_user_id: userId,
+        p_geohash_prefix: req.body.area || req.body.geohash_prefix || "",
+        p_visibility: (req.body.isPublic === false || req.body.visibility === "private") ? "private" : "public",
       });
 
       if (error) return res.status(400).json({ message: error.message });
@@ -601,9 +648,13 @@ export async function registerRoutes(
 
   app.get("/api/groups/:id", async (req, res) => {
     try {
-      const { data, error } = await supabase
+      const db = getClient(req);
+      const { data, error } = await db
         .from("groups")
-        .select("id, name, area, is_public, member_count, created_by")
+        .select(`
+          id, name, geohash_prefix, visibility, created_at, created_by,
+          group_members(count)
+        `)
         .eq("id", req.params.id)
         .single();
 
@@ -613,7 +664,7 @@ export async function registerRoutes(
       let isMember = false;
       let userRole: string | null = null;
       if (userId) {
-        const { data: member } = await supabase
+        const { data: member } = await db
           .from("group_members")
           .select("role")
           .eq("group_id", req.params.id)
@@ -625,12 +676,16 @@ export async function registerRoutes(
         }
       }
 
+      const memberCountArr = (data as any).group_members;
+      const memberCount = Array.isArray(memberCountArr) && memberCountArr.length > 0
+        ? memberCountArr[0].count : 0;
+
       res.json({
         id: data.id,
         name: data.name,
-        area: data.area || "",
-        isPublic: data.is_public ?? true,
-        memberCount: data.member_count || 0,
+        area: (data as any).geohash_prefix || "",
+        isPublic: (data as any).visibility === "public",
+        memberCount,
         createdBy: data.created_by,
         isMember,
         userRole,
@@ -644,23 +699,24 @@ export async function registerRoutes(
     try {
       const updateData: any = {};
       if (req.body.name !== undefined) updateData.name = req.body.name;
-      if (req.body.area !== undefined) updateData.area = req.body.area;
-      if (req.body.isPublic !== undefined) updateData.is_public = req.body.isPublic;
+      if (req.body.area !== undefined) updateData.geohash_prefix = req.body.area;
+      if (req.body.isPublic !== undefined) updateData.visibility = req.body.isPublic ? "public" : "private";
 
-      const { data, error } = await supabase
+      const db = getClient(req);
+      const { data, error } = await db
         .from("groups")
         .update(updateData)
         .eq("id", req.params.id)
-        .select("id, name, area, is_public, member_count, created_by")
+        .select("id, name, geohash_prefix, visibility, created_by")
         .single();
 
       if (error || !data) return res.status(404).json({ message: "Group not found" });
       res.json({
         id: data.id,
         name: data.name,
-        area: data.area || "",
-        isPublic: data.is_public ?? true,
-        memberCount: data.member_count || 0,
+        area: (data as any).geohash_prefix || "",
+        isPublic: (data as any).visibility === "public",
+        memberCount: 0,
         createdBy: data.created_by,
       });
     } catch (error) {
@@ -670,7 +726,8 @@ export async function registerRoutes(
 
   app.delete("/api/groups/:id", async (req, res) => {
     try {
-      const { error } = await supabase.from("groups").delete().eq("id", req.params.id);
+      const db = getClient(req);
+      const { error } = await db.from("groups").delete().eq("id", req.params.id);
       if (error) return res.status(404).json({ message: "Group not found" });
       res.json({ deleted: true });
     } catch (error) {
@@ -680,13 +737,18 @@ export async function registerRoutes(
 
   app.get("/api/groups/:id/messages", async (req, res) => {
     try {
-      const { data, error } = await supabase
+      const db = getClient(req);
+      const { data, error } = await db
         .from("group_messages")
-        .select(`id, group_id, user_id, content, image_url, created_at, profiles:user_id(display_name, avatar_url)`)
+        .select(`id, group_id, user_id, message, image_url, created_at, profiles:user_id(display_name, avatar_url)`)
         .eq("group_id", req.params.id)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: true })
+        .limit(50);
 
-      if (error) return res.json([]);
+      if (error) {
+        console.error("Group messages error:", error);
+        return res.json([]);
+      }
 
       const messages = (data || []).map((m: any) => {
         const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
@@ -696,7 +758,7 @@ export async function registerRoutes(
           userId: m.user_id,
           userName: profile?.display_name || "Anonymous",
           userAvatar: profile?.avatar_url || "",
-          text: m.content || "",
+          text: m.message || "",
           imageUrl: m.image_url || null,
           createdAt: m.created_at,
         };
@@ -712,16 +774,17 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
+      const db = getClient(req);
       const text = req.body.text || (req.body.imageUrl ? "📷 Photo" : "");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("group_messages")
         .insert({
           group_id: req.params.id,
           user_id: userId,
-          content: text,
+          message: text,
           image_url: req.body.imageUrl || null,
         })
-        .select(`id, group_id, user_id, content, image_url, created_at, profiles:user_id(display_name, avatar_url)`)
+        .select(`id, group_id, user_id, message, image_url, created_at, profiles:user_id(display_name, avatar_url)`)
         .single();
 
       if (error) return res.status(400).json({ message: error.message });
@@ -733,7 +796,7 @@ export async function registerRoutes(
         userId: data.user_id,
         userName: profile?.display_name || "Anonymous",
         userAvatar: profile?.avatar_url || "",
-        text: data.content || "",
+        text: (data as any).message || "",
         imageUrl: data.image_url || null,
         createdAt: data.created_at,
       });
@@ -744,7 +807,8 @@ export async function registerRoutes(
 
   app.get("/api/groups/:id/members", async (req, res) => {
     try {
-      const { data, error } = await supabase
+      const db = getClient(req);
+      const { data, error } = await db
         .from("group_members")
         .select(`id, group_id, user_id, role, joined_at, profiles:user_id(display_name, avatar_url)`)
         .eq("group_id", req.params.id)
@@ -775,18 +839,18 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const { data, error } = await supabase.rpc("request_join_group", {
+      const db = getClient(req);
+      const { data, error } = await db.rpc("request_join_group", {
         p_group_id: req.params.id,
-        p_user_id: userId,
       });
 
       if (error) {
-        const { data: group } = await supabase.from("groups").select("is_public").eq("id", req.params.id).single();
-        if (group?.is_public) {
-          await supabase.from("group_members").insert({ group_id: req.params.id, user_id: userId, role: "member" });
+        const { data: group } = await db.from("groups").select("visibility").eq("id", req.params.id).single();
+        if (group?.visibility === "public") {
+          await db.from("group_members").insert({ group_id: req.params.id, user_id: userId, role: "member" });
           return res.json({ joined: true, status: "joined" });
         } else {
-          await supabase.from("group_join_requests").insert({ group_id: req.params.id, user_id: userId, status: "pending" });
+          await db.from("group_requests").insert({ group_id: req.params.id, user_id: userId, status: "pending" });
           return res.json({ joined: false, status: "requested" });
         }
       }
@@ -802,7 +866,8 @@ export async function registerRoutes(
     try {
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      await supabase.from("group_members").delete().eq("group_id", req.params.id).eq("user_id", userId);
+      const db = getClient(req);
+      await db.from("group_members").delete().eq("group_id", req.params.id).eq("user_id", userId);
       res.json({ left: true });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -811,8 +876,9 @@ export async function registerRoutes(
 
   app.get("/api/groups/:id/requests", async (req, res) => {
     try {
-      const { data, error } = await supabase
-        .from("group_join_requests")
+      const db = getClient(req);
+      const { data, error } = await db
+        .from("group_requests")
         .select(`id, group_id, user_id, status, created_at, profiles:user_id(display_name, avatar_url)`)
         .eq("group_id", req.params.id)
         .eq("status", "pending")
@@ -840,7 +906,8 @@ export async function registerRoutes(
 
   app.post("/api/groups/:id/requests/:requestId/approve", async (req, res) => {
     try {
-      const { data, error } = await supabase.rpc("approve_group_request", {
+      const db = getClient(req);
+      const { data, error } = await db.rpc("approve_group_request", {
         p_request_id: req.params.requestId,
       });
       if (error) return res.status(400).json({ message: error.message });
@@ -852,9 +919,10 @@ export async function registerRoutes(
 
   app.post("/api/groups/:id/requests/:requestId/deny", async (req, res) => {
     try {
-      const { data, error } = await supabase
-        .from("group_join_requests")
-        .update({ status: "denied" })
+      const db = getClient(req);
+      const { data, error } = await db
+        .from("group_requests")
+        .update({ status: "rejected", updated_at: new Date().toISOString() })
         .eq("id", req.params.requestId)
         .select()
         .single();
@@ -868,7 +936,8 @@ export async function registerRoutes(
 
   app.delete("/api/groups/:id/members/:userId", async (req, res) => {
     try {
-      await supabase.from("group_members").delete().eq("group_id", req.params.id).eq("user_id", req.params.userId);
+      const db = getClient(req);
+      await db.from("group_members").delete().eq("group_id", req.params.id).eq("user_id", req.params.userId);
       res.json({ removed: true });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
