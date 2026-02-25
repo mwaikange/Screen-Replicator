@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing } from '../lib/theme';
 import { groupsApi } from '../lib/api';
 import { Group, GroupMessage, GroupMember, GroupJoinRequest } from '../lib/types';
@@ -55,6 +56,7 @@ export default function GroupChatScreen() {
   const [editIsPublic, setEditIsPublic] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [requestPending, setRequestPending] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -90,12 +92,29 @@ export default function GroupChatScreen() {
   }, [groupId]);
 
   const handleSend = async () => {
-    if (!messageText.trim()) return;
-    await groupsApi.sendMessage(groupId, messageText.trim());
+    if (!messageText.trim() && !imagePreview) return;
+    await groupsApi.sendMessage(groupId, messageText.trim() || (imagePreview ? '📷 Photo' : ''), imagePreview);
     setMessageText('');
+    setImagePreview(null);
     const res = await groupsApi.getMessages(groupId);
     setMessages(res.data);
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant access to your photo library to share images.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setImagePreview(result.assets[0].uri);
+    }
   };
 
   const handleJoin = async () => {
@@ -164,7 +183,10 @@ export default function GroupChatScreen() {
           <Text style={styles.messageName}>{item.userName}</Text>
           <Text style={styles.messageTime}>{formatTime(item.createdAt)}</Text>
         </View>
-        <Text style={styles.messageText}>{item.text}</Text>
+        {item.imageUrl && (
+          <Image source={{ uri: item.imageUrl }} style={styles.messageImage} resizeMode="cover" />
+        )}
+        {item.text && item.text !== '📷 Photo' && <Text style={styles.messageText}>{item.text}</Text>}
       </View>
     </View>
   );
@@ -252,21 +274,37 @@ export default function GroupChatScreen() {
             }
           />
           <View style={styles.inputBar}>
-            <TextInput
-              style={styles.messageInput}
-              placeholder="Type a message..."
-              placeholderTextColor={colors.mutedForeground}
-              value={messageText}
-              onChangeText={setMessageText}
-              multiline={false}
-            />
-            <TouchableOpacity
-              style={[styles.sendButton, !messageText.trim() && styles.sendButtonDisabled]}
-              onPress={handleSend}
-              disabled={!messageText.trim()}
-            >
-              <Ionicons name="send" size={18} color={colors.primaryForeground} />
-            </TouchableOpacity>
+            {imagePreview && (
+              <View style={styles.imagePreviewContainer}>
+                <Image source={{ uri: imagePreview }} style={styles.imagePreview} resizeMode="cover" />
+                <TouchableOpacity
+                  style={styles.removeImageButton}
+                  onPress={() => setImagePreview(null)}
+                >
+                  <Ionicons name="close-circle" size={22} color={colors.destructive} />
+                </TouchableOpacity>
+              </View>
+            )}
+            <View style={styles.inputRow}>
+              <TouchableOpacity onPress={handlePickImage} style={styles.attachButton}>
+                <Ionicons name="image-outline" size={22} color={colors.primary} />
+              </TouchableOpacity>
+              <TextInput
+                style={styles.messageInput}
+                placeholder="Type a message..."
+                placeholderTextColor={colors.mutedForeground}
+                value={messageText}
+                onChangeText={setMessageText}
+                multiline={false}
+              />
+              <TouchableOpacity
+                style={[styles.sendButton, (!messageText.trim() && !imagePreview) && styles.sendButtonDisabled]}
+                onPress={handleSend}
+                disabled={!messageText.trim() && !imagePreview}
+              >
+                <Ionicons name="send" size={18} color={colors.primaryForeground} />
+              </TouchableOpacity>
+            </View>
           </View>
         </KeyboardAvoidingView>
       )}
@@ -594,14 +632,40 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   inputBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     backgroundColor: colors.card,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  attachButton: {
+    padding: 4,
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+  },
+  imagePreview: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+  },
+  messageImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 8,
+    marginVertical: 4,
   },
   messageInput: {
     flex: 1,

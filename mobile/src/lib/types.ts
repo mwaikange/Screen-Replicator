@@ -75,6 +75,7 @@ export type GroupMessage = {
   userName: string;
   userAvatar: string;
   text: string;
+  imageUrl: string | null;
   createdAt: string;
 };
 

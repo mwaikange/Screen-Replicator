@@ -6,16 +6,44 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Pencil, Camera, Shield, Calendar, LogOut } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 import type { User } from "@shared/schema";
+import { useRef } from "react";
 
 export default function ProfilePage() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const { data: user, isLoading } = useQuery<User>({
     queryKey: ["/api/user"],
   });
+
+  const uploadAvatar = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("avatar", file);
+      const res = await fetch("/api/user/avatar", { method: "POST", body: formData });
+      if (!res.ok) throw new Error("Upload failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      toast({ title: "Profile picture updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update profile picture", variant: "destructive" });
+    },
+  });
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadAvatar.mutate(file);
+    e.target.value = "";
+  };
 
   if (isLoading) {
     return (
@@ -60,9 +88,19 @@ export default function ProfilePage() {
                     {displayUser.displayName?.charAt(0) || "U"}
                   </AvatarFallback>
                 </Avatar>
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={avatarInputRef}
+                  className="hidden"
+                  onChange={handleAvatarChange}
+                  data-testid="input-avatar-file"
+                />
                 <Button
                   size="icon"
                   className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={uploadAvatar.isPending}
                   data-testid="button-change-avatar"
                 >
                   <Camera className="w-3.5 h-3.5" />

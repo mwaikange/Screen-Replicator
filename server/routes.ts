@@ -194,6 +194,23 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/user/avatar", upload.single("avatar"), async (req, res) => {
+    try {
+      const userId = req.session.userId || "user-1";
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const avatarUrl = `/attached_assets/${file.filename}`;
+      const user = await storage.updateUserAvatar(userId, avatarUrl);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      res.status(500).json({ message: "Upload failed" });
+    }
+  });
+
   app.post("/api/upload", upload.array("files", 10), async (req, res) => {
     try {
       const files = req.files as Express.Multer.File[];
@@ -242,7 +259,11 @@ export async function registerRoutes(
 
   app.post("/api/groups/:id/messages", async (req, res) => {
     try {
-      const parsed = insertGroupMessageSchema.parse(req.body);
+      const body = { ...req.body };
+      if (!body.text || body.text.trim() === '') {
+        body.text = body.imageUrl ? '📷 Photo' : '';
+      }
+      const parsed = insertGroupMessageSchema.parse(body);
       const userId = req.session.userId || "user-1";
       const message = await storage.createGroupMessage(req.params.id, userId, parsed);
       res.status(201).json(message);

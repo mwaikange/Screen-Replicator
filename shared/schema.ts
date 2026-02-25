@@ -146,11 +146,13 @@ export type GroupMessage = {
   userName: string;
   userAvatar: string;
   text: string;
+  imageUrl: string | null;
   createdAt: string;
 };
 
 export const insertGroupMessageSchema = z.object({
   text: z.string().min(1).max(1000),
+  imageUrl: z.string().nullable().optional(),
 });
 
 export type InsertGroupMessage = z.infer<typeof insertGroupMessageSchema>;

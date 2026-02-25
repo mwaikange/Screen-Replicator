@@ -267,7 +267,7 @@ const sampleGroups: Group[] = [
     area: 'Gobabis',
     isPublic: true,
     memberCount: 4,
-    createdBy: 'user1',
+    createdBy: 'local-user',
   },
   {
     id: 'g2',
@@ -275,7 +275,7 @@ const sampleGroups: Group[] = [
     area: '067',
     isPublic: false,
     memberCount: 6,
-    createdBy: 'user2',
+    createdBy: 'local-user',
   },
   {
     id: 'g3',
@@ -307,10 +307,11 @@ const sampleGroupMessages: GroupMessage[] = [
   {
     id: 'gm1',
     groupId: 'g1',
-    userId: 'user1',
+    userId: 'local-user',
     userName: 'Ngobo D.',
     userAvatar: '',
     text: 'Welcome to Kudu watchers! Stay alert.',
+    imageUrl: null,
     createdAt: new Date(Date.now() - 7200000).toISOString(),
   },
   {
@@ -320,6 +321,7 @@ const sampleGroupMessages: GroupMessage[] = [
     userName: 'Cykes man',
     userAvatar: '',
     text: 'Spotted suspicious activity near the main road.',
+    imageUrl: null,
     createdAt: new Date(Date.now() - 3600000).toISOString(),
   },
   {
@@ -329,6 +331,7 @@ const sampleGroupMessages: GroupMessage[] = [
     userName: 'Dezzy',
     userAvatar: '',
     text: 'Thanks for the heads up, will keep watch.',
+    imageUrl: null,
     createdAt: new Date(Date.now() - 1800000).toISOString(),
   },
   {
@@ -338,24 +341,26 @@ const sampleGroupMessages: GroupMessage[] = [
     userName: 'Maria N.',
     userAvatar: '',
     text: 'Neighborhood watch meeting this Saturday.',
+    imageUrl: null,
     createdAt: new Date(Date.now() - 10800000).toISOString(),
   },
   {
     id: 'gm5',
     groupId: 'g3',
-    userId: 'user1',
+    userId: 'local-user',
     userName: 'Ngobo D.',
     userAvatar: '',
     text: 'Count me in!',
+    imageUrl: null,
     createdAt: new Date(Date.now() - 5400000).toISOString(),
   },
 ];
 
 const sampleGroupMembers: GroupMember[] = [
-  { id: 'gm-m1', groupId: 'g1', userId: 'user1', userName: 'Ngobo D.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 30).toISOString() },
+  { id: 'gm-m1', groupId: 'g1', userId: 'local-user', userName: 'Ngobo D.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 30).toISOString() },
   { id: 'gm-m2', groupId: 'g1', userId: 'user2', userName: 'Cykes man', userAvatar: '', role: 'member', joinedAt: new Date(Date.now() - 86400000 * 20).toISOString() },
   { id: 'gm-m3', groupId: 'g1', userId: 'user3', userName: 'Dezzy', userAvatar: '', role: 'member', joinedAt: new Date(Date.now() - 86400000 * 10).toISOString() },
-  { id: 'gm-m4', groupId: 'g2', userId: 'user2', userName: 'Cykes man', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 25).toISOString() },
+  { id: 'gm-m4', groupId: 'g2', userId: 'local-user', userName: 'Ngobo D.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 25).toISOString() },
   { id: 'gm-m5', groupId: 'g3', userId: 'user3', userName: 'Maria N.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 15).toISOString() },
   { id: 'gm-m6', groupId: 'g3', userId: 'user1', userName: 'Ngobo D.', userAvatar: '', role: 'member', joinedAt: new Date(Date.now() - 86400000 * 5).toISOString() },
   { id: 'gm-m7', groupId: 'g4', userId: 'user4', userName: 'John K.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 12).toISOString() },
@@ -506,14 +511,15 @@ export const groupsApi = {
   getMessages: (groupId: string) => {
     return makeResponse(sampleGroupMessages.filter(m => m.groupId === groupId));
   },
-  sendMessage: (groupId: string, text: string) => {
+  sendMessage: (groupId: string, text: string, imageUrl?: string | null) => {
     const msg: GroupMessage = {
       id: 'gm-' + Date.now(),
       groupId,
       userId: currentUser?.id || 'local-user',
       userName: currentUser?.displayName || 'Anonymous',
       userAvatar: '',
-      text,
+      text: text || (imageUrl ? '📷 Photo' : ''),
+      imageUrl: imageUrl || null,
       createdAt: new Date().toISOString(),
     };
     sampleGroupMessages.push(msg);
@@ -660,6 +666,12 @@ export const userApi = {
       town: 'Swakopmund',
     };
     return makeResponse(user);
+  },
+  updateAvatar: (avatarUrl: string) => {
+    if (currentUser) {
+      currentUser.avatarUrl = avatarUrl;
+    }
+    return makeResponse({ success: true, avatarUrl });
   },
 };
 
