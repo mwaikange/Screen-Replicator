@@ -48,8 +48,8 @@ export default function SignupScreen() {
       Alert.alert('Success', 'Account created successfully', [
         { text: 'OK', onPress: () => navigation.replace('Main') }
       ]);
-    } catch (error) {
-      Alert.alert('Signup Failed', 'Please try again');
+    } catch (error: any) {
+      Alert.alert('Signup Failed', error.message || 'Please try again');
     } finally {
       setLoading(false);
     }

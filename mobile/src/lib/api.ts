@@ -1,6 +1,7 @@
-import { User, Post, Group, Comment, TimelineEvent, GroupMessage, GroupMember, GroupJoinRequest } from './types';
+import { supabase, siteUrl } from './supabase';
+import { User, Post, Group, Comment, TimelineEvent, GroupMessage, GroupMember, GroupJoinRequest, Case, TrackedDevice, SupportRequest } from './types';
 
-let currentUser: User | null = null;
+let cachedUser: User | null = null;
 
 const post1Image = require('../../assets/post1.jpg');
 const post2Image = require('../../assets/post2.jpg');
@@ -14,390 +15,110 @@ export const postImages: Record<string, any> = {
   '4': post4Image,
 };
 
-const samplePosts: Post[] = [
-  {
-    id: '1',
-    userId: 'user1',
-    userName: 'Cykes man',
-    userAvatar: '',
-    userTown: 'Windhoek',
-    type: 'incident',
-    title: 'NEW GUN LAWS, SINCE POLICE STARTED KILLING DEFENCELESS',
-    description: 'Gun laws invoked amid unlawful police killings. The government has announced new measures to address the growing concerns about law enforcement practices.',
-    images: ['local:post1'],
-    radius: 5000,
-    createdAt: new Date(Date.now() - 300000).toISOString(),
-    verified: true,
-    likes: 142,
-    comments: 89,
-    shares: 56,
-    votes: { upvotes: 1, downvotes: 0, userVote: null },
-  },
-  {
-    id: '2',
-    userId: 'user2',
-    userName: 'Dezzy',
-    userAvatar: '',
-    userTown: 'Kamainjab',
-    type: 'alert',
-    title: 'MEASURES INTRODUCED TO MANAGE SOCIAL GRANT QUEUES',
-    description: 'New measures have been introduced to manage the long queues at social grant payment points. Officials are working to improve the distribution system.',
-    images: ['local:post2'],
-    radius: 300,
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    verified: true,
-    likes: 87,
-    comments: 45,
-    shares: 32,
-    votes: { upvotes: 3, downvotes: 1, userVote: null },
-  },
-  {
-    id: '3',
-    userId: 'user3',
-    userName: 'Maria N.',
-    userAvatar: '',
-    userTown: 'Swakopmund',
-    type: 'missing_person',
-    title: 'MISSING CHILD REPORT - URGENT',
-    description: 'Child is wearing a t-shirt and nappy only. No shoes so if seen please do contact the parents immediately. Last seen near the town center playground.',
-    images: ['local:post3'],
-    radius: 200,
-    createdAt: new Date(Date.now() - 3600000).toISOString(),
-    verified: true,
-    likes: 234,
-    comments: 156,
-    shares: 189,
-    votes: { upvotes: 12, downvotes: 0, userVote: null },
-  },
-  {
-    id: '4',
-    userId: 'user4',
-    userName: 'John K.',
-    userAvatar: '',
-    userTown: 'Walvis Bay',
-    type: 'gender_based_violence',
-    title: 'GBV AWARENESS CAMPAIGN LAUNCHED',
-    description: 'A new campaign against gender-based violence has been launched in the coastal town. Community leaders are calling for action and support for victims.',
-    images: ['local:post4'],
-    radius: 400,
-    createdAt: new Date(Date.now() - 172800000).toISOString(),
-    verified: false,
-    likes: 67,
-    comments: 23,
-    shares: 45,
-    votes: { upvotes: 5, downvotes: 2, userVote: null },
-  },
-  {
-    id: '5',
-    userId: 'user5',
-    userName: 'Priscilla T.',
-    userAvatar: '',
-    userTown: 'Oshakati',
-    type: 'theft',
-    title: 'VEHICLE THEFT REPORTED AT SHOPPING CENTER',
-    description: 'A white Toyota Hilux was stolen from the parking lot of the main shopping center. Security footage is being reviewed. Contact police if you have information.',
-    images: [],
-    radius: 500,
-    createdAt: new Date(Date.now() - 43200000).toISOString(),
-    verified: true,
-    likes: 98,
-    comments: 34,
-    shares: 67,
-    votes: { upvotes: 8, downvotes: 0, userVote: null },
-  },
-  {
-    id: '6',
-    userId: 'user6',
-    userName: 'David M.',
-    userAvatar: '',
-    userTown: 'Rundu',
-    type: 'suspicious_activity',
-    title: 'SUSPICIOUS VEHICLE CIRCLING RESIDENTIAL AREA',
-    description: 'A white van with no registration plates has been seen driving slowly through residential areas. Multiple residents have reported it circling the neighborhood.',
-    images: [],
-    radius: 300,
-    createdAt: new Date(Date.now() - 7200000).toISOString(),
-    verified: false,
-    likes: 45,
-    comments: 12,
-    shares: 28,
-    votes: { upvotes: 2, downvotes: 1, userVote: null },
-  },
-];
-
-const sampleComments: Record<string, Comment[]> = {
-  '1': [
-    {
-      id: 'c1',
-      postId: '1',
-      userId: 'user7',
-      userName: 'Ngobo D.',
-      userAvatar: '',
-      text: 'This is very concerning. We need more community awareness.',
-      createdAt: new Date(Date.now() - 300000).toISOString(),
-    },
-    {
-      id: 'c2',
-      postId: '1',
-      userId: 'user2',
-      userName: 'Dezzy',
-      userAvatar: '',
-      text: 'Stay safe everyone. Report any suspicious activity.',
-      createdAt: new Date(Date.now() - 2100000).toISOString(),
-    },
-    {
-      id: 'c3',
-      postId: '1',
-      userId: 'user8',
-      userName: 'Sarah L.',
-      userAvatar: '',
-      text: 'The community needs to come together on this issue. Our voices matter.',
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-  ],
-  '2': [
-    {
-      id: 'c4',
-      postId: '2',
-      userId: 'user3',
-      userName: 'Maria N.',
-      userAvatar: '',
-      text: 'Finally some action on this. The queues were unbearable.',
-      createdAt: new Date(Date.now() - 43200000).toISOString(),
-    },
-    {
-      id: 'c5',
-      postId: '2',
-      userId: 'user9',
-      userName: 'Peter V.',
-      userAvatar: '',
-      text: 'Hope this actually makes a difference for elderly people.',
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-  ],
-  '3': [
-    {
-      id: 'c6',
-      postId: '3',
-      userId: 'user1',
-      userName: 'Cykes man',
-      userAvatar: '',
-      text: 'Shared this with all my contacts. Praying for the safe return.',
-      createdAt: new Date(Date.now() - 1800000).toISOString(),
-    },
-    {
-      id: 'c7',
-      postId: '3',
-      userId: 'user10',
-      userName: 'Anna K.',
-      userAvatar: '',
-      text: 'Everyone please keep your eyes open and report any sightings.',
-      createdAt: new Date(Date.now() - 2400000).toISOString(),
-    },
-  ],
-};
-
-const sampleTimelines: Record<string, TimelineEvent[]> = {
-  '1': [
-    {
-      id: 't1',
-      postId: '1',
-      userId: 'user1',
-      userName: 'Cykes man',
-      type: 'post_created',
-      description: 'Incident report submitted',
-      createdAt: new Date(Date.now() - 300000).toISOString(),
-    },
-    {
-      id: 't2',
-      postId: '1',
-      userId: 'system',
-      userName: 'System',
-      type: 'verified',
-      description: 'Post verified by partner organization',
-      createdAt: new Date(Date.now() - 240000).toISOString(),
-    },
-    {
-      id: 't3',
-      postId: '1',
-      userId: 'user7',
-      userName: 'Ngobo D.',
-      type: 'comment',
-      description: 'Added a comment',
-      createdAt: new Date(Date.now() - 300000).toISOString(),
-    },
-  ],
-  '2': [
-    {
-      id: 't4',
-      postId: '2',
-      userId: 'user2',
-      userName: 'Dezzy',
-      type: 'post_created',
-      description: 'Alert report submitted',
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-  ],
-  '3': [
-    {
-      id: 't5',
-      postId: '3',
-      userId: 'user3',
-      userName: 'Maria N.',
-      type: 'post_created',
-      description: 'Missing person report submitted',
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-    {
-      id: 't6',
-      postId: '3',
-      userId: 'system',
-      userName: 'System',
-      type: 'verified',
-      description: 'Post verified and escalated to authorities',
-      createdAt: new Date(Date.now() - 3000000).toISOString(),
-    },
-  ],
-};
-
-const sampleGroups: Group[] = [
-  {
-    id: 'g1',
-    name: 'Kudu watchers',
-    area: 'Gobabis',
-    isPublic: true,
-    memberCount: 4,
-    createdBy: 'local-user',
-  },
-  {
-    id: 'g2',
-    name: 'Outjo herero location neighborhood watch',
-    area: '067',
-    isPublic: false,
-    memberCount: 6,
-    createdBy: 'local-user',
-  },
-  {
-    id: 'g3',
-    name: 'Windhoek Neighborhood Safety',
-    area: 'Windhoek West',
-    isPublic: true,
-    memberCount: 124,
-    createdBy: 'user3',
-  },
-  {
-    id: 'g4',
-    name: 'Walvis Bay Community Watch',
-    area: 'Walvis Bay',
-    isPublic: true,
-    memberCount: 67,
-    createdBy: 'user4',
-  },
-  {
-    id: 'g5',
-    name: 'Oshakati Alert Network',
-    area: 'Oshakati Town',
-    isPublic: false,
-    memberCount: 35,
-    createdBy: 'user5',
-  },
-];
-
-const sampleGroupMessages: GroupMessage[] = [
-  {
-    id: 'gm1',
-    groupId: 'g1',
-    userId: 'local-user',
-    userName: 'Ngobo D.',
-    userAvatar: '',
-    text: 'Welcome to Kudu watchers! Stay alert.',
-    imageUrl: null,
-    createdAt: new Date(Date.now() - 7200000).toISOString(),
-  },
-  {
-    id: 'gm2',
-    groupId: 'g1',
-    userId: 'user2',
-    userName: 'Cykes man',
-    userAvatar: '',
-    text: 'Spotted suspicious activity near the main road.',
-    imageUrl: null,
-    createdAt: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: 'gm3',
-    groupId: 'g1',
-    userId: 'user3',
-    userName: 'Dezzy',
-    userAvatar: '',
-    text: 'Thanks for the heads up, will keep watch.',
-    imageUrl: null,
-    createdAt: new Date(Date.now() - 1800000).toISOString(),
-  },
-  {
-    id: 'gm4',
-    groupId: 'g3',
-    userId: 'user3',
-    userName: 'Maria N.',
-    userAvatar: '',
-    text: 'Neighborhood watch meeting this Saturday.',
-    imageUrl: null,
-    createdAt: new Date(Date.now() - 10800000).toISOString(),
-  },
-  {
-    id: 'gm5',
-    groupId: 'g3',
-    userId: 'local-user',
-    userName: 'Ngobo D.',
-    userAvatar: '',
-    text: 'Count me in!',
-    imageUrl: null,
-    createdAt: new Date(Date.now() - 5400000).toISOString(),
-  },
-];
-
-const sampleGroupMembers: GroupMember[] = [
-  { id: 'gm-m1', groupId: 'g1', userId: 'local-user', userName: 'Ngobo D.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 30).toISOString() },
-  { id: 'gm-m2', groupId: 'g1', userId: 'user2', userName: 'Cykes man', userAvatar: '', role: 'member', joinedAt: new Date(Date.now() - 86400000 * 20).toISOString() },
-  { id: 'gm-m3', groupId: 'g1', userId: 'user3', userName: 'Dezzy', userAvatar: '', role: 'member', joinedAt: new Date(Date.now() - 86400000 * 10).toISOString() },
-  { id: 'gm-m4', groupId: 'g2', userId: 'local-user', userName: 'Ngobo D.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 25).toISOString() },
-  { id: 'gm-m5', groupId: 'g3', userId: 'user3', userName: 'Maria N.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 15).toISOString() },
-  { id: 'gm-m6', groupId: 'g3', userId: 'user1', userName: 'Ngobo D.', userAvatar: '', role: 'member', joinedAt: new Date(Date.now() - 86400000 * 5).toISOString() },
-  { id: 'gm-m7', groupId: 'g4', userId: 'user4', userName: 'John K.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 12).toISOString() },
-  { id: 'gm-m8', groupId: 'g5', userId: 'user5', userName: 'Priscilla T.', userAvatar: '', role: 'creator', joinedAt: new Date(Date.now() - 86400000 * 8).toISOString() },
-];
-
-const sampleGroupJoinRequests: GroupJoinRequest[] = [];
-
-const localPosts = [...samplePosts];
-const localComments: Record<string, Comment[]> = { ...sampleComments };
-
 function makeResponse<T>(data: T) {
-  return Promise.resolve({ data });
+  return { data };
+}
+
+async function getCurrentUserId(): Promise<string | null> {
+  const { data } = await supabase.auth.getUser();
+  return data?.user?.id || null;
+}
+
+async function getAuthToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data?.session?.access_token || null;
+}
+
+async function uploadMedia(uri: string): Promise<string | null> {
+  try {
+    const token = await getAuthToken();
+    if (!token) return null;
+
+    const filename = uri.split('/').pop() || 'upload.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+    const formData = new FormData();
+    formData.append('file', {
+      uri,
+      name: filename,
+      type,
+    } as any);
+
+    const uploadUrl = siteUrl || process.env.EXPO_PUBLIC_SITE_URL || '';
+    const response = await fetch(`${uploadUrl}/api/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      return result.url || result.publicUrl || null;
+    }
+    return null;
+  } catch (error) {
+    console.error('Upload failed:', error);
+    return null;
+  }
 }
 
 export const authApi = {
-  login: (email: string, _password: string) => {
-    const displayName = email.split('@')[0];
-    currentUser = {
-      id: 'local-user-' + Date.now(),
-      email,
-      displayName,
-      phone: '+27781669885',
-      avatarUrl: '',
-      level: 3,
-      trustScore: 72,
-      followers: 15,
-      following: 28,
-      subscriptionType: 'Individual 1 Month',
-      subscriptionExpiry: '2/21/2026',
-      town: 'Swakopmund',
+  login: async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message);
+
+    const userId = data.user.id;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    const { data: subscription } = await supabase
+      .from('user_subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('expires_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const user: User = {
+      id: userId,
+      email: data.user.email || email,
+      displayName: profile?.display_name || data.user.user_metadata?.display_name || email.split('@')[0],
+      phone: profile?.phone || data.user.phone || '',
+      avatarUrl: profile?.avatar_url || '',
+      level: profile?.level || 0,
+      trustScore: profile?.trust_score || 0,
+      followers: profile?.followers_count || 0,
+      following: profile?.following_count || 0,
+      subscriptionType: subscription?.plan_name || 'Free',
+      subscriptionExpiry: subscription?.expires_at ? new Date(subscription.expires_at).toLocaleDateString() : '',
+      town: profile?.town || '',
     };
-    return makeResponse({ ...currentUser, token: 'mock-token-' + Date.now() });
+
+    cachedUser = user;
+    return makeResponse({ ...user, token: data.session.access_token });
   },
-  signup: (email: string, _password: string, displayName?: string) => {
-    currentUser = {
-      id: 'local-user-' + Date.now(),
+
+  signup: async (email: string, password: string, displayName?: string) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { display_name: displayName || email.split('@')[0] },
+      },
+    });
+    if (error) throw new Error(error.message);
+
+    const userId = data.user?.id || '';
+    const user: User = {
+      id: userId,
       email,
       displayName: displayName || email.split('@')[0],
       phone: '',
@@ -410,268 +131,1049 @@ export const authApi = {
       subscriptionExpiry: '',
       town: '',
     };
-    return makeResponse({ ...currentUser, token: 'mock-token-' + Date.now() });
+
+    cachedUser = user;
+    return makeResponse({ ...user, token: data.session?.access_token || '' });
+  },
+
+  signOut: async () => {
+    await supabase.auth.signOut();
+    cachedUser = null;
+    return makeResponse({ success: true });
   },
 };
 
 export const postsApi = {
-  getAll: (_filter?: string) => {
-    return makeResponse(localPosts);
-  },
-  getById: (id: string) => {
-    const post = localPosts.find(p => p.id === id);
-    return makeResponse(post || null);
-  },
-  getComments: (postId: string) => {
-    return makeResponse(localComments[postId] || []);
-  },
-  getTimeline: (postId: string) => {
-    return makeResponse(sampleTimelines[postId] || []);
-  },
-  addComment: (postId: string, text: string) => {
-    const comment: Comment = {
-      id: 'c-' + Date.now(),
-      postId,
-      userId: currentUser?.id || 'local-user',
-      userName: currentUser?.displayName || 'Anonymous',
-      userAvatar: '',
-      text,
-      createdAt: new Date().toISOString(),
-    };
-    if (!localComments[postId]) localComments[postId] = [];
-    localComments[postId].unshift(comment);
+  getAll: async (filter?: string) => {
+    let query = supabase
+      .from('incidents')
+      .select(`
+        id, user_id, title, description, type, images, radius,
+        latitude, longitude, geohash, verified, created_at,
+        profiles!incidents_user_id_fkey(display_name, avatar_url, town)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(50);
 
-    const post = localPosts.find(p => p.id === postId);
-    if (post) post.comments += 1;
-
-    return makeResponse(comment);
-  },
-  vote: (postId: string, vote: 'up' | 'down') => {
-    const post = localPosts.find(p => p.id === postId);
-    if (post && post.votes) {
-      if (vote === 'up') {
-        if (post.votes.userVote === 'up') {
-          post.votes.upvotes -= 1;
-          post.votes.userVote = null;
-        } else {
-          if (post.votes.userVote === 'down') post.votes.downvotes -= 1;
-          post.votes.upvotes += 1;
-          post.votes.userVote = 'up';
-        }
-      } else {
-        if (post.votes.userVote === 'down') {
-          post.votes.downvotes -= 1;
-          post.votes.userVote = null;
-        } else {
-          if (post.votes.userVote === 'up') post.votes.upvotes -= 1;
-          post.votes.downvotes += 1;
-          post.votes.userVote = 'down';
-        }
-      }
+    if (filter === 'Verified') {
+      query = query.eq('verified', true);
     }
-    return makeResponse(post);
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('Error fetching posts:', error);
+      return makeResponse([]);
+    }
+
+    const userId = await getCurrentUserId();
+
+    const posts: Post[] = (data || []).map((item: any) => {
+      const profile = item.profiles || {};
+      return {
+        id: item.id,
+        userId: item.user_id,
+        userName: profile.display_name || 'Anonymous',
+        userAvatar: profile.avatar_url || '',
+        userTown: profile.town || '',
+        type: item.type || 'alert',
+        title: item.title || '',
+        description: item.description || '',
+        images: item.images || [],
+        radius: item.radius || 200,
+        createdAt: item.created_at,
+        verified: item.verified || false,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        latitude: item.latitude,
+        longitude: item.longitude,
+      };
+    });
+
+    if (posts.length > 0) {
+      const postIds = posts.map(p => p.id);
+
+      const { data: likeCounts } = await supabase
+        .from('incident_likes')
+        .select('incident_id')
+        .in('incident_id', postIds);
+
+      const { data: commentCounts } = await supabase
+        .from('incident_comments')
+        .select('incident_id')
+        .in('incident_id', postIds);
+
+      const { data: votesData } = await supabase
+        .from('incident_votes')
+        .select('incident_id, vote_type, user_id')
+        .in('incident_id', postIds);
+
+      const likeMap: Record<string, number> = {};
+      (likeCounts || []).forEach((l: any) => {
+        likeMap[l.incident_id] = (likeMap[l.incident_id] || 0) + 1;
+      });
+
+      const commentMap: Record<string, number> = {};
+      (commentCounts || []).forEach((c: any) => {
+        commentMap[c.incident_id] = (commentMap[c.incident_id] || 0) + 1;
+      });
+
+      const voteMap: Record<string, { up: number; down: number; userVote: 'up' | 'down' | null }> = {};
+      (votesData || []).forEach((v: any) => {
+        if (!voteMap[v.incident_id]) voteMap[v.incident_id] = { up: 0, down: 0, userVote: null };
+        if (v.vote_type === 'up') voteMap[v.incident_id].up += 1;
+        else voteMap[v.incident_id].down += 1;
+        if (v.user_id === userId) voteMap[v.incident_id].userVote = v.vote_type;
+      });
+
+      posts.forEach(p => {
+        p.likes = likeMap[p.id] || 0;
+        p.comments = commentMap[p.id] || 0;
+        const v = voteMap[p.id];
+        if (v) p.votes = { upvotes: v.up, downvotes: v.down, userVote: v.userVote };
+      });
+    }
+
+    return makeResponse(posts);
   },
-  like: (postId: string) => {
-    const post = localPosts.find(p => p.id === postId);
-    if (post) post.likes += 1;
-    return makeResponse(post);
-  },
-  create: (data: any) => {
-    const newPost: Post = {
-      id: 'post-' + Date.now(),
-      userId: currentUser?.id || 'local-user',
-      userName: currentUser?.displayName || 'Anonymous',
-      userAvatar: '',
-      userTown: data.town || currentUser?.town || 'Unknown',
+
+  getById: async (id: string) => {
+    const { data, error } = await supabase
+      .from('incidents')
+      .select(`
+        id, user_id, title, description, type, images, radius,
+        latitude, longitude, geohash, verified, created_at,
+        profiles!incidents_user_id_fkey(display_name, avatar_url, town)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error || !data) return makeResponse(null);
+
+    const userId = await getCurrentUserId();
+    const profile = (data as any).profiles || {};
+
+    const { count: likeCount } = await supabase
+      .from('incident_likes')
+      .select('*', { count: 'exact', head: true })
+      .eq('incident_id', id);
+
+    const { count: commentCount } = await supabase
+      .from('incident_comments')
+      .select('*', { count: 'exact', head: true })
+      .eq('incident_id', id);
+
+    const { data: votesData } = await supabase
+      .from('incident_votes')
+      .select('vote_type, user_id')
+      .eq('incident_id', id);
+
+    let upvotes = 0, downvotes = 0;
+    let userVote: 'up' | 'down' | null = null;
+    (votesData || []).forEach((v: any) => {
+      if (v.vote_type === 'up') upvotes++;
+      else downvotes++;
+      if (v.user_id === userId) userVote = v.vote_type;
+    });
+
+    const post: Post = {
+      id: data.id,
+      userId: data.user_id,
+      userName: profile.display_name || 'Anonymous',
+      userAvatar: profile.avatar_url || '',
+      userTown: profile.town || '',
       type: data.type || 'alert',
-      title: data.title || 'Untitled Report',
+      title: data.title || '',
       description: data.description || '',
       images: data.images || [],
       radius: data.radius || 200,
-      createdAt: new Date().toISOString(),
+      createdAt: data.created_at,
+      verified: data.verified || false,
+      likes: likeCount || 0,
+      comments: commentCount || 0,
+      shares: 0,
+      votes: { upvotes, downvotes, userVote },
+      latitude: data.latitude,
+      longitude: data.longitude,
+    };
+
+    return makeResponse(post);
+  },
+
+  getComments: async (postId: string) => {
+    const { data, error } = await supabase
+      .from('incident_comments')
+      .select(`
+        id, incident_id, user_id, content, image_url, created_at,
+        profiles!incident_comments_user_id_fkey(display_name, avatar_url)
+      `)
+      .eq('incident_id', postId)
+      .order('created_at', { ascending: false });
+
+    if (error) return makeResponse([]);
+
+    const comments: Comment[] = (data || []).map((c: any) => ({
+      id: c.id,
+      postId: c.incident_id,
+      userId: c.user_id,
+      userName: c.profiles?.display_name || 'Anonymous',
+      userAvatar: c.profiles?.avatar_url || '',
+      text: c.content || '',
+      imageUrl: c.image_url,
+      createdAt: c.created_at,
+    }));
+
+    return makeResponse(comments);
+  },
+
+  getTimeline: async (postId: string) => {
+    const { data, error } = await supabase
+      .from('incident_timeline')
+      .select(`
+        id, incident_id, user_id, event_type, description, created_at,
+        profiles!incident_timeline_user_id_fkey(display_name)
+      `)
+      .eq('incident_id', postId)
+      .order('created_at', { ascending: true });
+
+    if (error) return makeResponse([]);
+
+    const timeline: TimelineEvent[] = (data || []).map((t: any) => ({
+      id: t.id,
+      postId: t.incident_id,
+      userId: t.user_id,
+      userName: t.profiles?.display_name || 'System',
+      type: t.event_type || 'update',
+      description: t.description || '',
+      createdAt: t.created_at,
+    }));
+
+    return makeResponse(timeline);
+  },
+
+  addComment: async (postId: string, text: string) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('incident_comments')
+      .insert({
+        incident_id: postId,
+        user_id: userId,
+        content: text,
+      })
+      .select(`
+        id, incident_id, user_id, content, image_url, created_at,
+        profiles!incident_comments_user_id_fkey(display_name, avatar_url)
+      `)
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    const profile = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
+    const comment: Comment = {
+      id: data.id,
+      postId: data.incident_id,
+      userId: data.user_id,
+      userName: profile?.display_name || 'Anonymous',
+      userAvatar: profile?.avatar_url || '',
+      text: data.content || '',
+      createdAt: data.created_at,
+    };
+
+    return makeResponse(comment);
+  },
+
+  vote: async (postId: string, vote: 'up' | 'down') => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    const { data: existing } = await supabase
+      .from('incident_votes')
+      .select('id, vote_type')
+      .eq('incident_id', postId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existing) {
+      if (existing.vote_type === vote) {
+        await supabase.from('incident_votes').delete().eq('id', existing.id);
+      } else {
+        await supabase.from('incident_votes').update({ vote_type: vote }).eq('id', existing.id);
+      }
+    } else {
+      await supabase.from('incident_votes').insert({
+        incident_id: postId,
+        user_id: userId,
+        vote_type: vote,
+      });
+    }
+
+    return postsApi.getById(postId);
+  },
+
+  like: async (postId: string) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    const { data: existing } = await supabase
+      .from('incident_likes')
+      .select('id')
+      .eq('incident_id', postId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase.from('incident_likes').delete().eq('id', existing.id);
+    } else {
+      await supabase.from('incident_likes').insert({
+        incident_id: postId,
+        user_id: userId,
+      });
+    }
+
+    return postsApi.getById(postId);
+  },
+
+  create: async (data: any) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    let imageUrls: string[] = [];
+    if (data.images && data.images.length > 0) {
+      for (const img of data.images) {
+        if (img.startsWith('file://') || img.startsWith('content://')) {
+          const url = await uploadMedia(img);
+          if (url) imageUrls.push(url);
+        } else {
+          imageUrls.push(img);
+        }
+      }
+    }
+
+    let geohash = null;
+    if (data.latitude && data.longitude) {
+      try {
+        const ngeohash = require('ngeohash');
+        geohash = ngeohash.encode(data.latitude, data.longitude, 7);
+      } catch {}
+    }
+
+    const { data: newIncident, error } = await supabase
+      .from('incidents')
+      .insert({
+        user_id: userId,
+        title: data.title || 'Untitled Report',
+        description: data.description || '',
+        type: data.type || 'alert',
+        images: imageUrls,
+        radius: data.radius || 200,
+        latitude: data.latitude || null,
+        longitude: data.longitude || null,
+        geohash,
+      })
+      .select(`
+        id, user_id, title, description, type, images, radius,
+        latitude, longitude, verified, created_at,
+        profiles!incidents_user_id_fkey(display_name, avatar_url, town)
+      `)
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    const profile = (newIncident as any).profiles || {};
+    const post: Post = {
+      id: newIncident.id,
+      userId: newIncident.user_id,
+      userName: profile.display_name || 'Anonymous',
+      userAvatar: profile.avatar_url || '',
+      userTown: profile.town || data.town || '',
+      type: newIncident.type || 'alert',
+      title: newIncident.title || '',
+      description: newIncident.description || '',
+      images: newIncident.images || [],
+      radius: newIncident.radius || 200,
+      createdAt: newIncident.created_at,
       verified: false,
       likes: 0,
       comments: 0,
       shares: 0,
       votes: { upvotes: 0, downvotes: 0, userVote: null },
     };
-    localPosts.unshift(newPost);
-    return makeResponse(newPost);
+
+    return makeResponse(post);
   },
 };
 
 export const groupsApi = {
-  getAll: () => {
-    return makeResponse(sampleGroups);
+  getAll: async () => {
+    const { data, error } = await supabase
+      .from('groups')
+      .select('id, name, area, is_public, member_count, created_by')
+      .order('created_at', { ascending: false });
+
+    if (error) return makeResponse([]);
+
+    const groups: Group[] = (data || []).map((g: any) => ({
+      id: g.id,
+      name: g.name,
+      area: g.area || '',
+      isPublic: g.is_public ?? true,
+      memberCount: g.member_count || 0,
+      createdBy: g.created_by,
+    }));
+
+    return makeResponse(groups);
   },
-  getById: (id: string) => {
-    const group = sampleGroups.find(g => g.id === id);
-    return makeResponse(group || null);
+
+  getById: async (id: string) => {
+    const { data, error } = await supabase
+      .from('groups')
+      .select('id, name, area, is_public, member_count, created_by')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) return makeResponse(null);
+
+    return makeResponse({
+      id: data.id,
+      name: data.name,
+      area: data.area || '',
+      isPublic: data.is_public ?? true,
+      memberCount: data.member_count || 0,
+      createdBy: data.created_by,
+    } as Group);
   },
-  getMessages: (groupId: string) => {
-    return makeResponse(sampleGroupMessages.filter(m => m.groupId === groupId));
+
+  getMessages: async (groupId: string) => {
+    const { data, error } = await supabase
+      .from('group_messages')
+      .select(`
+        id, group_id, user_id, content, image_url, created_at,
+        profiles!group_messages_user_id_fkey(display_name, avatar_url)
+      `)
+      .eq('group_id', groupId)
+      .order('created_at', { ascending: true });
+
+    if (error) return makeResponse([]);
+
+    const messages: GroupMessage[] = (data || []).map((m: any) => ({
+      id: m.id,
+      groupId: m.group_id,
+      userId: m.user_id,
+      userName: m.profiles?.display_name || 'Anonymous',
+      userAvatar: m.profiles?.avatar_url || '',
+      text: m.content || '',
+      imageUrl: m.image_url || null,
+      createdAt: m.created_at,
+    }));
+
+    return makeResponse(messages);
   },
-  sendMessage: (groupId: string, text: string, imageUrl?: string | null) => {
+
+  sendMessage: async (groupId: string, text: string, imageUrl?: string | null) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    let finalImageUrl = imageUrl || null;
+    if (finalImageUrl && (finalImageUrl.startsWith('file://') || finalImageUrl.startsWith('content://'))) {
+      finalImageUrl = await uploadMedia(finalImageUrl);
+    }
+
+    const { data, error } = await supabase
+      .from('group_messages')
+      .insert({
+        group_id: groupId,
+        user_id: userId,
+        content: text || (finalImageUrl ? '📷 Photo' : ''),
+        image_url: finalImageUrl,
+      })
+      .select(`
+        id, group_id, user_id, content, image_url, created_at,
+        profiles!group_messages_user_id_fkey(display_name, avatar_url)
+      `)
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    const msgProfile = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
     const msg: GroupMessage = {
-      id: 'gm-' + Date.now(),
-      groupId,
-      userId: currentUser?.id || 'local-user',
-      userName: currentUser?.displayName || 'Anonymous',
-      userAvatar: '',
-      text: text || (imageUrl ? '📷 Photo' : ''),
-      imageUrl: imageUrl || null,
-      createdAt: new Date().toISOString(),
+      id: data.id,
+      groupId: data.group_id,
+      userId: data.user_id,
+      userName: msgProfile?.display_name || 'Anonymous',
+      userAvatar: msgProfile?.avatar_url || '',
+      text: data.content || '',
+      imageUrl: data.image_url || null,
+      createdAt: data.created_at,
     };
-    sampleGroupMessages.push(msg);
+
     return makeResponse(msg);
   },
-  getMembers: (groupId: string) => {
-    return makeResponse(sampleGroupMembers.filter(m => m.groupId === groupId));
+
+  getMembers: async (groupId: string) => {
+    const { data, error } = await supabase
+      .from('group_members')
+      .select(`
+        id, group_id, user_id, role, joined_at,
+        profiles!group_members_user_id_fkey(display_name, avatar_url)
+      `)
+      .eq('group_id', groupId)
+      .order('joined_at', { ascending: true });
+
+    if (error) return makeResponse([]);
+
+    const members: GroupMember[] = (data || []).map((m: any) => ({
+      id: m.id,
+      groupId: m.group_id,
+      userId: m.user_id,
+      userName: m.profiles?.display_name || 'Anonymous',
+      userAvatar: m.profiles?.avatar_url || '',
+      role: m.role || 'member',
+      joinedAt: m.joined_at,
+    }));
+
+    return makeResponse(members);
   },
-  join: (groupId: string) => {
-    const group = sampleGroups.find(g => g.id === groupId);
-    if (!group) return makeResponse({ joined: false, status: 'not_found' });
-    const userId = currentUser?.id || 'local-user';
-    const existing = sampleGroupMembers.find(m => m.groupId === groupId && m.userId === userId);
-    if (existing) return makeResponse({ joined: true, status: 'already_member' });
-    if (group.isPublic) {
-      const member: GroupMember = {
-        id: 'gm-m-' + Date.now(),
-        groupId,
-        userId,
-        userName: currentUser?.displayName || 'Anonymous',
-        userAvatar: '',
-        role: 'member',
-        joinedAt: new Date().toISOString(),
-      };
-      sampleGroupMembers.push(member);
-      group.memberCount += 1;
-      return makeResponse({ joined: true, status: 'joined' });
+
+  join: async (groupId: string) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    try {
+      const { data, error } = await supabase.rpc('request_join_group', {
+        p_group_id: groupId,
+        p_user_id: userId,
+      });
+
+      if (error) throw error;
+
+      const status = data?.status || data;
+      if (status === 'joined' || status === 'already_member') {
+        return makeResponse({ joined: true, status });
+      }
+      return makeResponse({ joined: false, status: status || 'requested' });
+    } catch (err: any) {
+      const { data: group } = await supabase.from('groups').select('is_public').eq('id', groupId).single();
+      if (group?.is_public) {
+        const { error: insertErr } = await supabase.from('group_members').insert({
+          group_id: groupId,
+          user_id: userId,
+          role: 'member',
+        });
+        if (!insertErr) {
+          try { await supabase.rpc('increment_group_member_count', { p_group_id: groupId }); } catch {}
+          return makeResponse({ joined: true, status: 'joined' });
+        }
+      } else {
+        const { error: reqErr } = await supabase.from('group_join_requests').insert({
+          group_id: groupId,
+          user_id: userId,
+          status: 'pending',
+        });
+        if (!reqErr) return makeResponse({ joined: false, status: 'requested' });
+      }
+      return makeResponse({ joined: false, status: 'error' });
     }
-    const existingRequest = sampleGroupJoinRequests.find(r => r.groupId === groupId && r.userId === userId && r.status === 'pending');
-    if (!existingRequest) {
-      const request: GroupJoinRequest = {
-        id: 'gjr-' + Date.now(),
-        groupId,
-        userId,
-        userName: currentUser?.displayName || 'Anonymous',
-        userAvatar: '',
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
-      sampleGroupJoinRequests.push(request);
-    }
-    return makeResponse({ joined: false, status: 'requested' });
   },
-  leave: (groupId: string) => {
-    const userId = currentUser?.id || 'local-user';
-    const idx = sampleGroupMembers.findIndex(m => m.groupId === groupId && m.userId === userId);
-    if (idx !== -1) {
-      sampleGroupMembers.splice(idx, 1);
-      const group = sampleGroups.find(g => g.id === groupId);
-      if (group) group.memberCount = Math.max(0, group.memberCount - 1);
+
+  leave: async (groupId: string) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    await supabase.from('group_members').delete().eq('group_id', groupId).eq('user_id', userId);
+    return makeResponse({ success: true });
+  },
+
+  update: async (groupId: string, data: { name?: string; area?: string; isPublic?: boolean }) => {
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.area !== undefined) updateData.area = data.area;
+    if (data.isPublic !== undefined) updateData.is_public = data.isPublic;
+
+    const { data: updated, error } = await supabase
+      .from('groups')
+      .update(updateData)
+      .eq('id', groupId)
+      .select('id, name, area, is_public, member_count, created_by')
+      .single();
+
+    if (error) return makeResponse(null);
+
+    return makeResponse({
+      id: updated.id,
+      name: updated.name,
+      area: updated.area || '',
+      isPublic: updated.is_public ?? true,
+      memberCount: updated.member_count || 0,
+      createdBy: updated.created_by,
+    } as Group);
+  },
+
+  deleteGroup: async (groupId: string) => {
+    await supabase.from('groups').delete().eq('id', groupId);
+    return makeResponse({ success: true });
+  },
+
+  removeMember: async (groupId: string, userId: string) => {
+    await supabase.from('group_members').delete().eq('group_id', groupId).eq('user_id', userId);
+    return makeResponse({ success: true });
+  },
+
+  getJoinRequests: async (groupId: string) => {
+    const { data, error } = await supabase
+      .from('group_join_requests')
+      .select(`
+        id, group_id, user_id, status, created_at,
+        profiles!group_join_requests_user_id_fkey(display_name, avatar_url)
+      `)
+      .eq('group_id', groupId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) return makeResponse([]);
+
+    const requests: GroupJoinRequest[] = (data || []).map((r: any) => ({
+      id: r.id,
+      groupId: r.group_id,
+      userId: r.user_id,
+      userName: r.profiles?.display_name || 'Anonymous',
+      userAvatar: r.profiles?.avatar_url || '',
+      status: r.status,
+      createdAt: r.created_at,
+    }));
+
+    return makeResponse(requests);
+  },
+
+  approveRequest: async (groupId: string, requestId: string) => {
+    try {
+      const { error } = await supabase.rpc('approve_group_request', {
+        p_request_id: requestId,
+        p_group_id: groupId,
+      });
+      if (error) throw error;
+    } catch {
+      await supabase.from('group_join_requests').update({ status: 'approved' }).eq('id', requestId);
+      const { data: req } = await supabase.from('group_join_requests').select('user_id').eq('id', requestId).single();
+      if (req) {
+        await supabase.from('group_members').insert({
+          group_id: groupId,
+          user_id: req.user_id,
+          role: 'member',
+        });
+      }
     }
     return makeResponse({ success: true });
   },
-  update: (groupId: string, data: { name?: string; area?: string; isPublic?: boolean }) => {
-    const group = sampleGroups.find(g => g.id === groupId);
-    if (group) {
-      if (data.name !== undefined) group.name = data.name;
-      if (data.area !== undefined) group.area = data.area;
-      if (data.isPublic !== undefined) group.isPublic = data.isPublic;
-    }
-    return makeResponse(group || null);
-  },
-  deleteGroup: (groupId: string) => {
-    const idx = sampleGroups.findIndex(g => g.id === groupId);
-    if (idx !== -1) sampleGroups.splice(idx, 1);
+
+  denyRequest: async (groupId: string, requestId: string) => {
+    await supabase.from('group_join_requests').update({ status: 'denied' }).eq('id', requestId);
     return makeResponse({ success: true });
   },
-  removeMember: (groupId: string, userId: string) => {
-    const idx = sampleGroupMembers.findIndex(m => m.groupId === groupId && m.userId === userId);
-    if (idx !== -1) {
-      sampleGroupMembers.splice(idx, 1);
-      const group = sampleGroups.find(g => g.id === groupId);
-      if (group) group.memberCount = Math.max(0, group.memberCount - 1);
-    }
-    return makeResponse({ success: true });
-  },
-  getJoinRequests: (groupId: string) => {
-    return makeResponse(sampleGroupJoinRequests.filter(r => r.groupId === groupId && r.status === 'pending'));
-  },
-  approveRequest: (groupId: string, requestId: string) => {
-    const request = sampleGroupJoinRequests.find(r => r.id === requestId && r.groupId === groupId);
-    if (request) {
-      request.status = 'approved';
-      const member: GroupMember = {
-        id: 'gm-m-' + Date.now(),
-        groupId,
-        userId: request.userId,
-        userName: request.userName,
-        userAvatar: request.userAvatar,
-        role: 'member',
-        joinedAt: new Date().toISOString(),
-      };
-      sampleGroupMembers.push(member);
-      const group = sampleGroups.find(g => g.id === groupId);
-      if (group) group.memberCount += 1;
-    }
-    return makeResponse({ success: true });
-  },
-  denyRequest: (groupId: string, requestId: string) => {
-    const request = sampleGroupJoinRequests.find(r => r.id === requestId && r.groupId === groupId);
-    if (request) {
-      request.status = 'denied';
-    }
-    return makeResponse({ success: true });
-  },
-  create: (data: any) => {
-    const newGroup: Group = {
-      id: 'group-' + Date.now(),
-      name: data.name || 'New Group',
-      area: data.area || 'Unknown Area',
-      isPublic: data.isPublic ?? true,
-      memberCount: 1,
-      createdBy: currentUser?.id || 'local-user',
-    };
-    sampleGroups.push(newGroup);
-    const creatorMember: GroupMember = {
-      id: 'gm-m-' + Date.now(),
-      groupId: newGroup.id,
-      userId: currentUser?.id || 'local-user',
-      userName: currentUser?.displayName || 'Anonymous',
-      userAvatar: '',
+
+  create: async (data: any) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    try {
+      const { data: result, error } = await supabase.rpc('create_group_with_creator', {
+        p_name: data.name || 'New Group',
+        p_area: data.area || '',
+        p_is_public: data.isPublic ?? true,
+        p_user_id: userId,
+      });
+
+      if (error) throw error;
+
+      const groupId = result?.id || result;
+
+      const { data: group } = await supabase
+        .from('groups')
+        .select('id, name, area, is_public, member_count, created_by')
+        .eq('id', groupId)
+        .single();
+
+      if (group) {
+        return makeResponse({
+          id: group.id,
+          name: group.name,
+          area: group.area || '',
+          isPublic: group.is_public ?? true,
+          memberCount: group.member_count || 1,
+          createdBy: group.created_by,
+        } as Group);
+      }
+    } catch {}
+
+    const { data: newGroup, error } = await supabase
+      .from('groups')
+      .insert({
+        name: data.name || 'New Group',
+        area: data.area || '',
+        is_public: data.isPublic ?? true,
+        created_by: userId,
+        member_count: 1,
+      })
+      .select('id, name, area, is_public, member_count, created_by')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    await supabase.from('group_members').insert({
+      group_id: newGroup.id,
+      user_id: userId,
       role: 'creator',
-      joinedAt: new Date().toISOString(),
-    };
-    sampleGroupMembers.push(creatorMember);
-    return makeResponse(newGroup);
+    });
+
+    return makeResponse({
+      id: newGroup.id,
+      name: newGroup.name,
+      area: newGroup.area || '',
+      isPublic: newGroup.is_public ?? true,
+      memberCount: 1,
+      createdBy: userId,
+    } as Group);
   },
 };
 
 export const userApi = {
-  getProfile: () => {
-    const user = currentUser || {
-      id: 'default-user',
-      email: 'ngocbo@yopmail.com',
-      displayName: 'Ngobo D.',
-      phone: '+27781669885',
-      avatarUrl: '',
-      level: 3,
-      trustScore: 72,
-      followers: 15,
-      following: 28,
-      subscriptionType: 'Individual 1 Month',
-      subscriptionExpiry: '2/21/2026',
-      town: 'Swakopmund',
+  getProfile: async () => {
+    if (cachedUser) return makeResponse(cachedUser);
+
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return makeResponse({
+        id: '',
+        email: '',
+        displayName: 'Guest',
+        phone: '',
+        avatarUrl: '',
+        level: 0,
+        trustScore: 0,
+        followers: 0,
+        following: 0,
+        subscriptionType: 'Free',
+        subscriptionExpiry: '',
+        town: '',
+      } as User);
+    }
+
+    const { data: authUser } = await supabase.auth.getUser();
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    const { data: subscription } = await supabase
+      .from('user_subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('expires_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const user: User = {
+      id: userId,
+      email: authUser?.user?.email || '',
+      displayName: profile?.display_name || authUser?.user?.user_metadata?.display_name || '',
+      phone: profile?.phone || '',
+      avatarUrl: profile?.avatar_url || '',
+      level: profile?.level || 0,
+      trustScore: profile?.trust_score || 0,
+      followers: profile?.followers_count || 0,
+      following: profile?.following_count || 0,
+      subscriptionType: subscription?.plan_name || 'Free',
+      subscriptionExpiry: subscription?.expires_at ? new Date(subscription.expires_at).toLocaleDateString() : '',
+      town: profile?.town || '',
     };
+
+    cachedUser = user;
     return makeResponse(user);
   },
-  updateAvatar: (avatarUrl: string) => {
-    if (currentUser) {
-      currentUser.avatarUrl = avatarUrl;
+
+  updateAvatar: async (avatarUri: string) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    let avatarUrl = avatarUri;
+    if (avatarUri.startsWith('file://') || avatarUri.startsWith('content://')) {
+      const uploaded = await uploadMedia(avatarUri);
+      if (uploaded) avatarUrl = uploaded;
     }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ avatar_url: avatarUrl })
+      .eq('id', userId);
+
+    if (error) throw new Error(error.message);
+
+    if (cachedUser) cachedUser.avatarUrl = avatarUrl;
     return makeResponse({ success: true, avatarUrl });
+  },
+};
+
+export const casesApi = {
+  getAll: async () => {
+    const userId = await getCurrentUserId();
+    if (!userId) return makeResponse([]);
+
+    const { data, error } = await supabase
+      .from('cases')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) return makeResponse([]);
+
+    const cases: Case[] = (data || []).map((c: any) => ({
+      id: c.id,
+      userId: c.user_id,
+      title: c.title || '',
+      description: c.description || '',
+      status: c.status || 'open',
+      caseType: c.case_type || 'general',
+      priority: c.priority || 'medium',
+      evidence: c.evidence || [],
+      documents: c.documents || [],
+      assignedTo: c.assigned_to || null,
+      createdAt: c.created_at,
+      updatedAt: c.updated_at || c.created_at,
+    }));
+
+    return makeResponse(cases);
+  },
+
+  getById: async (id: string) => {
+    const { data, error } = await supabase
+      .from('cases')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) return makeResponse(null);
+
+    const caseItem: Case = {
+      id: data.id,
+      userId: data.user_id,
+      title: data.title || '',
+      description: data.description || '',
+      status: data.status || 'open',
+      caseType: data.case_type || 'general',
+      priority: data.priority || 'medium',
+      evidence: data.evidence || [],
+      documents: data.documents || [],
+      assignedTo: data.assigned_to || null,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at || data.created_at,
+    };
+
+    return makeResponse(caseItem);
+  },
+
+  create: async (caseData: any) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    let evidence: any[] = [];
+    if (caseData.images && caseData.images.length > 0) {
+      for (const img of caseData.images) {
+        let url = img;
+        if (img.startsWith('file://') || img.startsWith('content://')) {
+          const uploaded = await uploadMedia(img);
+          if (uploaded) url = uploaded;
+        }
+        evidence.push({
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          type: 'image',
+          url,
+          description: '',
+          addedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('cases')
+      .insert({
+        user_id: userId,
+        title: caseData.title || 'Untitled Case',
+        description: caseData.description || '',
+        status: 'open',
+        case_type: caseData.caseType || 'general',
+        priority: caseData.priority || 'medium',
+        evidence,
+        documents: [],
+      })
+      .select('*')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    return makeResponse({
+      id: data.id,
+      userId: data.user_id,
+      title: data.title,
+      description: data.description,
+      status: data.status,
+      caseType: data.case_type,
+      priority: data.priority,
+      evidence: data.evidence || [],
+      documents: data.documents || [],
+      assignedTo: data.assigned_to || null,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at || data.created_at,
+    } as Case);
+  },
+
+  update: async (id: string, updateData: any) => {
+    const dbData: any = { updated_at: new Date().toISOString() };
+    if (updateData.title !== undefined) dbData.title = updateData.title;
+    if (updateData.description !== undefined) dbData.description = updateData.description;
+    if (updateData.status !== undefined) dbData.status = updateData.status;
+    if (updateData.priority !== undefined) dbData.priority = updateData.priority;
+    if (updateData.evidence !== undefined) dbData.evidence = updateData.evidence;
+    if (updateData.documents !== undefined) dbData.documents = updateData.documents;
+
+    const { data, error } = await supabase
+      .from('cases')
+      .update(dbData)
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (error) throw new Error(error.message);
+    return makeResponse(data);
+  },
+};
+
+export const devicesApi = {
+  getAll: async () => {
+    const userId = await getCurrentUserId();
+    if (!userId) return makeResponse([]);
+
+    const { data, error } = await supabase
+      .from('tracked_devices')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) return makeResponse([]);
+
+    const devices: TrackedDevice[] = (data || []).map((d: any) => ({
+      id: d.id,
+      userId: d.user_id,
+      deviceName: d.device_name || '',
+      deviceType: d.device_type || 'phone',
+      imei: d.imei || '',
+      status: d.status || 'active',
+      lastKnownLocation: d.last_known_location || null,
+      lastSeen: d.last_seen || null,
+      createdAt: d.created_at,
+    }));
+
+    return makeResponse(devices);
+  },
+
+  register: async (deviceData: any) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('tracked_devices')
+      .insert({
+        user_id: userId,
+        device_name: deviceData.deviceName,
+        device_type: deviceData.deviceType || 'phone',
+        imei: deviceData.imei || '',
+        status: 'active',
+      })
+      .select('*')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    return makeResponse({
+      id: data.id,
+      userId: data.user_id,
+      deviceName: data.device_name,
+      deviceType: data.device_type,
+      imei: data.imei,
+      status: data.status,
+      lastKnownLocation: data.last_known_location || null,
+      lastSeen: data.last_seen || null,
+      createdAt: data.created_at,
+    } as TrackedDevice);
+  },
+
+  updateStatus: async (id: string, status: string) => {
+    const { error } = await supabase
+      .from('tracked_devices')
+      .update({ status })
+      .eq('id', id);
+
+    if (error) throw new Error(error.message);
+    return makeResponse({ success: true });
+  },
+};
+
+export const supportApi = {
+  getAll: async () => {
+    const userId = await getCurrentUserId();
+    if (!userId) return makeResponse([]);
+
+    const { data, error } = await supabase
+      .from('support_requests')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) return makeResponse([]);
+
+    const requests: SupportRequest[] = (data || []).map((r: any) => ({
+      id: r.id,
+      userId: r.user_id,
+      type: r.type || 'counseling',
+      status: r.status || 'pending',
+      description: r.description || '',
+      contactMethod: r.contact_method || 'phone',
+      createdAt: r.created_at,
+    }));
+
+    return makeResponse(requests);
+  },
+
+  create: async (requestData: any) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('support_requests')
+      .insert({
+        user_id: userId,
+        type: requestData.type || 'counseling',
+        description: requestData.description || '',
+        contact_method: requestData.contactMethod || 'phone',
+        status: 'pending',
+      })
+      .select('*')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    return makeResponse({
+      id: data.id,
+      userId: data.user_id,
+      type: data.type,
+      status: data.status,
+      description: data.description,
+      contactMethod: data.contact_method,
+      createdAt: data.created_at,
+    } as SupportRequest);
   },
 };
 

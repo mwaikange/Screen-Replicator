@@ -4,7 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { memo, useCallback } from 'react';
 
@@ -19,35 +19,16 @@ import IncidentDetailsScreen from './src/screens/IncidentDetailsScreen';
 import SubscribeScreen from './src/screens/SubscribeScreen';
 import GroupChatScreen from './src/screens/GroupChatScreen';
 import CreateGroupScreen from './src/screens/CreateGroupScreen';
+import CaseDeckScreen from './src/screens/CaseDeckScreen';
+import OpenNewCaseScreen from './src/screens/OpenNewCaseScreen';
+import CaseDetailScreen from './src/screens/CaseDetailScreen';
+import DeviceTrackingScreen from './src/screens/DeviceTrackingScreen';
+import CounselingScreen from './src/screens/CounselingScreen';
 import { colors } from './src/lib/theme';
 import { RootStackParamList, MainTabParamList } from './src/lib/types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
-
-const FilesScreen = memo(function FilesScreen() {
-  return (
-    <View style={styles.disabledScreen}>
-      <Ionicons name="briefcase-outline" size={48} color={colors.mutedForeground} />
-      <Text style={styles.disabledText}>Files Coming Soon</Text>
-    </View>
-  );
-});
-
-const DisabledTabButton = memo(function DisabledTabButton() {
-  return (
-    <TouchableOpacity 
-      style={styles.disabledTab}
-      disabled={true}
-      accessibilityLabel="Files tab - coming soon"
-      accessibilityState={{ disabled: true }}
-      accessibilityRole="tab"
-    >
-      <Ionicons name="briefcase-outline" size={22} color={colors.mutedForeground} style={{ opacity: 0.4 }} />
-      <Text style={[styles.tabLabelText, { color: colors.mutedForeground, opacity: 0.4 }]}>Files</Text>
-    </TouchableOpacity>
-  );
-});
 
 function MainTabs() {
   const renderHomeIcon = useCallback(({ color, size }: { color: string; size: number }) => (
@@ -60,6 +41,10 @@ function MainTabs() {
 
   const renderReportIcon = useCallback(({ focused }: { focused: boolean }) => (
     <Ionicons name="add" size={24} color={focused ? colors.primary : colors.primary} />
+  ), []);
+
+  const renderCaseDeckIcon = useCallback(({ color, size }: { color: string; size: number }) => (
+    <Ionicons name="briefcase-outline" size={size} color={color} />
   ), []);
 
   const renderGroupsIcon = useCallback(({ color, size }: { color: string; size: number }) => (
@@ -111,11 +96,12 @@ function MainTabs() {
         }}
       />
       <Tab.Screen 
-        name="Files" 
-        component={FilesScreen}
+        name="CaseDeck" 
+        component={CaseDeckScreen}
         options={{
-          tabBarButton: () => <DisabledTabButton />,
-          tabBarAccessibilityLabel: 'Files tab - coming soon',
+          tabBarIcon: renderCaseDeckIcon,
+          tabBarLabel: 'Files',
+          tabBarAccessibilityLabel: 'My File Deck tab',
         }}
       />
       <Tab.Screen 
@@ -177,6 +163,26 @@ export default function App() {
             component={CreateGroupScreen}
             options={{ animation: 'slide_from_right' }}
           />
+          <Stack.Screen 
+            name="CaseDetail" 
+            component={CaseDetailScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen 
+            name="OpenNewCase" 
+            component={OpenNewCaseScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen 
+            name="DeviceTracking" 
+            component={DeviceTrackingScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen 
+            name="Counseling" 
+            component={CounselingScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
@@ -206,28 +212,5 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '500',
     marginTop: 2,
-  },
-  tabLabelText: {
-    fontSize: 10,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  disabledTab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-    paddingTop: 2,
-  },
-  disabledScreen: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background,
-  },
-  disabledText: {
-    color: colors.mutedForeground,
-    marginTop: 16,
-    fontSize: 16,
   },
 });
