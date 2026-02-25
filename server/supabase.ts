@@ -9,4 +9,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+export function getAuthClient(accessToken: string) {
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+}
+
 console.log("Server Supabase URL:", supabaseUrl ? supabaseUrl.substring(0, 30) + "..." : "UNDEFINED");
