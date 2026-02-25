@@ -125,11 +125,13 @@ React Native Expo app integrated with Supabase backend (https://app.ngumus-eye.s
 **Image Picker**: All image selection on mobile uses `expo-image-picker` (Google Play Store compliant) - used in ReportScreen, GroupChatScreen, ProfileScreen, and OpenNewCaseScreen.
 
 ### Supabase Integration
+- **Config**: `app.config.js` passes env vars via `expo.extra`; `supabase.ts` reads via `expo-constants` (`Constants.expoConfig.extra`)
 - **Auth**: signInWithPassword / signUp with expo-secure-store for session persistence
-- **Database tables**: profiles, incidents, incident_comments, incident_likes, incident_votes, incident_timeline, groups, group_members, group_messages, group_join_requests, user_subscriptions, cases, tracked_devices, support_requests
+- **Database tables**: profiles, incidents, incident_types, incident_media, incident_comments, incident_likes, incident_votes, incident_timeline, groups, group_members, group_messages, group_join_requests, user_subscriptions, cases, tracked_devices, support_requests
+- **Incidents schema**: `id, type_id, title, description, town, lat, lng, status, verification_level, created_at, created_by` with FK to `incident_types(id, code, label, severity)`, `profiles:created_by(...)`, and related `incident_media(id, path, mime)`
 - **RPCs**: create_group_with_creator, request_join_group, approve_group_request
 - **File uploads**: POST to https://app.ngumus-eye.site/api/upload with Bearer token
-- **Environment secrets**: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY, EXPO_PUBLIC_SITE_URL
+- **Environment secrets**: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY, EXPO_PUBLIC_SITE_URL (passed through app.config.js extra)
 
 #### Building the Mobile App
 ```bash

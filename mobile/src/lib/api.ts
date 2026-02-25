@@ -3,17 +3,7 @@ import { User, Post, Group, Comment, TimelineEvent, GroupMessage, GroupMember, G
 
 let cachedUser: User | null = null;
 
-const post1Image = require('../../assets/post1.jpg');
-const post2Image = require('../../assets/post2.jpg');
-const post3Image = require('../../assets/post3.jpg');
-const post4Image = require('../../assets/post4.jpg');
-
-export const postImages: Record<string, any> = {
-  '1': post1Image,
-  '2': post2Image,
-  '3': post3Image,
-  '4': post4Image,
-};
+export const postImages: Record<string, any> = {};
 
 function makeResponse<T>(data: T) {
   return { data };
@@ -148,15 +138,17 @@ export const postsApi = {
     let query = supabase
       .from('incidents')
       .select(`
-        id, user_id, title, description, type, images, radius,
-        latitude, longitude, geohash, verified, created_at,
-        profiles!incidents_user_id_fkey(display_name, avatar_url, town)
+        id, type_id, title, description, town, lat, lng,
+        status, verification_level, created_at, created_by,
+        incident_types(id, code, label, severity),
+        profiles:created_by(id, display_name, avatar_url, trust_score),
+        incident_media(id, path, mime)
       `)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .range(0, 49);
 
     if (filter === 'Verified') {
-      query = query.eq('verified', true);
+      query = query.gte('verification_level', 1);
     }
 
     const { data, error } = await query;
@@ -165,28 +157,33 @@ export const postsApi = {
       return makeResponse([]);
     }
 
+    console.log('Feed data count:', data?.length);
+
     const userId = await getCurrentUserId();
 
     const posts: Post[] = (data || []).map((item: any) => {
-      const profile = item.profiles || {};
+      const profile = Array.isArray(item.profiles) ? item.profiles[0] : item.profiles;
+      const incidentType = Array.isArray(item.incident_types) ? item.incident_types[0] : item.incident_types;
+      const media = item.incident_media || [];
+      const images = media.map((m: any) => m.path).filter(Boolean);
       return {
         id: item.id,
-        userId: item.user_id,
-        userName: profile.display_name || 'Anonymous',
-        userAvatar: profile.avatar_url || '',
-        userTown: profile.town || '',
-        type: item.type || 'alert',
+        userId: item.created_by,
+        userName: profile?.display_name || 'Anonymous',
+        userAvatar: profile?.avatar_url || '',
+        userTown: item.town || '',
+        type: incidentType?.code || incidentType?.label || 'alert',
         title: item.title || '',
         description: item.description || '',
-        images: item.images || [],
-        radius: item.radius || 200,
+        images,
+        radius: 200,
         createdAt: item.created_at,
-        verified: item.verified || false,
+        verified: (item.verification_level || 0) > 0,
         likes: 0,
         comments: 0,
         shares: 0,
-        latitude: item.latitude,
-        longitude: item.longitude,
+        latitude: item.lat,
+        longitude: item.lng,
       };
     });
 
@@ -241,9 +238,11 @@ export const postsApi = {
     const { data, error } = await supabase
       .from('incidents')
       .select(`
-        id, user_id, title, description, type, images, radius,
-        latitude, longitude, geohash, verified, created_at,
-        profiles!incidents_user_id_fkey(display_name, avatar_url, town)
+        id, type_id, title, description, town, lat, lng,
+        status, verification_level, created_at, created_by,
+        incident_types(id, code, label, severity),
+        profiles:created_by(id, display_name, avatar_url, trust_score),
+        incident_media(id, path, mime)
       `)
       .eq('id', id)
       .single();
@@ -251,7 +250,10 @@ export const postsApi = {
     if (error || !data) return makeResponse(null);
 
     const userId = await getCurrentUserId();
-    const profile = (data as any).profiles || {};
+    const profile = Array.isArray((data as any).profiles) ? (data as any).profiles[0] : (data as any).profiles;
+    const incidentType = Array.isArray((data as any).incident_types) ? (data as any).incident_types[0] : (data as any).incident_types;
+    const media = (data as any).incident_media || [];
+    const images = media.map((m: any) => m.path).filter(Boolean);
 
     const { count: likeCount } = await supabase
       .from('incident_likes')
@@ -278,23 +280,23 @@ export const postsApi = {
 
     const post: Post = {
       id: data.id,
-      userId: data.user_id,
-      userName: profile.display_name || 'Anonymous',
-      userAvatar: profile.avatar_url || '',
-      userTown: profile.town || '',
-      type: data.type || 'alert',
+      userId: data.created_by,
+      userName: profile?.display_name || 'Anonymous',
+      userAvatar: profile?.avatar_url || '',
+      userTown: data.town || '',
+      type: incidentType?.code || incidentType?.label || 'alert',
       title: data.title || '',
       description: data.description || '',
-      images: data.images || [],
-      radius: data.radius || 200,
+      images,
+      radius: 200,
       createdAt: data.created_at,
-      verified: data.verified || false,
+      verified: (data.verification_level || 0) > 0,
       likes: likeCount || 0,
       comments: commentCount || 0,
       shares: 0,
       votes: { upvotes, downvotes, userVote },
-      latitude: data.latitude,
-      longitude: data.longitude,
+      latitude: data.lat,
+      longitude: data.lng,
     };
 
     return makeResponse(post);
@@ -462,43 +464,58 @@ export const postsApi = {
     const { data: newIncident, error } = await supabase
       .from('incidents')
       .insert({
-        user_id: userId,
+        created_by: userId,
         title: data.title || 'Untitled Report',
         description: data.description || '',
-        type: data.type || 'alert',
-        images: imageUrls,
-        radius: data.radius || 200,
-        latitude: data.latitude || null,
-        longitude: data.longitude || null,
+        type_id: data.type_id || null,
+        town: data.town || '',
+        lat: data.latitude || null,
+        lng: data.longitude || null,
         geohash,
+        status: 'open',
       })
       .select(`
-        id, user_id, title, description, type, images, radius,
-        latitude, longitude, verified, created_at,
-        profiles!incidents_user_id_fkey(display_name, avatar_url, town)
+        id, type_id, title, description, town, lat, lng,
+        status, verification_level, created_at, created_by,
+        incident_types(id, code, label, severity),
+        profiles:created_by(id, display_name, avatar_url, trust_score)
       `)
       .single();
 
     if (error) throw new Error(error.message);
 
-    const profile = (newIncident as any).profiles || {};
+    const profile = Array.isArray((newIncident as any).profiles) ? (newIncident as any).profiles[0] : (newIncident as any).profiles;
+    const incidentType = Array.isArray((newIncident as any).incident_types) ? (newIncident as any).incident_types[0] : (newIncident as any).incident_types;
+
+    if (imageUrls.length > 0) {
+      for (const url of imageUrls) {
+        await supabase.from('incident_media').insert({
+          incident_id: newIncident.id,
+          path: url,
+          mime: 'image/jpeg',
+        });
+      }
+    }
+
     const post: Post = {
       id: newIncident.id,
-      userId: newIncident.user_id,
-      userName: profile.display_name || 'Anonymous',
-      userAvatar: profile.avatar_url || '',
-      userTown: profile.town || data.town || '',
-      type: newIncident.type || 'alert',
+      userId: newIncident.created_by,
+      userName: profile?.display_name || 'Anonymous',
+      userAvatar: profile?.avatar_url || '',
+      userTown: newIncident.town || data.town || '',
+      type: incidentType?.code || incidentType?.label || 'alert',
       title: newIncident.title || '',
       description: newIncident.description || '',
-      images: newIncident.images || [],
-      radius: newIncident.radius || 200,
+      images: imageUrls,
+      radius: 200,
       createdAt: newIncident.created_at,
       verified: false,
       likes: 0,
       comments: 0,
       shares: 0,
       votes: { upvotes: 0, downvotes: 0, userVote: null },
+      latitude: newIncident.lat,
+      longitude: newIncident.lng,
     };
 
     return makeResponse(post);
