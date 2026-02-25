@@ -1,0 +1,95 @@
+Exactly right. Give this to the Replit dev:
+
+---
+
+**Paste this to your Replit dev:**
+
+---
+
+The app is running on mock/sample data because Supabase is not actually connected. Fix this completely — do not patch around it.
+
+**Step 1 — Verify env vars are actually reaching Expo at runtime**
+
+In `mobile/app.config.js` (or `app.json`), confirm the Supabase secrets are explicitly passed through like this:
+
+```javascript
+export default {
+  expo: {
+    extra: {
+      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
+      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+    }
+  }
+}
+```
+
+Then in `mobile/src/lib/supabase.ts`, read them like this:
+
+```javascript
+import Constants from 'expo-constants'
+
+const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl
+const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey
+```
+
+Add a console log right here — `console.log("SUPABASE URL:", supabaseUrl)` — and confirm it logs a real URL and not `undefined`. If it logs `undefined`, the entire app has been running with no Supabase connection at all, which explains everything.
+
+**Step 2 — Audit every function in api.ts**
+
+Go through `mobile/src/lib/api.ts` function by function. For any function that still returns a hardcoded array, sample object, or placeholder data instead of a real Supabase query — rewrite it. Every single function must hit Supabase. There should be zero hardcoded data anywhere in this file.
+
+**Step 3 — Fix login so errors block navigation**
+
+In the login function, the pattern must be exactly this — no exceptions:
+
+```javascript
+const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+if (error) throw new Error(error.message)
+return data
+```
+
+In LoginScreen, the catch block must prevent navigation:
+
+```javascript
+try {
+  await login(email, password)
+  navigation.navigate('Feed')  // only reached if no error
+} catch (err) {
+  setError(err.message)  // show error, do NOT navigate
+}
+```
+
+**Step 4 — Fix the feed to load real data**
+
+The incidents/feed query must be:
+
+```javascript
+const { data, error } = await supabase
+  .from("incidents")
+  .select(`
+    id, type_id, title, description, town, lat, lng,
+    status, verification_level, created_at, created_by,
+    incident_types(id, code, label, severity),
+    profiles:created_by(id, display_name, avatar_url, trust_score),
+    incident_media(id, path, mime)
+  `)
+  .order("created_at", { ascending: false })
+  .range(0, 19)
+
+if (error) throw new Error(error.message)
+return data
+```
+
+No filters on `user_id` — the feed is public to all authenticated users.
+
+**Step 5 — Confirm with logs before finishing**
+
+Before submitting your summary, add these temporary logs and confirm each one prints a real value in the console:
+
+```javascript
+console.log("Supabase URL:", supabaseUrl)           // must not be undefined
+console.log("Login error:", error)                   // must show real error on bad creds
+console.log("Feed data count:", data?.length)        // must show real number > 0
+```
+
+Only remove the logs once all three confirm real data is flowing. Give me a one-line result for each of the 5 steps.
