@@ -1,8 +1,6 @@
 import { supabase, siteUrl } from './supabase';
 import { User, Post, Group, Comment, TimelineEvent, GroupMessage, GroupMember, GroupJoinRequest, Case, TrackedDevice, SupportRequest } from './types';
 
-let cachedUser: User | null = null;
-
 export const postImages: Record<string, any> = {};
 
 function makeResponse<T>(data: T) {
@@ -92,7 +90,7 @@ export const authApi = {
       town: profile?.town || '',
     };
 
-    cachedUser = user;
+    console.log('Login success, token:', data.session.access_token.substring(0, 20) + '...');
     return makeResponse({ ...user, token: data.session.access_token });
   },
 
@@ -105,30 +103,13 @@ export const authApi = {
       },
     });
     if (error) throw new Error(error.message);
+    if (!data.user) throw new Error('Signup failed: no user returned');
 
-    const userId = data.user?.id || '';
-    const user: User = {
-      id: userId,
-      email,
-      displayName: displayName || email.split('@')[0],
-      phone: '',
-      avatarUrl: '',
-      level: 0,
-      trustScore: 0,
-      followers: 0,
-      following: 0,
-      subscriptionType: 'Free',
-      subscriptionExpiry: '',
-      town: '',
-    };
-
-    cachedUser = user;
-    return makeResponse({ ...user, token: data.session?.access_token || '' });
+    return makeResponse({ token: data.session?.access_token || '' });
   },
 
   signOut: async () => {
     await supabase.auth.signOut();
-    cachedUser = null;
     return makeResponse({ success: true });
   },
 };
@@ -153,11 +134,14 @@ export const postsApi = {
 
     const { data, error } = await query;
     if (error) {
-      console.error('Error fetching posts:', error);
-      return makeResponse([]);
+      console.error('Error fetching posts:', error.message, error.details);
+      throw new Error('Failed to load feed: ' + error.message);
     }
 
     console.log('Feed data count:', data?.length);
+    if (data && data.length > 0) {
+      console.log('First post:', JSON.stringify({ id: data[0].id, title: data[0].title, created_by: data[0].created_by }));
+    }
 
     const userId = await getCurrentUserId();
 
@@ -856,33 +840,20 @@ export const groupsApi = {
 
 export const userApi = {
   getProfile: async () => {
-    if (cachedUser) return makeResponse(cachedUser);
-
     const userId = await getCurrentUserId();
-    if (!userId) {
-      return makeResponse({
-        id: '',
-        email: '',
-        displayName: 'Guest',
-        phone: '',
-        avatarUrl: '',
-        level: 0,
-        trustScore: 0,
-        followers: 0,
-        following: 0,
-        subscriptionType: 'Free',
-        subscriptionExpiry: '',
-        town: '',
-      } as User);
-    }
+    if (!userId) throw new Error('Not authenticated');
 
     const { data: authUser } = await supabase.auth.getUser();
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
+
+    if (profileError) {
+      console.error('Profile fetch error:', profileError);
+    }
 
     const { data: subscription } = await supabase
       .from('user_subscriptions')
@@ -908,7 +879,7 @@ export const userApi = {
       town: profile?.town || '',
     };
 
-    cachedUser = user;
+    console.log('Profile fetched from API:', JSON.stringify({ id: user.id, name: user.displayName, email: user.email }));
     return makeResponse(user);
   },
 
@@ -929,7 +900,6 @@ export const userApi = {
 
     if (error) throw new Error(error.message);
 
-    if (cachedUser) cachedUser.avatarUrl = avatarUrl;
     return makeResponse({ success: true, avatarUrl });
   },
 };

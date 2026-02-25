@@ -58,19 +58,21 @@ export default function ProfileScreen() {
   };
 
   const displayUser = user || {
-    displayName: 'Ngobo D.',
-    email: 'ngocbo@yopmail.com',
-    phone: '+27781669885',
+    displayName: '',
+    email: '',
+    phone: '',
     avatarUrl: '',
     level: 0,
     trustScore: 0,
     followers: 0,
     following: 0,
-    subscriptionType: 'Individual 1 Month',
-    subscriptionExpiry: '2/21/2026',
+    subscriptionType: 'Free',
+    subscriptionExpiry: '',
   };
 
-  const daysRemaining = 26;
+  const daysRemaining = displayUser.subscriptionExpiry
+    ? Math.max(0, Math.ceil((new Date(displayUser.subscriptionExpiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
