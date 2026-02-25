@@ -36,6 +36,8 @@ export type Post = {
   comments: number;
   shares: number;
   votes?: PostVotes;
+  latitude?: number;
+  longitude?: number;
 };
 
 export type Comment = {
@@ -99,6 +101,59 @@ export type GroupJoinRequest = {
   createdAt: string;
 };
 
+export type Case = {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  status: 'open' | 'in_progress' | 'closed' | 'archived';
+  caseType: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  evidence: CaseEvidence[];
+  documents: CaseDocument[];
+  assignedTo: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CaseEvidence = {
+  id: string;
+  type: 'image' | 'video' | 'audio' | 'document';
+  url: string;
+  description: string;
+  addedAt: string;
+};
+
+export type CaseDocument = {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  addedAt: string;
+};
+
+export type TrackedDevice = {
+  id: string;
+  userId: string;
+  deviceName: string;
+  deviceType: string;
+  imei: string;
+  status: 'active' | 'lost' | 'stolen' | 'recovered';
+  lastKnownLocation: { lat: number; lng: number } | null;
+  lastSeen: string | null;
+  createdAt: string;
+};
+
+export type SupportRequest = {
+  id: string;
+  userId: string;
+  type: 'counseling' | 'legal' | 'medical' | 'emergency';
+  status: 'pending' | 'in_progress' | 'completed';
+  description: string;
+  contactMethod: string;
+  createdAt: string;
+};
+
 export type RootStackParamList = {
   Login: undefined;
   Signup: undefined;
@@ -107,13 +162,17 @@ export type RootStackParamList = {
   Subscribe: undefined;
   GroupChat: { groupId: string };
   CreateGroup: undefined;
+  CaseDetail: { caseId: string };
+  OpenNewCase: undefined;
+  DeviceTracking: undefined;
+  Counseling: undefined;
 };
 
 export type MainTabParamList = {
   Feed: undefined;
   Map: undefined;
   Report: undefined;
-  Files: undefined;
+  CaseDeck: undefined;
   Groups: undefined;
   Profile: undefined;
 };

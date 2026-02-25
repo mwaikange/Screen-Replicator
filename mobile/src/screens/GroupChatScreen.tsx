@@ -19,6 +19,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing } from '../lib/theme';
 import { groupsApi } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { Group, GroupMessage, GroupMember, GroupJoinRequest } from '../lib/types';
 
 const appLogo = require('../../assets/logo.jpg');
@@ -70,7 +71,8 @@ export default function GroupChatScreen() {
     setMessages(messagesRes.data);
     setMembers(membersRes.data);
 
-    const currentUserId = 'local-user';
+    const { data: authData } = await supabase.auth.getUser();
+    const currentUserId = authData?.user?.id || '';
     const memberEntry = membersRes.data.find((m: GroupMember) => m.userId === currentUserId);
     setIsMember(!!memberEntry);
     setUserRole(memberEntry?.role || null);

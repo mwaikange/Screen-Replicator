@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, fontSize } from '../lib/theme';
-import { userApi } from '../lib/api';
+import { userApi, authApi } from '../lib/api';
 import { User } from '../lib/types';
 
 const appLogo = require('../../assets/logo.jpg');
@@ -159,7 +159,7 @@ export default function ProfileScreen() {
             <TouchableOpacity style={styles.outlineButton} onPress={() => navigation.navigate('Subscribe')}>
               <Text style={styles.outlineButtonText}>Renew / Upgrade</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryButton}>
+            <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('Main', { screen: 'CaseDeck' } as any)}>
               <Text style={styles.primaryButtonText}>My Case Deck</Text>
             </TouchableOpacity>
           </View>
@@ -171,7 +171,10 @@ export default function ProfileScreen() {
             onPress={() => {
               Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
                 { text: 'Cancel', style: 'cancel' },
-                { text: 'Sign Out', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Login' }] }) },
+                { text: 'Sign Out', onPress: async () => {
+                  try { await authApi.signOut(); } catch {}
+                  navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+                }},
               ]);
             }}
           >

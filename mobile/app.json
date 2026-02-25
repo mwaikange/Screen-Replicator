@@ -55,7 +55,8 @@
           "photosPermission": "Allow Ngumu's Eye to access your photos to upload incident images.",
           "cameraPermission": "Allow Ngumu's Eye to access your camera to capture incident photos."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "apiUrl": "https://YOUR_REPLIT_URL",

@@ -1,7 +1,7 @@
 # Ngumu's Eye - Community Safety Platform
 
 ## Overview
-A mobile-first community safety platform for reporting incidents, tracking missing persons, and coordinating neighborhood watch groups. Built with React frontend, Express backend, and a separate React Native mobile app.
+A mobile-first community safety platform for reporting incidents, tracking missing persons, and coordinating neighborhood watch groups. Built with React frontend, Express backend, and a separate React Native mobile app integrated with Supabase backend.
 
 ## Project Structure
 
@@ -31,7 +31,7 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 - `schema.ts` - TypeScript types and Zod schemas for data validation (User, Post, Group, Comment, TimelineEvent, PostVotes, GroupMessage with imageUrl, GroupMember, GroupJoinRequest)
 
 ## Features
-- **Authentication**: Email/password login and signup
+- **Authentication**: Email/password login and signup via Supabase Auth
 - **Feed**: View community posts with filters (All, Nearby, Verified, Following), ad cards (Mwaikange) after every 2 posts, alternating with Ngumu's Eye ads
 - **Map**: Visual incident map with clickable markers from posts, blue dot for current location, popup with View Details navigating to post detail
 - **Report**: 3-step form for reporting incidents with image upload (expo-image-picker on mobile)
@@ -44,8 +44,22 @@ A mobile-first community safety platform for reporting incidents, tracking missi
   - Public groups: instant join
   - Private groups: request-to-join with approval flow
   - Leave group option for non-creator members
-  - Logged-in user is creator of 2 groups (Kudu watchers, Katutura/Outjo) for settings access
-- **Profile**: View user info, trust score, subscription status, profile picture upload (camera button), Renew/Upgrade navigates to /subscribe
+- **Case Deck (My File Deck)**: Full case management system:
+  - View all user cases with status/priority filters
+  - Open new cases with type selection, priority, evidence upload
+  - Case detail with description, evidence, documents tabs
+  - Status management (open, in_progress, closed, archived)
+  - Quick links to Device Tracking and Counseling
+- **Device Tracking**: Register and track devices (phone, tablet, laptop)
+  - Report lost/stolen status
+  - Mark as recovered
+  - IMEI tracking support
+- **Counseling & Support**: Access support services
+  - Emergency hotline with direct call/WhatsApp
+  - Support types: Emergency, Counseling, Legal Aid, Medical
+  - Preferred contact method selection
+  - Confidential request submission
+- **Profile**: View user info, trust score, subscription status, profile picture upload (camera button), Renew/Upgrade navigates to /subscribe, My Case Deck button
 - **Subscribe**: Subscription plans page with 12 plans across 3 categories (Individual: 1/3/6/12 months, Family: 1/3/6/12 months, Tourist: 5/10/14/30 days), active subscription banner at top, Pay Now buttons redirect to WhatsApp with pre-filled message including plan name and price, WhatsApp contact card at bottom
 
 ## API Endpoints
@@ -82,26 +96,40 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 - Password: password123
 
 ### Mobile App (mobile/)
-React Native Expo app - fully offline with mock data replicating the web app exactly.
+React Native Expo app integrated with Supabase backend (https://app.ngumus-eye.site).
 
-- **App.tsx** - Main navigation setup with bottom tabs + stack screens (IncidentDetails, Subscribe, GroupChat, CreateGroup)
+- **App.tsx** - Main navigation setup with bottom tabs (Feed, Map, Report, Files/CaseDeck, Groups, Profile) + stack screens (IncidentDetails, Subscribe, GroupChat, CreateGroup, CaseDetail, OpenNewCase, DeviceTracking, Counseling)
+- **src/lib/supabase.ts** - Supabase client with expo-secure-store for auth token persistence
+- **src/lib/api.ts** - Full Supabase API layer (auth, posts/incidents, groups, cases, devices, support)
+- **src/lib/types.ts** - Types including Case, TrackedDevice, SupportRequest, CaseEvidence, CaseDocument
+- **src/lib/theme.ts** - Design system colors, spacing, font sizes
 - **src/screens/** - All app screens:
-  - Login, Signup - Authentication
-  - FeedScreen - Posts with images, ad cards between every 2 posts (alternating Mwaikange and Ngumu ads), clickable posts navigate to IncidentDetails
-  - IncidentDetailsScreen - Full post detail matching web post-detail.tsx (badges, details grid, upvote/downvote, like, share, follow, tabs for Timeline/Media/Comments with working comment posting)
-  - MapScreen - Incident markers from posts, blue dot for current location, clickable markers with popup and View Details navigation to IncidentDetails
-  - ReportScreen - 3-step report form with expo-image-picker for photo attachments
+  - LoginScreen, SignupScreen - Supabase authentication
+  - FeedScreen - Posts from incidents table with likes/comments/votes
+  - IncidentDetailsScreen - Full post detail with upvote/downvote, comments, timeline
+  - MapScreen - Incident markers from posts with location data
+  - ReportScreen - 3-step report form with expo-image-picker, uploads to Supabase
   - GroupsScreen - Groups listing with Create Group and Open/Join buttons
-  - CreateGroupScreen - Form to create new group (name, area, public/private toggle)
-  - GroupChatScreen - Full group chat with messages, image sharing via expo-image-picker, members modal, settings modal (creator), join/request flow
-  - ProfileScreen - User profile with avatar upload via expo-image-picker, Renew/Upgrade navigates to Subscribe
-  - SubscribeScreen - 12 subscription plans matching web exactly, WhatsApp payment redirect
-- **src/lib/api.ts** - Mock API with local images (post1-4.jpg), comments, timeline events, votes, group messages (with imageUrl), group members, avatar update
-- **src/lib/types.ts** - Types including Comment, TimelineEvent, PostVotes, GroupMessage (with imageUrl), GroupMember, GroupJoinRequest
-- **assets/** - App icons, splash screens, post images (post1-4.jpg), launcher.png (login logo), mwaikange-logo.png, ngumu-logo.jpg
+  - CreateGroupScreen - Form to create new group (uses create_group_with_creator RPC)
+  - GroupChatScreen - Full group chat with messages, image sharing, members, settings
+  - CaseDeckScreen - Case listing with filters (All/Open/Active/Closed), links to Device Tracking and Counseling
+  - OpenNewCaseScreen - Multi-field case creation form with evidence upload
+  - CaseDetailScreen - Case details with evidence gallery, documents, status management
+  - DeviceTrackingScreen - Device registration and status management (active/lost/stolen/recovered)
+  - CounselingScreen - Support request form with emergency hotline (+264816802064)
+  - ProfileScreen - User profile with avatar upload, subscription, sign out via Supabase
+  - SubscribeScreen - 12 subscription plans, WhatsApp payment redirect
+- **assets/** - App icons, splash screens, post images (post1-4.jpg), launcher.png, mwaikange-logo.png, ngumu-logo.jpg
 
 **IMPORTANT**: Mobile app must always replicate web app 1:1 for all screens and sub-pages.
-**Image Picker**: All image selection on mobile uses `expo-image-picker` (Google Play Store compliant) - used in ReportScreen, GroupChatScreen, and ProfileScreen.
+**Image Picker**: All image selection on mobile uses `expo-image-picker` (Google Play Store compliant) - used in ReportScreen, GroupChatScreen, ProfileScreen, and OpenNewCaseScreen.
+
+### Supabase Integration
+- **Auth**: signInWithPassword / signUp with expo-secure-store for session persistence
+- **Database tables**: profiles, incidents, incident_comments, incident_likes, incident_votes, incident_timeline, groups, group_members, group_messages, group_join_requests, user_subscriptions, cases, tracked_devices, support_requests
+- **RPCs**: create_group_with_creator, request_join_group, approve_group_request
+- **File uploads**: POST to https://app.ngumus-eye.site/api/upload with Bearer token
+- **Environment secrets**: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY, EXPO_PUBLIC_SITE_URL
 
 #### Building the Mobile App
 ```bash
@@ -111,10 +139,9 @@ npx expo start           # Development
 eas build --platform android --profile preview  # Build APK
 ```
 
-**Important**: Update `apiUrl` in `mobile/app.json` with your deployment URL before building.
-
 ## Design System
 - Primary color: Blue (#1d9bf0)
 - Mobile-first responsive design
 - Bottom navigation for app-like experience
-- Files tab is disabled (coming soon)
+- Case status colors: open=yellow, in_progress=purple, closed=green, archived=gray
+- Priority colors: low=green, medium=yellow, high=red, critical=dark red

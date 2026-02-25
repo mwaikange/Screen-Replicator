@@ -64,8 +64,8 @@ export default function LoginScreen() {
     try {
       await authApi.login(email.trim().toLowerCase(), password);
       navigation.replace('Main');
-    } catch (error) {
-      Alert.alert('Login Failed', 'Could not connect to server. Please try again.');
+    } catch (error: any) {
+      Alert.alert('Login Failed', error.message || 'Could not connect to server. Please try again.');
     } finally {
       setLoading(false);
     }
