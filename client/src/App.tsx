@@ -19,6 +19,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={LoginPage} />
+      <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
       <Route path="/feed" component={FeedPage} />
       <Route path="/post/:id" component={PostDetailPage} />
