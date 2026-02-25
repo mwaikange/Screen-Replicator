@@ -1,0 +1,2457 @@
+# PROMPT FOR NGUMUS EYE — REPLIT MOBILE DEVELOPER
+## API Integration Instructions + Case Deck Build + UI Protection Rules
+
+**Project:** Ngumus Eye Mobile App (React Native / Expo)  
+**Backend:** `https://app.ngumus-eye.site` (Next.js on Vercel + Supabase)  
+**Date:** 2026-02-25
+
+---
+
+## ⚠️ CRITICAL RULES — READ BEFORE TOUCHING ANY CODE
+
+### 🔴 DO NOT MODIFY EXISTING UI/STYLING
+The existing app has screens that are already designed and working well. **Do NOT change any styling, layout, colours, fonts, spacing, or component structure on any existing screen** unless a specific bug needs fixing. This includes but is not limited to:
+
+- **Group Chat / Messaging screen** — The chat UI looks good as-is. Do not touch it.
+- Feed screen layout
+- Incident Detail screen
+- Profile screen
+- All existing navigation structure and tab bar
+
+> **Rule:** If a screen already exists and renders correctly, your job is ONLY to wire up the correct API calls / Supabase queries behind it. Do not redesign, restyle, or restructure anything that already works visually.
+
+### 🟢 WHAT YOU ARE DOING
+1. Connecting all screens to the correct Supabase queries and API endpoints as documented below
+2. Ensuring every button, action, form submission, and data load is wired up correctly
+3. Building the **Case Deck (File Deck) screen** which does not yet exist — full design + integration
+4. Ensuring real-time subscriptions are active where required
+5. Ensuring error handling, loading states, and edge cases are all handled
+
+---
+
+## SUPABASE SETUP
+
+### Supabase Client Initialization
+
+```javascript
+import * as SecureStore from "expo-secure-store"
+import { createClient } from "@supabase/supabase-js"
+
+const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      storage: {
+        getItem: SecureStore.getItemAsync,
+        setItem: SecureStore.setItemAsync,
+        removeItem: SecureStore.deleteItemAsync
+      },
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false
+    }
+  }
+)
+```
+
+### Required Environment Variables
+
+```
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIs...
+EXPO_PUBLIC_SITE_URL=https://app.ngumus-eye.site
+```
+
+> **NEVER** include `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_JWT_SECRET` in the mobile app.
+
+### Required Headers for All Direct API Calls
+
+The Supabase JS SDK handles these automatically. For any manual `fetch()` calls to `https://app.ngumus-eye.site/api/*`:
+```
+Content-Type: application/json
+Authorization: Bearer <supabase_access_token>
+apikey: <SUPABASE_ANON_KEY>
+```
+
+---
+
+## SECTION 1 — AUTHENTICATION & SESSION MANAGEMENT
+
+### 1.1 Login
+
+**Screen:** Login  
+**Trigger:** User taps "Sign In" button
+
+**User Input:**
+- `email` (text, required, valid email format)
+- `password` (password, required, min 6 chars)
+
+**Supabase SDK Call:**
+```javascript
+const { data, error } = await supabase.auth.signInWithPassword({
+  email: "user@example.com",
+  password: "password123"
+})
+```
+
+**Success Response (200):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "token_type": "bearer",
+  "expires_in": 3600,
+  "expires_at": 1234567890,
+  "refresh_token": "v1:abcdef...",
+  "user": {
+    "id": "uuid-here",
+    "email": "user@example.com",
+    "user_metadata": {
+      "display_name": "John Doe",
+      "phone": "+264811234567"
+    }
+  }
+}
+```
+
+**After success:**
+- Store `access_token` and `refresh_token` in SecureStore
+- Store `user.id` in state
+- Check active subscription (see Section 11.1)
+- If subscription active → navigate to `/feed`
+- If no subscription → navigate to `/subscribe`
+
+**Error Responses:**
+- `400` Invalid credentials: `{ "error": "Invalid login credentials" }`
+- `400` Unconfirmed email: `{ "error": "Email not confirmed" }`
+
+**UI Requirements:**
+- Disable Sign In button while loading (show spinner)
+- Show error message inline below form
+- Show/hide password toggle button
+- "Forgot password?" link navigates to forgot password screen
+
+---
+
+### 1.2 Session Persistence (App Launch)
+
+**Trigger:** App cold start
+
+```javascript
+const { data: { session } } = await supabase.auth.getSession()
+```
+
+- If session valid → navigate to `/feed`
+- If session expired → attempt refresh:
+
+```javascript
+const { data, error } = await supabase.auth.refreshSession({
+  refresh_token: storedRefreshToken
+})
+```
+
+- If refresh succeeds → update stored tokens, navigate to `/feed`
+- If refresh fails → clear all stored tokens, navigate to Login screen
+
+---
+
+### 1.3 Logout
+
+**Screen:** Profile / Settings  
+**Trigger:** User taps "Sign Out"
+
+```javascript
+const { error } = await supabase.auth.signOut()
+```
+
+**After success:**
+- Clear all tokens from SecureStore
+- Clear all cached user data from state
+- Navigate to Login screen
+
+---
+
+### 1.4 Session Expiry Mid-Use (401 Handling)
+
+**Trigger:** Any Supabase call returns `401 Unauthorized`
+
+1. Attempt token refresh using stored `refresh_token`
+2. If refresh succeeds → retry original request with new token
+3. If refresh fails → clear session, navigate to Login with alert: *"Session expired. Please sign in again."*
+
+---
+
+## SECTION 2 — REGISTRATION / ONBOARDING
+
+### 2.1 Create Account
+
+**Screen:** Sign Up  
+**Trigger:** User taps "Sign Up" button
+
+**User Input:**
+- `displayName` (text, required, full name)
+- `email` (email, required, valid format)
+- `phone` (tel, optional, format: `+264 81 234 5678`)
+- `password` (password, required, min 6 chars)
+- `confirmPassword` (password, required, must match)
+
+**Client-side validation (before API call):**
+- Passwords must match
+- Email must be valid format
+
+**Supabase SDK Call:**
+```javascript
+const { data, error } = await supabase.auth.signUp({
+  email: "user@example.com",
+  password: "password123",
+  options: {
+    emailRedirectTo: "https://app.ngumus-eye.site/feed",
+    data: {
+      display_name: "John Doe",
+      phone: "+264811234567"
+    }
+  }
+})
+```
+
+**After success:** Navigate to sign-up-success screen showing *"Check your email to confirm your account."*
+
+**Error Responses:**
+- `422` Email already registered: `{ "error": "User already registered" }`
+- `422` Weak password: `{ "error": "Password should be at least 6 characters" }`
+
+**UI Requirements:**
+- Disable Sign Up button while loading
+- Show inline error messages
+- Show/hide password toggles on both password fields
+- Validate passwords match client-side before API call
+
+---
+
+### 2.2 Email Confirmation (Deep Link)
+
+**Trigger:** User clicks confirmation link in email → deep link opens app
+
+```javascript
+const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+```
+
+Deep link format: `ngumuseye://auth/callback?code=xxx`
+
+---
+
+## SECTION 3 — FORGOT PASSWORD / RESET FLOW
+
+### 3.1 Request Password Reset
+
+**Screen:** Forgot Password  
+**Trigger:** User taps "Send Reset Email"
+
+**User Input:** `email` (email, required)
+
+```javascript
+const { error } = await supabase.auth.resetPasswordForEmail(email, {
+  redirectTo: "https://app.ngumus-eye.site/auth/reset-password"
+})
+```
+
+**After success:** Show message: *"Check your email for password reset instructions."* (stay on screen, do not navigate)
+
+**Error:** `422` Invalid email: `{ "error": "Unable to validate email address: invalid format" }`
+
+**UI Requirements:**
+- Show success state after submission
+- Disable button while loading
+
+---
+
+### 3.2 Reset Password
+
+**Screen:** Reset Password  
+**Trigger:** User clicks email link → deep link fires `PASSWORD_RECOVERY` event
+
+```javascript
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === "PASSWORD_RECOVERY") {
+    setShowPasswordForm(true)
+  }
+})
+```
+
+**User Input:**
+- `newPassword` (password, required, min 6 chars)
+- `confirmNewPassword` (password, required, must match)
+
+```javascript
+const { error } = await supabase.auth.updateUser({ password: "newPassword123" })
+```
+
+**After success:** Navigate to Login screen with message: *"Password updated successfully."*
+
+---
+
+## SECTION 4 — FEED / DASHBOARD SCREEN
+
+### 4.1 Load Feed Incidents
+
+**Screen:** Feed  
+**Trigger:** Screen loads, pull-to-refresh
+
+```javascript
+const { data, error } = await supabase
+  .from("incidents")
+  .select(`
+    id, type_id, title, description, town, lat, lng,
+    status, verification_level, created_at, created_by,
+    incident_types(id, code, label, severity),
+    profiles:created_by(id, display_name, avatar_url, trust_score),
+    incident_media(id, path, mime)
+  `)
+  .order("created_at", { ascending: false })
+  .range(offset, offset + 19)
+```
+
+**Response structure per item:**
+```json
+{
+  "id": "uuid",
+  "type_id": 1,
+  "title": "Vehicle theft on Independence Ave",
+  "description": "Blue Toyota Hilux stolen...",
+  "town": "Windhoek",
+  "lat": -22.5609,
+  "lng": 17.0658,
+  "status": "new",
+  "verification_level": 0,
+  "created_at": "2024-01-01T10:00:00Z",
+  "incident_types": { "id": 1, "code": "vehicle_theft", "label": "Vehicle Theft", "severity": 3 },
+  "profiles": { "id": "user-uuid", "display_name": "John D.", "avatar_url": "https://...", "trust_score": 75 },
+  "incident_media": [{ "id": "media-uuid", "path": "userId/incidentId/photo.jpg", "mime": "image/jpeg" }]
+}
+```
+
+**Pagination:**
+- Page size: 20 items
+- On scroll to bottom: increment offset by 20, append results
+- Pull-to-refresh: reset offset to 0, replace results
+
+**UI Requirements:**
+- Show incident type badge with severity colour (see Status Codes section)
+- Show status badge
+- Tapping card navigates to Incident Detail: pass `incident.id`
+- Show empty state if no incidents
+- Show loading skeleton while fetching
+- Real-time: subscribe to new incidents (see Section 14.2)
+
+---
+
+### 4.2 Load Active Ads (Between Feed Cards)
+
+**Trigger:** Feed loads (run in parallel with 4.1)
+
+```javascript
+const now = new Date().toISOString()
+const { data: ads } = await supabase
+  .from("ad_inventory")
+  .select("id, title, description, media_url, media_type, target_url, display_priority")
+  .eq("is_active", true)
+  .lte("start_date", now)
+  .gte("end_date", now)
+  .order("display_priority", { ascending: false })
+  .limit(10)
+```
+
+**Track each ad view when it appears on screen:**
+```javascript
+await supabase.from("ad_views").insert({ ad_id: adId, user_id: currentUserId })
+```
+
+**Display:** Insert ads between incident cards in the feed list.
+
+---
+
+### 4.3 Feed Filters
+
+**Trigger:** User selects filter options (type, status, town, date range)
+
+Apply as additional `.eq()`, `.in()`, `.gte()`, or `.lte()` clauses to the base query in 4.1.
+
+---
+
+## SECTION 5 — INCIDENT REPORTING
+
+### 5.1 Load Incident Types (Screen Entry)
+
+**Trigger:** Report screen loads
+
+```javascript
+const { data: types } = await supabase
+  .from("incident_types")
+  .select("id, code, label, severity")
+  .order("label")
+```
+
+Populate dropdown with results.
+
+---
+
+### 5.2 Create Incident
+
+**Screen:** Report  
+**Trigger:** User taps "Submit Report"  
+**Requires:** Active subscription (check before showing screen)
+
+**User Input:**
+- `type_id` (required — select from dropdown)
+- `title` (text, required, max 200 chars)
+- `description` (textarea, optional)
+- `town` (text, optional)
+- `lat` / `lng` (required — auto-populated from device GPS)
+- `area_radius_m` (number, optional, default 200)
+
+**Compute geohash before insert:**
+```javascript
+import ngeohash from 'ngeohash'
+const geohash = ngeohash.encode(lat, lng, 7)
+```
+
+**Supabase Insert:**
+```javascript
+const { data: incident, error } = await supabase
+  .from("incidents")
+  .insert({
+    type_id: selectedTypeId,
+    title: titleValue,
+    description: descriptionValue,
+    town: townValue,
+    lat: deviceLat,
+    lng: deviceLng,
+    geohash: geohash,
+    area_radius_m: 200,
+    created_by: currentUserId
+  })
+  .select()
+  .single()
+```
+
+**After success:**
+1. Upload any attached media files (see Section 5.3)
+2. Navigate to Incident Detail screen
+
+**Error Responses:**
+- `401`: Not authenticated → navigate to Login
+- `403`: No active subscription → navigate to Subscribe screen
+
+**UI Requirements:**
+- Request GPS permission before opening screen; show error if denied
+- Disable Submit button while loading
+- Show GPS coordinates auto-populated (user should see them)
+
+---
+
+### 5.3 Upload Incident Media
+
+**Trigger:** After incident creation, if user attached photos/videos
+
+```javascript
+// Step 1: Upload to storage
+const filePath = `${userId}/${incidentId}/${Date.now()}-${randomString}.${ext}`
+const { error: uploadError } = await supabase.storage
+  .from("incident-media")
+  .upload(filePath, file, { cacheControl: "3600", upsert: false })
+
+// Step 2: Get public URL
+const { data: { publicUrl } } = supabase.storage
+  .from("incident-media")
+  .getPublicUrl(filePath)
+
+// Step 3: Save record
+await supabase.from("incident_media").insert({
+  incident_id: incidentId,
+  path: filePath,
+  mime: file.type
+})
+```
+
+**OR use the Upload API (alternative):**
+```
+POST https://app.ngumus-eye.site/api/upload
+Content-Type: multipart/form-data
+Authorization: Bearer <access_token>
+Form field: file (binary)
+```
+Response: `{ "url": "https://public.blob.vercel-storage.com/..." }`
+
+**File constraints:**
+- Images: max 10MB, types: `image/jpeg`, `image/png`, `image/webp`
+- Videos: max 50MB, types: `video/mp4`, `video/quicktime`
+
+**Error Responses:**
+- `400`: `{ "error": "File too large. Maximum size is 10MB" }`
+- `400`: `{ "error": "Invalid file type. Only images and videos are allowed" }`
+
+---
+
+## SECTION 6 — INCIDENT DETAIL SCREEN
+
+### 6.1 Load Incident Details
+
+**Trigger:** Screen loads with `incidentId`
+
+```javascript
+const { data: incident } = await supabase
+  .from("incidents")
+  .select(`
+    *,
+    incident_types(id, code, label, severity),
+    profiles:created_by(id, display_name, avatar_url, trust_score),
+    incident_media(id, path, mime, created_at)
+  `)
+  .eq("id", incidentId)
+  .single()
+```
+
+**Media URL construction:**
+```
+https://<SUPABASE_PROJECT_URL>/storage/v1/object/public/incident-media/{path}
+```
+
+---
+
+### 6.2 Load Reaction Counts
+
+**Trigger:** Screen loads (run in parallel with 6.1)
+
+```javascript
+// All reactions
+const { data: reactions } = await supabase
+  .from("incident_reactions")
+  .select("reaction_type")
+  .eq("incident_id", incidentId)
+// Count each type: upvote, downvote, love, confirm
+
+// Current user's reaction
+const { data: myReaction } = await supabase
+  .from("incident_reactions")
+  .select("id, reaction_type")
+  .eq("incident_id", incidentId)
+  .eq("user_id", currentUserId)
+  .maybeSingle()
+```
+
+---
+
+### 6.3 Toggle Reaction
+
+**Trigger:** User taps reaction button (upvote, downvote, love, confirm)
+
+```javascript
+// Check if existing reaction of this type
+const { data: existing } = await supabase
+  .from("incident_reactions")
+  .select("id")
+  .eq("incident_id", incidentId)
+  .eq("user_id", userId)
+  .eq("reaction_type", kind)  // "upvote" | "downvote" | "love" | "confirm"
+  .maybeSingle()
+
+if (existing) {
+  // Remove
+  await supabase.from("incident_reactions").delete().eq("id", existing.id)
+} else {
+  // Add
+  await supabase.from("incident_reactions").insert({
+    incident_id: incidentId,
+    user_id: userId,
+    reaction_type: kind
+  })
+}
+```
+
+**UI:** Update reaction count optimistically, then sync from DB.
+
+---
+
+### 6.4 Load Comments
+
+**Trigger:** Screen loads / comment section expanded
+
+```javascript
+const { data: comments } = await supabase
+  .from("comments")
+  .select(`
+    id, body, created_at, author, image_url,
+    profiles:author(display_name, avatar_url)
+  `)
+  .eq("incident_id", incidentId)
+  .order("created_at", { ascending: true })
+```
+
+---
+
+### 6.5 Add Comment
+
+**Trigger:** User taps "Send" on comment input
+
+**User Input:**
+- `body` (text, required, max 1000 chars)
+- `image_url` (optional — upload first via `/api/upload`, then pass URL)
+
+```javascript
+const { data: comment, error } = await supabase
+  .from("comments")
+  .insert({
+    incident_id: incidentId,
+    author: userId,
+    body: commentText,
+    image_url: imageUrl || null
+  })
+  .select("id, body, created_at, author, image_url")
+  .single()
+```
+
+**After success:** Append comment to list, clear input field.
+
+---
+
+## SECTION 7 — MAP SCREEN
+
+### 7.1 Load Incidents for Map
+
+**Trigger:** Map loads, map region changes (re-query on region change)
+
+```javascript
+const { data: incidents } = await supabase
+  .from("incidents")
+  .select("id, type_id, title, lat, lng, status, incident_types(label, severity)")
+  .gte("lat", southLat)
+  .lte("lat", northLat)
+  .gte("lng", westLng)
+  .lte("lng", eastLng)
+  .neq("status", "archived")
+  .limit(200)
+```
+
+**UI Requirements:**
+- Colour map pins by incident type severity
+- Tapping pin shows mini preview card
+- Tapping mini card navigates to Incident Detail screen
+
+---
+
+## SECTION 8 — CASE DECK (FILE DECK) — ⚠️ BUILD ALL SCREENS FROM SCRATCH
+
+> These screens do not yet exist in the app. Build the full UI + API integration matching the desktop designs shown below. On mobile, all stat cards and quick-action cards stack vertically (full width). Navigation is screen-to-screen (not modal).
+
+**Access gate:** Check for active subscription before loading. If no active subscription → redirect to Subscribe screen.
+
+---
+
+### 8.1 Case Deck Main Screen (My File Deck)
+
+**Screen name:** My File Deck  
+**Trigger:** User taps "File Deck" in navigation
+
+---
+
+#### VISUAL DESIGN — Replicate exactly from screenshot
+
+**Page Background:** Light blue/grey (`#EFF4FB` or similar)
+
+**Top Header Bar:**
+- Left: Shield/badge icon (orange/brown) + text "My File Deck" — small top nav bar, white background, thin bottom border
+- This is the screen-level nav bar
+
+**Page Title Area (below nav bar):**
+- Left side: Large bold heading "My File Deck" + subtitle below it in grey: "Private investigator dashboard"
+- Right side: Blue rounded button "+ New File" — tapping this navigates to the Open New Case screen (Section 8.2)
+
+---
+
+**Stats Row — 4 cards in a horizontal row (on mobile: 2×2 grid or vertical stack):**
+
+Each stat card:
+- White background, rounded corners, subtle shadow
+- Top-left label text (grey, small): e.g. "Active Files", "New", "In Progress", "Closed"
+- Large bold number below label: e.g. "0"
+
+Cards (left to right / top to bottom on mobile):
+1. **Active Files** — count of cases where status NOT IN (`closed`, `archived`)
+2. **New** — count of cases where status IN (`new`, `open`)
+3. **In Progress** — count of cases where status = `in_progress`
+4. **Closed** — count of cases where status IN (`closed`, `archived`)
+
+---
+
+**"Active Files" Section:**
+
+- Section heading: "Active Files" (bold, left-aligned)
+- Large white rounded card below it
+
+**Empty state inside card (when no active cases):**
+- Centered document icon (grey outline)
+- Text: "No active files" (medium, dark)
+- Subtext: "Open a new file to get started" (grey, small)
+- Blue rounded button: "Open New File" — tapping navigates to Open New Case screen
+
+**When cases exist — list of case cards:**
+Each case card (white, rounded, shadow, full width):
+- Top row: Case number (`serial_number`) — bold left | Status badge — right (colour-coded)
+- Second row: Category badge (coloured pill) + Priority badge (coloured pill)
+- Third row: Title (medium bold)
+- Fourth row: Town/location (grey, small, with pin icon if available)
+- Fifth row: Date opened (grey, small) | Evidence count | Documents count
+- Tapping the card → navigate to Case Detail screen (Section 8.3)
+
+---
+
+**Quick Action Cards Row (bottom of screen — 3 cards):**
+
+Three equal-width white rounded cards in a row (on mobile: stacked vertically full width):
+
+1. **Device Tracking**
+   - Bold label: "Device Tracking"
+   - Subtitle: "Track stolen devices"
+   - Tapping navigates to Device Tracking screen (Section 9)
+
+2. **Counseling & Support**
+   - Bold label: "Counseling & Support"
+   - Subtitle: "Request assistance"
+   - Tapping navigates to Counseling & Support screen (Section 8.8)
+
+3. **Open New File**
+   - Bold label: "Open New File"
+   - Subtitle: "Report a new incident"
+   - Slightly darker background (light grey) to distinguish it visually
+   - Tapping navigates to Open New Case screen (Section 8.2)
+
+---
+
+**Load Cases Query:**
+```javascript
+const { data: cases } = await supabase
+  .from("cases")
+  .select("*")
+  .eq("user_id", userId)
+  .order("created_at", { ascending: false })
+```
+
+**Compute stats client-side:**
+```javascript
+const activeFiles = cases.filter(c => !["closed", "archived"].includes(c.status))
+const closedFiles = cases.filter(c => ["closed", "archived"].includes(c.status))
+const newFiles = cases.filter(c => ["new", "open"].includes(c.status))
+const inProgressFiles = cases.filter(c => c.status === "in_progress")
+```
+
+**Pull-to-refresh:** Re-run query, recompute stats.
+
+---
+
+### 8.2 Open New Case Screen
+
+**Screen name:** Open New Case  
+**Trigger:** User taps "+ New File" button OR "Open New File" quick action card
+
+---
+
+#### VISUAL DESIGN — Replicate exactly from screenshot
+
+**Top Nav Bar:**
+- Back arrow (←) on left
+- "Open New Case" text — in a rounded pill/capsule shape with border (as seen in screenshot — the title is inside a rounded outlined box)
+- White background
+
+**Page Content (scrollable):**
+- Page heading: "Open New Case" (bold)
+- Subtitle below heading: "Provide details about the incident you want to report." (grey, small)
+
+---
+
+**Form Fields (in this exact order, full width):**
+
+1. **Incident Category** (required)
+   - Label: "Incident Category *"
+   - Dropdown select — placeholder: "Select category"
+   - Options: Vehicle Theft, House Break-In, Assault, Fraud, Missing Person, Cybercrime, Other
+
+2. **Case Title** (required)
+   - Label: "Case Title *"
+   - Text input — placeholder: "Best description of the incident"
+
+3. **Detailed Description**
+   - Label: "Detailed Description"
+   - Multi-line textarea — placeholder: "Provide as much detail as possible..."
+   - Resize handle visible bottom-right
+
+4. **Location Address**
+   - Label: "Location Address *"
+   - Text input — placeholder: "e.g. 102 Main Street, Windhoek"
+
+5. **Town/City**
+   - Label: "Town/City"
+   - Text input — placeholder: "e.g. Windhoek, Swakopmund, Walvis Bay"
+
+6. **Police CR Number** (optional)
+   - Label: "Police CR Number (if available)"
+   - Text input — placeholder: "e.g. CR/2025-002521"
+
+7. **Vehicle Number Plate** (optional)
+   - Label: "Vehicle Number Plate (if applicable)"
+   - Text input — placeholder: "e.g. N 12345 W"
+
+8. **Serial Numbers** (optional)
+   - Label: "Serial Numbers (device/item)"
+   - Multi-line textarea — placeholder: "Enter serial numbers of stolen devices or items, one per line..."
+   - Resize handle visible bottom-right
+
+9. **Stolen Item Reference** (optional)
+   - Label: "Stolen Item Reference"
+   - Text input — placeholder: "e.g. IMEI, Asset Tag, etc."
+
+10. **Evidence Images** (optional, max 7)
+    - Label: "Evidence Images (max 7)"
+    - Upload area box — dashed border, centered content:
+      - Upload icon
+      - "Tap to upload images"
+      - Subtext: "JPG, PNG, up to 10MB each"
+    - Tapping opens device image picker
+    - Show thumbnails of selected images below the upload area
+    - Max 7 images
+
+11. **Supporting Documents** (optional, max 5)
+    - Label: "Supporting Documents (max 5)"
+    - Upload area box — dashed border, centered content:
+      - Document/file icon
+      - "Tap to upload documents"
+      - Subtext: "PDF, Word, images"
+    - Tapping opens device file picker
+    - Show file name chips/list for selected documents
+    - Max 5 documents
+
+12. **Priority** (optional)
+    - Label: "Priority"
+    - Dropdown select — default value shown: "Medium"
+    - Options: Low, Medium, High, Critical
+
+---
+
+**Submit Button:**
+- Full-width blue rounded button
+- Label: "Submit Case"
+- Disabled + spinner while submitting
+
+---
+
+**Generate case number before insert:**
+```javascript
+const year = new Date().getFullYear()
+const randomSix = Math.floor(100000 + Math.random() * 900000)
+const caseNumber = `CASE-${year}-${randomSix}`
+```
+
+**Supabase Insert:**
+```javascript
+const { data: newCase, error } = await supabase
+  .from("cases")
+  .insert({
+    user_id: userId,
+    serial_number: caseNumber,
+    case_number: caseNumber,
+    category: selectedCategory,      // e.g. "vehicle_theft"
+    title: titleValue,
+    description: descriptionValue,
+    status: "open",
+    priority: selectedPriority || "medium",
+    police_cr_number: crNumberValue || null,
+    vehicle_number_plate: vehiclePlateValue || null,
+    serial_numbers: serialNumbersText ? serialNumbersText.split("\n").filter(s => s.trim()) : [],
+    stolen_item_reference: stolenItemRefValue || null,
+    reporter_name: profile.full_name,
+    reporter_phone: profile.phone,
+    reporter_email: profile.email,
+    location_address: locationAddressValue || null,
+    town: townValue || null,
+    evidence: [],
+    documents: [],
+    files: []
+  })
+  .select()
+  .single()
+```
+
+**After success:**
+1. Upload evidence images if any (see Section 8.5)
+2. Upload supporting documents if any (see Section 8.6)
+3. Navigate to Case Detail screen (Section 8.3)
+
+**Error Responses:**
+- `401`: Not authenticated → navigate to Login
+- `403`: No active subscription → navigate to Subscribe
+
+**Validation before submit:**
+- Category: required — show "Please select a category"
+- Case Title: required — show "Please enter a case title"
+- Location Address: required — show "Please enter a location"
+
+---
+
+### 8.3 Case Detail Screen
+
+**Trigger:** Tapping a case card from the My File Deck list
+
+**Load Case Data:**
+```javascript
+const { data: caseData } = await supabase
+  .from("cases")
+  .select("*")
+  .eq("id", caseId)
+  .eq("user_id", userId)
+  .single()
+```
+
+**VISUAL DESIGN:**
+
+**Top Nav Bar:**
+- Back arrow (←) + "Case Details" title
+
+**Header Card (white, rounded):**
+- Case number (`case_number`) — bold, large
+- Category badge (coloured pill)
+- Status badge (colour-coded pill) with dropdown/button to change status
+- Priority badge (colour-coded pill)
+- Date opened + last updated (grey, small)
+
+**Details Section (white card):**
+- Title (bold heading)
+- Description (body text)
+- Location Address + Town
+- Police CR Number (if present)
+- Vehicle Number Plate (if present)
+- Serial Numbers (if present, listed)
+- Stolen Item Reference (if present)
+
+**Reporter Info Section (white card):**
+- Reporter Name, Phone, Email
+
+**Evidence Section (white card):**
+- Heading: "Evidence" + count badge + "Upload" button (top right)
+- Empty state: "No evidence uploaded yet"
+- List of evidence items:
+  - Image items: thumbnail preview, file name, upload date
+  - Video items: play icon, file name, upload date
+  - Tapping image → full screen preview
+- Long-press item → confirm delete
+
+**Documents Section (white card):**
+- Heading: "Documents" + count badge + "Upload" button (top right)
+- Empty state: "No documents uploaded yet"
+- List of document items:
+  - File icon + file name + upload date
+  - Tapping → open URL in browser / file viewer
+- Long-press item → confirm delete
+
+---
+
+### 8.4 Update Case Status
+
+**Trigger:** User taps status badge or "Change Status" button on Case Detail
+
+**Status options:** `open`, `in_progress`, `closed`
+
+```javascript
+await supabase
+  .from("cases")
+  .update({ status: newStatus, updated_at: new Date().toISOString() })
+  .eq("id", caseId)
+  .eq("user_id", userId)
+```
+
+**UI:** Optimistic update — change badge colour immediately, sync from DB.
+
+---
+
+### 8.5 Upload Evidence to Case
+
+**Trigger:** User taps "Upload" in Evidence section on Case Detail, OR submitting images from the Open New Case form
+
+**Step 1 — Upload each file:**
+```
+POST https://app.ngumus-eye.site/api/upload
+Content-Type: multipart/form-data
+Authorization: Bearer <access_token>
+Form field: file (binary)
+```
+Response: `{ "url": "https://public.blob.vercel-storage.com/..." }`
+
+**Step 2 — Append to case evidence array:**
+```javascript
+const { data: currentCase } = await supabase
+  .from("cases").select("evidence").eq("id", caseId).single()
+
+const updatedEvidence = [
+  ...(currentCase.evidence || []),
+  {
+    id: generateUUID(),
+    file_url: uploadedUrl,
+    file_name: fileName,
+    file_type: mimeType,
+    file_size: fileSize,
+    description: "Evidence",
+    uploaded_at: new Date().toISOString()
+  }
+]
+
+await supabase.from("cases").update({ evidence: updatedEvidence }).eq("id", caseId)
+```
+
+**Constraints:** Images max 10MB, Videos max 50MB.
+
+---
+
+### 8.6 Upload Document to Case
+
+Same flow as Section 8.5 but update the `documents` array:
+
+```json
+{
+  "id": "uuid",
+  "file_url": "https://public.blob.vercel-storage.com/...",
+  "file_name": "police_report.pdf",
+  "file_type": "application/pdf",
+  "file_size_bytes": 512000,
+  "uploaded_at": "2024-01-01T10:00:00Z"
+}
+```
+
+---
+
+### 8.7 Delete Evidence / Document Item
+
+**Trigger:** User long-presses an evidence or document item → taps "Delete" → confirms
+
+```javascript
+// Evidence
+const updatedEvidence = caseData.evidence.filter(item => item.id !== itemId)
+await supabase.from("cases").update({ evidence: updatedEvidence }).eq("id", caseId)
+
+// Documents
+const updatedDocuments = caseData.documents.filter(item => item.id !== itemId)
+await supabase.from("cases").update({ documents: updatedDocuments }).eq("id", caseId)
+```
+
+**Confirm dialog:** "Are you sure you want to remove this file?" — Cancel | Delete
+
+---
+
+### 8.8 Counseling & Support Screen ⚠️ BUILD THIS SCREEN
+
+**Trigger:** User taps "Counseling & Support" quick action card from My File Deck
+
+---
+
+#### VISUAL DESIGN — Replicate exactly from screenshot
+
+**Top Nav Bar:**
+- Back arrow (←) + "Counseling & Support" title (left-aligned)
+
+**Emergency Assistance Card (pink/red tinted background, rounded):**
+- Bell/alert icon on left (red/pink)
+- Bold text: "Emergency Assistance"
+- Subtitle: "For immediate help, contact us directly"
+- Two buttons side by side:
+  - Left: Red/pink filled button — "📞 Call Now" — tapping calls the emergency number (use `Linking.openURL("tel:+264816802064")`)
+  - Right: White/outlined button — "💬 WhatsApp" — tapping opens WhatsApp (`https://wa.me/264816802064`)
+
+**Request Support Form (white card, rounded):**
+- Card heading: "Request Support"
+- Subheading below: "Submit a counseling or support request"
+
+Form fields:
+1. **Request Type** (required)
+   - Label: "Request Type *"
+   - Dropdown — placeholder: "Select type"
+   - Options: Trauma Counseling, Legal Advice, Victim Support, General Enquiry, Other
+
+2. **Priority** (required)
+   - Label: "Priority *"
+   - Dropdown — default: "Medium"
+   - Options: Low, Medium, High, Critical
+   - Positioned on same row as Request Type (side by side on wider screens, stacked on narrow)
+
+3. **Description** (required)
+   - Label: "Description *"
+   - Multi-line textarea — placeholder: "Describe your request in detail..."
+   - Character counter shown below: "Up to 1000 words allowed" (or character count)
+   - Min height: ~120px
+
+4. **Submit button:**
+   - Blue rounded button — "Submit Request"
+   - Full width
+   - Disabled + spinner while submitting
+
+---
+
+**Request History Section (below the form card):**
+- Heading: "Request History" (bold)
+- White rounded card
+- Empty state:
+  - Calendar/clipboard icon (grey)
+  - Text: "No support requests yet"
+
+**When requests exist — list items:**
+- Request type badge
+- Priority badge
+- Date submitted
+- Status badge
+- Description preview (truncated)
+
+---
+
+**Supabase — Submit Support Request:**
+
+> The `support_requests` table may not exist yet. If it does not, create the record in a general-purpose table or ask the backend dev to confirm the table name. Use this structure:
+
+```javascript
+await supabase.from("support_requests").insert({
+  user_id: userId,
+  request_type: selectedRequestType,   // e.g. "trauma_counseling"
+  priority: selectedPriority || "medium",
+  description: descriptionValue,
+  status: "pending",
+  created_at: new Date().toISOString()
+})
+```
+
+**Load Request History:**
+```javascript
+const { data: requests } = await supabase
+  .from("support_requests")
+  .select("*")
+  .eq("user_id", userId)
+  .order("created_at", { ascending: false })
+```
+
+**After submit:** Show success message "Your request has been submitted. We will contact you shortly." Clear the form. Refresh request history list.
+
+**Error Responses:**
+- `401`: Not authenticated
+- Table not found: Show "Service temporarily unavailable. Please use WhatsApp or Call Now."
+
+---
+
+## SECTION 9 — DEVICE TRACKING ⚠️ BUILD BOTH SUB-SCREENS
+
+> Device Tracking has 2 screens: (1) the main tracked devices list, and (2) the register device form that slides in inline on the same screen. Both are accessed from the "Device Tracking" quick action card on the My File Deck screen.
+
+---
+
+### 9.1 Device Tracking Main Screen
+
+**Screen name:** Device Tracking  
+**Trigger:** User taps "Device Tracking" quick action card from My File Deck
+
+---
+
+#### VISUAL DESIGN — Replicate exactly from screenshot
+
+**Top Nav Bar:**
+- Back arrow (←) on left + text "Device Tracking" (pill/capsule shaped outline around title, matching the Open New Case nav style)
+- White background
+
+**Page Header:**
+- Left side: Bold heading "Tracked Devices" + subtitle "Register and monitor your devices" (grey, small)
+- Right side: Blue rounded button "+ Register Device" — tapping expands the register form inline above the list (see Section 9.2)
+
+**Devices List Area (white rounded card, full width):**
+
+**Empty state (when no devices):**
+- Centered phone/device icon (grey outline)
+- Text: "No devices registered yet"
+
+**When devices exist — list of device cards:**
+Each device card (full width, white background, subtle separator):
+- Device name (bold)
+- Device type badge (e.g. "Smartphone")
+- IMEI (grey, small, if present)
+- Serial number (grey, small, if present)
+- Status badge: "Active" (green) or "Stolen" (red)
+- Right side: action button
+  - If status = `active` → red outlined button "Report Stolen"
+  - If status = `stolen` → green outlined button "Mark Recovered"
+
+---
+
+**Load Devices Query:**
+```javascript
+const { data: devices } = await supabase
+  .from("tracked_devices")
+  .select("*")
+  .eq("user_id", userId)
+  .order("created_at", { ascending: false })
+```
+
+**Device item structure:**
+```json
+{
+  "id": "device-uuid",
+  "device_name": "My iPhone 15",
+  "device_type": "smartphone",
+  "imei": "123456789012345",
+  "serial_number": "DNXXX123",
+  "status": "active",
+  "reported_stolen_at": null,
+  "created_at": "2024-01-01T10:00:00Z"
+}
+```
+
+---
+
+### 9.2 Register New Device (Inline Form — Same Screen)
+
+**Trigger:** User taps "+ Register Device" button  
+**Behaviour:** The register form expands inline on the same screen ABOVE the devices list (not a new screen, not a modal). This matches the web screenshot which shows the form appearing at the top of the page.
+
+---
+
+#### VISUAL DESIGN — Replicate exactly from screenshot
+
+**Inline form card (white, rounded, with subtle shadow, appears above device list):**
+
+- Card heading: "Register New Device" (bold)
+- Subheading: "Add a device to track and protect"
+
+**Form fields in a 2-column grid layout (on mobile: stack vertically):**
+
+Left column:
+1. **Device Name** (required)
+   - Label: "Device Name *"
+   - Text input — placeholder: "My iPhone 14"
+
+Right column:
+2. **Device Type** (required)
+   - Label: "Device Type *"
+   - Dropdown select — placeholder: "Select Type"
+   - Options: Smartphone, Laptop, Tablet, Camera, Other
+
+Left column (row 2):
+3. **IMEI** (optional)
+   - Label: "IMEI (Optional)"
+   - Text input — placeholder: "123456789012345"
+
+Right column (row 2):
+4. **Serial Number** (optional)
+   - Label: "Serial Number (Optional)"
+   - Text input — placeholder: "AAC5232YZ"
+
+**Buttons row (below fields):**
+- Blue filled button: "Register Device" — submits form
+- White/outlined button: "Cancel" — collapses the form, hides it
+
+---
+
+**Supabase Insert:**
+```javascript
+await supabase.from("tracked_devices").insert({
+  user_id: userId,
+  device_name: deviceNameValue,
+  device_type: deviceTypeValue.toLowerCase(),
+  imei: imeiValue || null,
+  serial_number: serialNumberValue || null,
+  status: "active"
+})
+```
+
+**After success:**
+- Collapse the inline form
+- Refresh/append new device to the list below
+- Show brief success toast: "Device registered successfully"
+
+**Validation:**
+- Device Name: required
+- Device Type: required
+
+---
+
+### 9.3 Report Device Stolen
+
+**Trigger:** User taps "Report Stolen" on a device card
+
+**Confirm dialog first:** "Are you sure you want to report this device as stolen? This will flag it in our system."
+
+```javascript
+await supabase
+  .from("tracked_devices")
+  .update({
+    status: "stolen",
+    reported_stolen_at: new Date().toISOString()
+  })
+  .eq("id", deviceId)
+  .eq("user_id", userId)
+```
+
+**UI:** Status badge changes to "Stolen" (red). Action button changes to "Mark Recovered" (green).
+
+---
+
+### 9.4 Mark Device Recovered
+
+**Trigger:** User taps "Mark Recovered" on a stolen device
+
+```javascript
+await supabase
+  .from("tracked_devices")
+  .update({
+    status: "active",
+    reported_stolen_at: null
+  })
+  .eq("id", deviceId)
+  .eq("user_id", userId)
+```
+
+**UI:** Status badge changes back to "Active" (green). Button changes back to "Report Stolen" (red).
+
+---
+
+## SECTION 10 — GROUPS
+
+### 10.1 Load Groups List
+
+**Trigger:** Groups screen loads
+
+```javascript
+const { data: groups } = await supabase
+  .from("groups")
+  .select(`
+    id, name, geohash_prefix, visibility, created_by, created_at,
+    negative_reports,
+    group_members(user_id, role)
+  `)
+  .order("created_at", { ascending: false })
+```
+
+**For each group determine:**
+```javascript
+const isMember = group.group_members.some(m => m.user_id === currentUserId)
+const userRole = group.group_members.find(m => m.user_id === currentUserId)?.role
+const memberCount = group.group_members.length
+```
+
+---
+
+### 10.2 Create Group
+
+**Trigger:** User submits create group form
+
+**User Input:**
+- `name` (text, required, unique)
+- `geohash_prefix` (text, required — computed from selected map area)
+- `visibility` (select, required) — `public` or `private`
+
+```javascript
+const { data: groupId, error } = await supabase.rpc("create_group_with_creator", {
+  p_name: groupNameValue,
+  p_geohash_prefix: geohashPrefixValue,
+  p_visibility: visibilityValue
+})
+```
+
+**Error:** Name exists: `{ "error": "A group with this name already exists" }`
+
+**After success:** Navigate to Group Detail screen.
+
+---
+
+### 10.3 Join Group
+
+**Trigger:** User taps "Join Group"
+
+```javascript
+const { data, error } = await supabase.rpc("request_join_group", { p_group_id: groupId })
+```
+
+**Success (public group):** `{ "success": true, "message": "Joined group successfully", "is_member": true }`  
+Show: "You have joined the group."  
+Update button to "Leave Group".
+
+**Success (private group):** `{ "success": true, "message": "Join request sent", "request_pending": true }`  
+Show: "Your request has been sent. Waiting for approval."  
+Update button to "Request Pending" (disabled).
+
+---
+
+### 10.4 Leave Group
+
+**Trigger:** User taps "Leave Group" (confirm dialog first)
+
+```javascript
+await supabase
+  .from("group_members")
+  .delete()
+  .eq("group_id", groupId)
+  .eq("user_id", userId)
+```
+
+---
+
+### 10.5 Load Group Members
+
+**Trigger:** Group Detail members tab loads
+
+```javascript
+const { data: members } = await supabase
+  .from("group_members")
+  .select("user_id, role, joined_at, profiles:user_id(display_name, avatar_url, trust_score)")
+  .eq("group_id", groupId)
+```
+
+---
+
+### 10.6 Load Pending Join Requests (Group Creator/Owner Only)
+
+```javascript
+const { data: requests } = await supabase
+  .from("group_requests")
+  .select("id, user_id, created_at")
+  .eq("group_id", groupId)
+  .eq("status", "pending")
+  .order("created_at", { ascending: true })
+```
+
+Only show this section if `userRole === "owner"` or `userRole === "moderator"`.
+
+---
+
+### 10.7 Approve Join Request
+
+**Trigger:** Group creator taps "Approve" on a pending request
+
+```javascript
+const { data } = await supabase.rpc("approve_group_request", { p_request_id: requestId })
+```
+
+**Response:** `{ "success": true, "message": "Request approved", "user_name": "Jane D.", "group_name": "..." }`
+
+---
+
+### 10.8 Reject Join Request
+
+**Trigger:** Group creator taps "Reject"
+
+```javascript
+await supabase
+  .from("group_requests")
+  .update({ status: "rejected", updated_at: new Date().toISOString() })
+  .eq("id", requestId)
+```
+
+---
+
+### 10.9 Remove Group Member (Owner/Moderator Only)
+
+```javascript
+const { data } = await supabase.rpc("remove_group_member", {
+  p_group_id: groupId,
+  p_user_id_to_remove: targetUserId
+})
+```
+
+---
+
+### 10.10 Report Group
+
+**Trigger:** Group member taps "Report Group"
+
+**First check if already reported:**
+```javascript
+const { data: existing } = await supabase
+  .from("group_reports")
+  .select("id")
+  .eq("group_id", groupId)
+  .eq("user_id", userId)
+  .maybeSingle()
+```
+
+If already reported: show "You have already reported this group."
+
+If not yet reported:
+```javascript
+await supabase.from("group_reports").insert({ group_id: groupId, user_id: userId })
+await supabase.rpc("increment_group_reports", { p_group_id: groupId })
+```
+
+---
+
+## SECTION 11 — GROUP CHAT / MESSAGING
+
+> ⚠️ DO NOT CHANGE THE EXISTING CHAT UI. Only wire up the API calls below if not already connected.
+
+### 11.1 Load Group Messages
+
+**Trigger:** Chat screen loads
+
+```javascript
+const { data: messages } = await supabase
+  .from("group_messages")
+  .select(`
+    id, message, image_url, video_url, created_at, user_id,
+    profiles:user_id(display_name, avatar_url)
+  `)
+  .eq("group_id", groupId)
+  .order("created_at", { ascending: true })
+  .limit(50)
+```
+
+---
+
+### 11.2 Send Group Message
+
+**Trigger:** User taps Send button
+
+**User Input:**
+- `message` (text, optional if media attached)
+- `imageUrl` (optional — upload first via `/api/upload`, then pass URL)
+- `videoUrl` (optional — upload first via `/api/upload`, then pass URL)
+
+**Verify membership first:**
+```javascript
+const { data: membership } = await supabase
+  .from("group_members")
+  .select("role")
+  .eq("group_id", groupId)
+  .eq("user_id", userId)
+  .maybeSingle()
+
+if (!membership) return showError("You must be a member to post")
+```
+
+**Insert message:**
+```javascript
+await supabase.from("group_messages").insert({
+  group_id: groupId,
+  user_id: userId,
+  message: messageText || null,
+  image_url: imageUrl || null,
+  video_url: videoUrl || null
+})
+```
+
+---
+
+### 11.3 Delete Own Message
+
+**Trigger:** User long-presses own message → taps "Delete"
+
+```javascript
+await supabase
+  .from("group_messages")
+  .delete()
+  .eq("id", messageId)
+  .eq("user_id", userId)
+```
+
+---
+
+### 11.4 Real-Time Chat (REQUIRED)
+
+```javascript
+const channel = supabase
+  .channel(`group-messages-${groupId}`)
+  .on(
+    "postgres_changes",
+    { event: "INSERT", schema: "public", table: "group_messages", filter: `group_id=eq.${groupId}` },
+    (payload) => {
+      setMessages(prev => [...prev, payload.new])
+      // Auto-scroll to bottom
+    }
+  )
+  .subscribe()
+
+// Cleanup on screen unmount:
+return () => supabase.removeChannel(channel)
+```
+
+---
+
+## SECTION 12 — USER PROFILE
+
+### 12.1 Load Own Profile
+
+**Trigger:** Profile screen loads
+
+```javascript
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("*")
+  .eq("id", userId)
+  .single()
+```
+
+**Profile fields:**
+```json
+{
+  "id": "user-uuid",
+  "display_name": "John Doe",
+  "full_name": "John Doe",
+  "phone": "+264811234567",
+  "email": "john@example.com",
+  "avatar_url": "https://...",
+  "trust_score": 75,
+  "level": 1,
+  "home_geohash": "k7fqk7b",
+  "work_geohash": null,
+  "is_banned": false,
+  "bio": null,
+  "created_at": "2024-01-01T00:00:00Z"
+}
+```
+
+---
+
+### 12.2 Load Profile Incident History
+
+```javascript
+const { data: incidents } = await supabase
+  .from("incidents")
+  .select("id, title, status, created_at, incident_types(label)")
+  .eq("created_by", userId)
+  .order("created_at", { ascending: false })
+  .limit(20)
+```
+
+---
+
+### 12.3 Load Follow Counts
+
+```javascript
+const [followersRes, followingRes] = await Promise.all([
+  supabase.from("user_follows").select("id", { count: "exact" }).eq("following_id", userId),
+  supabase.from("user_follows").select("id", { count: "exact" }).eq("follower_id", userId)
+])
+const followers = followersRes.count
+const following = followingRes.count
+```
+
+---
+
+### 12.4 Load Active Subscription on Profile
+
+```javascript
+const { data: subscription } = await supabase
+  .from("user_subscriptions")
+  .select("*, plans(*)")
+  .eq("user_id", userId)
+  .eq("status", "active")
+  .gte("expires_at", new Date().toISOString())
+  .order("expires_at", { ascending: false })
+  .maybeSingle()
+```
+
+Display plan name and expiry date on profile screen.
+
+---
+
+### 12.5 Update Display Name
+
+**Trigger:** User edits name and saves
+
+```javascript
+await supabase
+  .from("profiles")
+  .update({ display_name: newNameValue })
+  .eq("id", userId)
+```
+
+---
+
+### 12.6 Upload Avatar
+
+**Trigger:** User taps avatar / "Change Photo"
+
+**Step 1:** Upload via `/api/upload`  
+**Step 2:**
+```javascript
+await supabase
+  .from("profiles")
+  .update({ avatar_url: blobUrl })
+  .eq("id", userId)
+```
+
+---
+
+## SECTION 13 — PUBLIC PROFILE VIEW
+
+### 13.1 Load Other User's Profile
+
+**Trigger:** Tapping another user's name/avatar (from incident card, comment, group member list)
+
+```javascript
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("id, display_name, avatar_url, trust_score, level, created_at, bio")
+  .eq("id", targetUserId)
+  .single()
+
+// Check if current user follows target
+const { data: followRecord } = await supabase
+  .from("user_follows")
+  .select("id")
+  .eq("follower_id", currentUserId)
+  .eq("following_id", targetUserId)
+  .maybeSingle()
+const isFollowing = !!followRecord
+```
+
+---
+
+## SECTION 14 — FOLLOW / UNFOLLOW
+
+### 14.1 Follow User
+
+**Trigger:** User taps "Follow" button on public profile
+
+```javascript
+await supabase.from("user_follows").insert({
+  follower_id: currentUserId,
+  following_id: targetUserId
+})
+
+// Create notification for followed user
+await supabase.from("notifications").insert({
+  user_id: targetUserId,
+  type: "new_follower",
+  metadata: { follower_id: currentUserId },
+  is_read: false
+})
+```
+
+**UI:** Button changes to "Unfollow" immediately.
+
+---
+
+### 14.2 Unfollow User
+
+**Trigger:** User taps "Unfollow"
+
+```javascript
+await supabase
+  .from("user_follows")
+  .delete()
+  .eq("follower_id", currentUserId)
+  .eq("following_id", targetUserId)
+```
+
+---
+
+### 14.3 Load Followers / Following Lists
+
+**Trigger:** User taps follower/following count on profile
+
+```javascript
+// Followers list
+const { data: followerLinks } = await supabase
+  .from("user_follows").select("follower_id").eq("following_id", userId)
+const { data: followerProfiles } = await supabase
+  .from("profiles").select("id, display_name, avatar_url, trust_score")
+  .in("id", followerLinks.map(f => f.follower_id))
+
+// Following list
+const { data: followingLinks } = await supabase
+  .from("user_follows").select("following_id").eq("follower_id", userId)
+const { data: followingProfiles } = await supabase
+  .from("profiles").select("id, display_name, avatar_url, trust_score")
+  .in("id", followingLinks.map(f => f.following_id))
+```
+
+---
+
+## SECTION 15 — NOTIFICATIONS
+
+### 15.1 Load Notifications
+
+**Trigger:** Notifications screen loads
+
+```javascript
+const { data: notifications } = await supabase
+  .from("user_notifications")
+  .select("*")
+  .eq("user_id", userId)
+  .order("created_at", { ascending: false })
+  .limit(50)
+```
+
+**Notification item:**
+```json
+{
+  "id": "notif-uuid",
+  "user_id": "user-uuid",
+  "type": "follow",
+  "title": "New Follower",
+  "message": "John D. started following you",
+  "entity_id": "follower-user-uuid",
+  "read_at": null,
+  "created_at": "2024-01-01T10:00:00Z"
+}
+```
+
+**Tap navigation by type:**
+| type | navigate to |
+|---|---|
+| `follow` | Public Profile of `entity_id` |
+| `group_request` | Group Detail of `entity_id` |
+| `group_joined` | Group Detail of `entity_id` |
+| `subscription` | Subscribe screen |
+
+---
+
+### 15.2 Mark Notification as Read
+
+**Trigger:** User taps a notification
+
+```javascript
+await supabase
+  .from("user_notifications")
+  .update({ read_at: new Date().toISOString() })
+  .eq("id", notificationId)
+```
+
+---
+
+### 15.3 Unread Badge Count
+
+```javascript
+const { count } = await supabase
+  .from("user_notifications")
+  .select("id", { count: "exact" })
+  .eq("user_id", userId)
+  .is("read_at", null)
+```
+
+Show badge on notification bell icon in navigation when `count > 0`.
+
+---
+
+### 15.4 Real-Time Notifications (REQUIRED)
+
+```javascript
+const channel = supabase
+  .channel(`notifications-${userId}`)
+  .on(
+    "postgres_changes",
+    { event: "INSERT", schema: "public", table: "user_notifications", filter: `user_id=eq.${userId}` },
+    (payload) => {
+      // Increment badge count
+      // Add new notification to top of list
+    }
+  )
+  .subscribe()
+
+return () => supabase.removeChannel(channel)
+```
+
+---
+
+## SECTION 16 — SEARCH
+
+### 16.1 Search Incidents
+
+**Trigger:** User types in search input (debounce 300ms minimum)
+
+```javascript
+const { data: results } = await supabase
+  .from("incidents")
+  .select("id, title, description, town, status, created_at, incident_types(label)")
+  .or(`title.ilike.%${query}%,description.ilike.%${query}%,town.ilike.%${query}%`)
+  .order("created_at", { ascending: false })
+  .limit(20)
+```
+
+---
+
+### 16.2 Search Users
+
+```javascript
+const { data: users } = await supabase
+  .from("profiles")
+  .select("id, display_name, avatar_url, trust_score")
+  .ilike("display_name", `%${query}%`)
+  .limit(10)
+```
+
+---
+
+## SECTION 17 — SUBSCRIPTION & VOUCHER SYSTEM
+
+### 17.1 Check Active Subscription
+
+**Trigger:** App load, before accessing File Deck, before creating incidents
+
+```javascript
+const { data: subscription } = await supabase
+  .from("user_subscriptions")
+  .select("*, plans(*)")
+  .eq("user_id", userId)
+  .eq("status", "active")
+  .gte("expires_at", new Date().toISOString())
+  .order("expires_at", { ascending: false })
+  .maybeSingle()
+
+const hasActiveSubscription = !!subscription
+```
+
+If no active subscription and trying to access File Deck or Report: redirect to Subscribe screen.
+
+---
+
+### 17.2 Load Subscription Plans
+
+**Trigger:** Subscribe screen loads
+
+```javascript
+const { data: plans } = await supabase
+  .from("plans")
+  .select("*")
+  .order("price_cents", { ascending: true })
+```
+
+**Plan structure:**
+```json
+{ "id": 1, "code": "individual_monthly", "label": "Individual 1 Month", "period_days": 30, "price_cents": 7000 }
+```
+
+**Display price:** Divide `price_cents` by 100 → `7000 / 100 = 70` → "N$70"
+
+---
+
+### 17.3 Pay Now — WhatsApp Flow
+
+**Trigger:** User taps "Pay Now" on a plan
+
+```javascript
+const message = encodeURIComponent(
+  `Hi Ngumu's Eye Support, I would like to subscribe to the ${plan.label} of N$${plan.price_cents / 100}. Please advise how I can make payment?`
+)
+const whatsappUrl = `https://wa.me/264816802064?text=${message}`
+// Open in browser/app using Linking.openURL(whatsappUrl)
+```
+
+---
+
+### 17.4 Redeem Voucher Code
+
+**Screen:** Subscribe  
+**Trigger:** User enters voucher code and taps "Redeem"
+
+**User Input:** `voucherCode` (text, required — trim + uppercase before checking)
+
+**Step 1 — Validate:**
+```javascript
+const { data: voucher } = await supabase
+  .from("vouchers")
+  .select("*, plans(*)")
+  .eq("code", voucherCode.trim().toUpperCase())
+  .is("redeemed_by", null)
+  .maybeSingle()
+```
+If null: show error "Invalid or already used voucher code."
+
+**Step 2 — Mark redeemed:**
+```javascript
+await supabase.from("vouchers").update({
+  redeemed_by: userId,
+  redeemed_by_email: userEmail,
+  redeemed_at: new Date().toISOString()
+}).eq("code", voucherCode.trim().toUpperCase())
+```
+
+**Step 3 — Create subscription:**
+```javascript
+const expiresAt = new Date()
+expiresAt.setDate(expiresAt.getDate() + (voucher.days || voucher.plans.period_days || 30))
+
+await supabase.from("user_subscriptions").insert({
+  user_id: userId,
+  plan_id: voucher.plan_id,
+  started_at: new Date().toISOString(),
+  expires_at: expiresAt.toISOString(),
+  status: "active",
+  payment_reference: `VOUCHER-${voucherCode}`
+})
+```
+
+**After success:** Show "Voucher redeemed! Your subscription is now active." Refresh subscription state.
+
+---
+
+### 17.5 Cancel Subscription
+
+**Trigger:** User taps "Cancel Subscription" in profile settings (confirm dialog first)
+
+```javascript
+await supabase
+  .from("user_subscriptions")
+  .update({ status: "cancelled", auto_renew: false })
+  .eq("user_id", userId)
+  .eq("status", "active")
+```
+
+---
+
+## SECTION 18 — ADMIN SCREENS
+
+> Only show admin navigation items if `profile.level >= 4`.
+
+### 18.1 Admin Dashboard Stats
+
+```javascript
+const [incidentsRes, usersRes, groupsRes] = await Promise.all([
+  supabase.from("incidents").select("id", { count: "exact" }),
+  supabase.from("profiles").select("id", { count: "exact" }),
+  supabase.from("groups").select("id", { count: "exact" })
+])
+```
+
+---
+
+### 18.2 Manage Users
+
+**Load all users:**
+```javascript
+const { data: users } = await supabase
+  .from("profiles")
+  .select("id, display_name, email, phone, level, trust_score, is_banned, created_at")
+  .order("created_at", { ascending: false })
+```
+
+**Ban user:**
+```javascript
+await supabase.from("profiles").update({ is_banned: true }).eq("id", targetUserId)
+```
+
+**Unban user:**
+```javascript
+await supabase.from("profiles").update({ is_banned: false }).eq("id", targetUserId)
+```
+
+**Update user level:**
+```javascript
+await supabase.from("profiles").update({ level: newLevel }).eq("id", targetUserId)
+```
+
+---
+
+### 18.3 Incident Triage
+
+**Load new incidents:**
+```javascript
+const { data: incidents } = await supabase
+  .from("incidents")
+  .select("*, incident_types(*), profiles:created_by(display_name)")
+  .eq("status", "new")
+  .order("created_at", { ascending: true })
+```
+
+**Update incident status:**
+```javascript
+await supabase.from("incidents").update({ status: newStatus }).eq("id", incidentId)
+```
+
+---
+
+### 18.4 Generate Voucher
+
+**Trigger:** Admin fills in plan + optional email + optional custom days, taps "Generate"
+
+```javascript
+const planCode = plan.code.substring(0, 3).toUpperCase()
+const randomPart = Math.random().toString(36).substring(2, 7).toUpperCase()
+const codeString = `${planCode}-${Date.now().toString().slice(-5)}-${randomPart}`
+
+await supabase.from("vouchers").insert({
+  code: codeString,
+  plan_id: planId,
+  days: customDays || null,
+  issued_to_email: recipientEmail || null
+})
+```
+
+Show generated code to admin.
+
+---
+
+### 18.5 Groups Moderation
+
+```javascript
+const { data: groups } = await supabase
+  .from("groups")
+  .select("*, group_members(count)")
+  .order("negative_reports", { ascending: false })
+```
+
+---
+
+## SECTION 19 — REAL-TIME SUBSCRIPTIONS SUMMARY
+
+All real-time channels must be **set up on screen mount** and **torn down on unmount**.
+
+| Channel | Table | Event | Filter |
+|---|---|---|---|
+| Group Chat | `group_messages` | INSERT | `group_id=eq.{groupId}` |
+| Incident Feed | `incidents` | INSERT | none |
+| Notifications | `user_notifications` | INSERT | `user_id=eq.{userId}` |
+
+```javascript
+// Template for all real-time subscriptions:
+useEffect(() => {
+  const channel = supabase
+    .channel("channel-name")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "table_name", filter: "..." },
+      (payload) => { /* handle */ })
+    .subscribe()
+  return () => supabase.removeChannel(channel)
+}, [dependency])
+```
+
+---
+
+## SECTION 20 — FILE UPLOAD API
+
+**Endpoint:** `POST https://app.ngumus-eye.site/api/upload`  
+**Content-Type:** `multipart/form-data`  
+**Auth Header:** `Authorization: Bearer <access_token>`  
+**Form field:** `file` (binary)
+
+**Constraints:**
+- Images: max 10MB, types: `image/*`
+- Videos: max 50MB, types: `video/*`
+
+**Success Response:**
+```json
+{ "url": "https://public.blob.vercel-storage.com/filename-abc123.jpg" }
+```
+
+**Error Responses:**
+- `400`: `{ "error": "No file provided" }`
+- `400`: `{ "error": "File too large. Maximum size is 10MB" }`
+- `400`: `{ "error": "Invalid file type. Only images and videos are allowed" }`
+- `500`: `{ "error": "Upload failed" }`
+
+---
+
+## SECTION 21 — STATUS CODES & ENUMS REFERENCE
+
+### Incident Status
+| Value | Label | Colour |
+|---|---|---|
+| `new` | New | Yellow `#F59E0B` |
+| `verifying` | Verifying | Blue `#3B82F6` |
+| `assigned` | Assigned | Purple `#8B5CF6` |
+| `resolved` | Resolved | Green `#10B981` |
+| `archived` | Archived | Gray `#6B7280` |
+
+### Case/File Status
+| Value | Label | Colour |
+|---|---|---|
+| `open` | Open | Yellow `#F59E0B` |
+| `new` | New | Yellow `#F59E0B` |
+| `assigned` | Assigned | Blue `#3B82F6` |
+| `in_progress` | In Progress | Purple `#8B5CF6` |
+| `closed` | Closed | Green `#10B981` |
+| `archived` | Archived | Gray `#6B7280` |
+
+### Case Priority
+| Value | Colour |
+|---|---|
+| `low` | Gray |
+| `medium` | Yellow |
+| `high` | Orange |
+| `critical` | Red |
+
+### User Level
+| Value | Label |
+|---|---|
+| `0` | Unverified |
+| `1` | Basic User |
+| `2` | Trusted User |
+| `3` | Moderator |
+| `4` | Admin |
+| `5` | Super Admin |
+
+### Group Member Roles
+| Value | Description |
+|---|---|
+| `member` | Regular member |
+| `moderator` | Can manage messages |
+| `responder` | Emergency responder |
+| `owner` | Group creator |
+
+### Reaction Types
+| Value | Label |
+|---|---|
+| `upvote` | Thumbs Up |
+| `downvote` | Thumbs Down |
+| `love` | Heart |
+| `confirm` | Check mark |
+
+### Subscription Status
+| Value | Meaning |
+|---|---|
+| `active` | Currently active |
+| `expired` | Past expiry date |
+| `cancelled` | Manually cancelled |
+
+---
+
+## SECTION 22 — ERROR HANDLING RULES
+
+### HTTP Status Codes — Mobile Response
+| Code | Mobile Action |
+|---|---|
+| `200` / `201` | Process success response |
+| `400` | Show field-level validation error |
+| `401` | Attempt token refresh, if fails → redirect to Login |
+| `403` | Redirect to Subscribe screen (no active subscription) |
+| `404` | Show "Not found" empty state |
+| `409` | Show "Already exists" error message |
+| `422` | Show validation error message |
+| `429` | Show "Too many requests — please try again shortly" |
+| `500` | Show "Something went wrong. Please try again." + Retry button |
+
+### Supabase Error Codes
+| Code | Meaning |
+|---|---|
+| `23505` | Duplicate — unique constraint violation |
+| `42501` | Permission denied (RLS) |
+| `PGRST116` | Row not found |
+
+### Network Errors
+- Show: "No internet connection. Please check your network."
+- Offer retry button on failed screens
+- Cache last successful feed for offline viewing
+
+---
+
+## SECTION 23 — UTILITIES & FORMATTING
+
+### Phone Number Format
+- Format: `+264 81 234 5678` (Namibia country code)
+- Store as-is, display with spaces
+
+### Date Formatting
+- Timezone: `Africa/Windhoek` (UTC+2)
+- Display: `DD MMM YYYY` (e.g., `01 Jan 2024`)
+- Time: `HH:mm` (24-hour)
+- API values: ISO 8601 `2024-01-01T10:00:00Z`
+
+### Currency Formatting
+- Currency: Namibian Dollar (N$)
+- Stored in cents: `7000` = N$70.00
+- Display: `N$70` (no decimals for round numbers)
+
+### Geohash Computation
+```javascript
+import ngeohash from 'ngeohash'
+const geohash = ngeohash.encode(lat, lng, 7) // precision 7
+```
+
+---
+
+## SECTION 24 — TESTING CHECKLIST
+
+### Authentication
+- [ ] Login with valid credentials navigates to feed
+- [ ] Login with wrong password shows error
+- [ ] Login button disabled during loading
+- [ ] Session persists after app restart
+- [ ] Session refresh works when token expired
+- [ ] Logout clears session and returns to login
+- [ ] Register with all fields creates account
+- [ ] Register with mismatched passwords shows error
+- [ ] Register with existing email shows error
+- [ ] Confirmation email received after signup
+- [ ] Forgot password email received
+- [ ] Password reset saves new password
+
+### Feed
+- [ ] Feed loads list of incidents on screen entry
+- [ ] Pull-to-refresh reloads feed
+- [ ] Pagination loads more on scroll to bottom
+- [ ] Tapping incident card opens detail screen
+- [ ] Ads display between incident cards
+- [ ] Ad views tracked on display
+
+### Incident Reporting
+- [ ] Incident types load in dropdown
+- [ ] GPS location auto-populates
+- [ ] Submitting form creates incident
+- [ ] Media upload attaches to incident
+- [ ] Unsupported file type shows error
+- [ ] File over size limit shows error
+- [ ] No active subscription redirects to subscribe
+
+### Incident Detail
+- [ ] All incident fields display correctly
+- [ ] Media gallery shows images/videos
+- [ ] Reactions (upvote, downvote, love, confirm) toggle on/off
+- [ ] Reaction counts update after toggle
+- [ ] Comments load in chronological order
+- [ ] Adding comment appends to list
+- [ ] Comment with image works
+
+### Map
+- [ ] Map loads and shows incident pins
+- [ ] Pins coloured by severity
+- [ ] Tapping pin shows mini card
+- [ ] Tapping mini card navigates to detail
+
+### Case Deck — My File Deck (NEW SCREENS)
+- [ ] Subscription gate: no active subscription redirects to subscribe
+- [ ] My File Deck screen loads with correct layout
+- [ ] Stats row shows correct counts (Active, New, In Progress, Closed)
+- [ ] Empty state shows "No active files" with "Open New File" button
+- [ ] Case cards display correctly when cases exist
+- [ ] "+ New File" button navigates to Open New Case screen
+- [ ] "Open New File" quick action card navigates to Open New Case screen
+- [ ] "Device Tracking" quick action card navigates to Device Tracking screen
+- [ ] "Counseling & Support" quick action card navigates to Counseling & Support screen
+- [ ] Pull-to-refresh reloads case list and stats
+
+### Open New Case (NEW SCREEN)
+- [ ] All form fields render correctly
+- [ ] Category dropdown loads all options
+- [ ] Validation prevents submit without category and title
+- [ ] Evidence image picker opens and shows thumbnails
+- [ ] Document picker opens and shows file names
+- [ ] Max 7 evidence images enforced
+- [ ] Max 5 documents enforced
+- [ ] Priority dropdown defaults to Medium
+- [ ] Submit button shows spinner while submitting
+- [ ] Success navigates to Case Detail with new case
+- [ ] Evidence images upload correctly to case
+- [ ] Supporting documents upload correctly to case
+
+### Case Detail (NEW SCREEN)
+- [ ] All case fields display correctly
+- [ ] Status badge shows correct colour
+- [ ] Priority badge shows correct colour
+- [ ] Status change updates badge immediately
+- [ ] Evidence section shows count and list
+- [ ] Documents section shows count and list
+- [ ] Upload evidence button works
+- [ ] Upload document button works
+- [ ] Tapping image evidence opens full screen preview
+- [ ] Tapping document opens in browser
+- [ ] Long-press evidence item shows delete option
+- [ ] Delete evidence removes item from list
+- [ ] Long-press document item shows delete option
+- [ ] Delete document removes item from list
+
+### Device Tracking (NEW SCREENS)
+- [ ] Device Tracking screen loads from My File Deck quick action card
+- [ ] Empty state shows "No devices registered yet"
+- [ ] "+ Register Device" button expands inline form on same screen
+- [ ] Register form shows 4 fields (2-column layout or stacked on mobile)
+- [ ] Device Name and Device Type required — validation works
+- [ ] "Register Device" submit button saves device
+- [ ] "Cancel" button collapses the form
+- [ ] New device appears in list after registration
+- [ ] Device card shows name, type, IMEI, serial, status badge
+- [ ] "Report Stolen" shows confirm dialog
+- [ ] Confirming marks device as stolen (red badge)
+- [ ] "Mark Recovered" restores to active (green badge)
+
+### Counseling & Support (NEW SCREEN)
+- [ ] Screen loads from My File Deck quick action card
+- [ ] Emergency Assistance card shows with Call Now + WhatsApp buttons
+- [ ] "Call Now" button opens phone dialer
+- [ ] "WhatsApp" button opens WhatsApp
+- [ ] Request Support form renders all fields
+- [ ] Request Type dropdown loads all options
+- [ ] Priority dropdown defaults to Medium
+- [ ] Description textarea accepts input
+- [ ] Submit button saves request
+- [ ] Success message shown after submit
+- [ ] Form clears after submit
+- [ ] Request History section loads submitted requests
+- [ ] Empty state shows when no requests yet
+
+### Groups
+- [ ] Groups list loads
+- [ ] Public group join works immediately
+- [ ] Private group join shows "request sent"
+- [ ] Group creator sees pending requests
+- [ ] Approve request adds member
+- [ ] Reject request removes from list
+- [ ] Leave group removes user from members
+- [ ] Remove member works for owner
+
+### Chat
+- [ ] Messages load on chat screen entry
+- [ ] Sending message appears in chat
+- [ ] Real-time new messages appear without refresh
+- [ ] Long-press own message shows delete option
+- [ ] Deleting own message removes it
+- [ ] Non-member cannot send messages
+
+### Profile
+- [ ] Profile data loads correctly
+- [ ] Follower/following counts correct
+- [ ] Tapping counts opens followers/following list
+- [ ] Update display name saves correctly
+- [ ] Avatar upload works
+- [ ] Subscription plan and expiry date displayed
+- [ ] Incident history loads
+
+### Notifications
+- [ ] Notification list loads
+- [ ] Unread badge shows on navigation
+- [ ] Tapping notification marks it as read
+- [ ] Tapping follow notification navigates to profile
+- [ ] Tapping group notification navigates to group
+- [ ] Real-time new notification updates badge count
+
+### Subscriptions
+- [ ] Plans list loads with correct prices
+- [ ] "Pay Now" opens WhatsApp with correct pre-filled message
+- [ ] Voucher redemption with valid code activates subscription
+- [ ] Invalid voucher code shows error
+- [ ] Already-used voucher shows error
+- [ ] Active subscription shows plan name and expiry date
+- [ ] Cancel subscription works
+
+### Search
+- [ ] Incident search returns relevant results
+- [ ] User search returns matching profiles
+- [ ] Debounce prevents excessive queries (300ms)
+- [ ] Empty state shows when no results
+
+---
+
+## SECTION 25 — FINAL RULES
+
+### Mobile App MUST do:
+- Validate all form inputs before API calls
+- Disable buttons while submitting (show loading spinner)
+- Display error messages clearly and inline where relevant
+- Store auth tokens in SecureStore (not AsyncStorage)
+- Request GPS permissions before map/report screens
+- Request camera/gallery permissions before any upload
+- Compute geohash from lat/lng using `ngeohash` (precision 7)
+- Format prices from cents to N$ (divide by 100)
+- Format all dates to Africa/Windhoek timezone (UTC+2)
+- Implement real-time subscriptions for chat and notifications
+- Implement pull-to-refresh on all list screens
+- Implement infinite scroll / pagination on feed
+- Check subscription status before File Deck and Incident Report screens
+- Tear down all real-time channels on screen unmount
+
+### Mobile App MUST NOT do:
+- Store `SUPABASE_SERVICE_ROLE_KEY` in the app — ever
+- Perform admin operations without verifying `profile.level >= 4`
+- Bypass RLS using service role key
+- Calculate subscription expiry dates on client (use server-returned data)
+- Modify existing chat UI or any other working screen UI/styling
+
+---
+
+*End of Ngumus Eye Replit Developer Prompt — Version 1.0 — 2026-02-25*
