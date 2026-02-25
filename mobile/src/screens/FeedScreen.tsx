@@ -237,13 +237,17 @@ export default function FeedScreen() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const fetchPosts = useCallback(async () => {
     try {
+      setFetchError(null);
       const response = await postsApi.getAll(activeFilter);
       setPosts(response.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch posts:', error);
+      setFetchError(error.message || 'Failed to load posts');
+      setPosts([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -345,7 +349,7 @@ export default function FeedScreen() {
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No posts found</Text>
+              <Text style={styles.emptyText}>{fetchError || 'No posts yet'}</Text>
             </View>
           }
           ListFooterComponent={<View style={styles.bottomSpacing} />}

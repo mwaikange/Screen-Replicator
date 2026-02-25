@@ -1,0 +1,55 @@
+The app is still showing mock/placeholder data after login. I need you to ensure the app works with real live data end-to-end. Here's exactly how it should work:
+
+1. Authentication must go through Supabase directly, not mock auth:
+
+Use @supabase/supabase-js and call supabase.auth.signInWithPassword({ email, password }) with the user's real credentials
+On success, extract the access_token from data.session.access_token
+Store that token persistently (AsyncStorage or expo-secure-store)
+If login fails, show the real error message from Supabase — do NOT fall back to a mock user or demo mode
+There should be absolutely NO hardcoded user objects, no "demo user", no fallback profiles. If auth fails, it fails.
+2. Every API call must use the real Bearer token:
+
+Create a reusable API client function that attaches the stored token to every request:
+const apiCall = async (endpoint, options = {}) => {
+  const token = await getStoredToken(); // from AsyncStorage or SecureStore
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  return response.json();
+};
+3. Profile/user data must come from the API, not local state:
+
+After login, immediately call your user profile endpoint (e.g., GET /api/users/me) with the Bearer token
+Display whatever the API returns — name, email, avatar, etc.
+Do NOT create a local user object from the login response and display that. The profile screen should always fetch fresh data from the API.
+4. Remove ALL mock data, fallbacks, and placeholder content:
+
+Search the entire codebase for any hardcoded arrays, fake user objects, sample posts, placeholder images, or demo data
+Delete them all. Every screen should show either real data from the API or an empty state (e.g., "No posts yet")
+If a query returns empty results, show an empty state — do NOT substitute mock data to "fill" the screen
+5. Verify with console logs at critical points:
+
+Log the actual token being sent (first 20 chars only, for security)
+Log the raw API response for each endpoint before processing it
+Log the actual data being passed to each screen/component
+This way we can confirm real data is flowing, not cached or hardcoded values
+6. Common mistakes to avoid:
+
+Do NOT have a if (!data) { return mockData } pattern anywhere — that's a silent fallback
+Do NOT store a user object at login time and reuse it everywhere — always fetch fresh from the API
+Do NOT use try/catch blocks that silently swallow errors and return defaults
+Make sure the Supabase URL and anon key in your environment variables are pointing to the PRODUCTION Supabase instance, not a dev/test one
+How to test it's working:
+
+Clear app data / reinstall the app
+Try logging in with invalid credentials — it should show a real error, not log you in as a demo user
+Log in with valid credentials — you should see your real profile data
+Every screen should show either real data from the backend or "no data" — never mock content
+Check the console logs to confirm real API responses are coming through
+The key principle: if the API is down or returns an error, the app should show an error — never silently fall back to fake data. That's how you know it's truly connected to the live backend.
