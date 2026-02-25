@@ -24,8 +24,9 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 
 ### Backend (server/)
 - `index.ts` - Express server with session middleware, 20MB body limit
-- `routes.ts` - API endpoints for auth, posts, groups, group chat, members, join requests, avatar upload
-- `storage.ts` - In-memory storage with sample data including group members, messages, and join requests
+- `supabase.ts` - Server-side Supabase client using EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY
+- `routes.ts` - API endpoints all backed by Supabase (auth, posts/incidents, groups, group chat, members, join requests, avatar upload)
+- `storage.ts` - Legacy in-memory storage (no longer imported or used)
 
 ### Shared (shared/)
 - `schema.ts` - TypeScript types and Zod schemas for data validation (User, Post, Group, Comment, TimelineEvent, PostVotes, GroupMessage with imageUrl, GroupMember, GroupJoinRequest)

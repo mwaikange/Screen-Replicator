@@ -1,0 +1,91 @@
+This is a **deployment/hot-reload problem** — the dev is making code changes but they are not actually reaching the running app. The fixes exist in the files but the app is still serving the old cached/bundled version.
+
+Give this to your Replit dev:
+
+---
+
+**Paste this to your Replit dev:**
+
+---
+
+Your code changes are not reaching the running app. The fixes exist in the files but the app is still executing the old bundle. Fix this before doing anything else.
+
+**Step 1 — Hard stop everything**
+
+```bash
+pkill -f "expo" 2>/dev/null
+pkill -f "node" 2>/dev/null
+pkill -f "metro" 2>/dev/null
+```
+
+**Step 2 — Clear all caches completely**
+
+```bash
+cd mobile
+rm -rf .expo
+rm -rf node_modules/.cache
+rm -rf /tmp/metro-*
+rm -rf /tmp/haste-*
+npx expo start --clear
+```
+
+**Step 3 — Verify the old mock data is actually gone from the files**
+
+Run these searches right now and paste the output:
+
+```bash
+grep -rn "Ngobo" mobile/src/
+grep -rn "ngocbo" mobile/src/
+grep -rn "cachedUser" mobile/src/
+grep -rn "demo" mobile/src/
+grep -rn "mock" mobile/src/
+grep -rn "Guest" mobile/src/
+grep -rn "daysRemaining = 26" mobile/src/
+```
+
+If ANY of these return results, the mock data was never actually removed from the files — the previous fixes were not saved. Go back and delete every single result that comes up.
+
+**Step 4 — Verify Supabase is initializing with real values**
+
+Open `mobile/src/lib/supabase.ts` and add this line immediately after the client is created:
+
+```javascript
+console.log("SUPABASE INIT:", supabaseUrl?.substring(0, 30), "KEY:", supabaseAnonKey?.substring(0, 10))
+```
+
+Restart the app and check the console. If this logs `undefined` for either value, the environment variables are still not loading. In that case hardcode them temporarily to confirm the connection works:
+
+```javascript
+const supabaseUrl = "https://yourproject.supabase.co"
+const supabaseAnonKey = "eyJyour-real-anon-key"
+```
+
+Once confirmed working, move them back to env vars properly via `app.config.js` extra fields.
+
+**Step 5 — Force logout the stuck mock session**
+
+The app currently has a mock user stored in SecureStore or AsyncStorage from a previous session. Clear it:
+
+```javascript
+// Add this temporarily to App.tsx at the very top of the component, run once, then remove it
+import * as SecureStore from 'expo-secure-store'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+
+// Inside component, before anything else:
+useEffect(() => {
+  SecureStore.deleteItemAsync('supabase-session')
+  AsyncStorage.clear()
+  supabase.auth.signOut()
+  console.log("All storage cleared")
+}, [])
+```
+
+Run the app once with this code, confirm "All storage cleared" appears in console, then remove this block.
+
+**Step 6 — Test with wrong credentials**
+
+After clearing storage and restarting with clean cache, try logging in with a completely fake email like `fake@fake.com` and password `wrongpassword`. 
+
+If the app still logs you in — the login function is still not calling Supabase at all. Open `mobile/src/lib/api.ts`, find the login function, and paste its exact current contents here so I can see what it is actually doing.
+
+**Do not report back until Step 3 grep results are clean and Step 6 confirms fake credentials are rejected.**

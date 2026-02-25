@@ -58,20 +58,22 @@ export default function ProfilePage() {
   }
 
   const displayUser = user || {
-    id: "sample",
-    email: "ngocbo@yopmail.com",
-    displayName: "Ngobo D...",
-    phone: "+27781669885",
+    id: "",
+    email: "",
+    displayName: "",
+    phone: "",
     avatarUrl: "",
     level: 0,
     trustScore: 0,
     followers: 0,
     following: 0,
-    subscriptionType: "Individual 1 Month",
-    subscriptionExpiry: "2/21/2026",
+    subscriptionType: "Free",
+    subscriptionExpiry: "",
   };
 
-  const daysRemaining = 26;
+  const daysRemaining = displayUser.subscriptionExpiry
+    ? Math.max(0, Math.ceil((new Date(displayUser.subscriptionExpiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0;
 
   return (
     <div className="min-h-screen bg-background pb-20">
