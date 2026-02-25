@@ -5,6 +5,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUserAvatar(userId: string, avatarUrl: string): Promise<User | undefined>;
   getPosts(filter?: string): Promise<Post[]>;
   getPost(id: string): Promise<Post | undefined>;
   createPost(post: InsertPost, userId: string): Promise<Post>;
@@ -58,12 +59,19 @@ export class MemStorage implements IStorage {
     this.seedData();
   }
 
+  async updateUserAvatar(userId: string, avatarUrl: string): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    if (!user) return undefined;
+    user.avatarUrl = avatarUrl;
+    return user;
+  }
+
   private seedData() {
     const sampleUser: User = {
       id: "user-1",
       email: "ngocbo@yopmail.com",
       password: "password123",
-      displayName: "Ngobo D...",
+      displayName: "Ngobo D.",
       phone: "+27781669885",
       avatarUrl: "",
       level: 0,
@@ -308,6 +316,7 @@ export class MemStorage implements IStorage {
         userName: user?.displayName || "Unknown",
         userAvatar: user?.avatarUrl || "",
         text,
+        imageUrl: null,
         createdAt: new Date(Date.now() - minutesAgo * 60000).toISOString(),
       };
       this.groupMessages.set(id, msg);
@@ -453,6 +462,7 @@ export class MemStorage implements IStorage {
       userName: user?.displayName || "Anonymous",
       userAvatar: user?.avatarUrl || "",
       text: message.text,
+      imageUrl: message.imageUrl || null,
       createdAt: new Date().toISOString(),
     };
     this.groupMessages.set(id, msg);

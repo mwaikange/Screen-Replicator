@@ -27,6 +27,7 @@ import {
   X,
   Trash2,
   LogOut,
+  ImagePlus,
 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -40,10 +41,12 @@ export default function GroupChatPage() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const [messageText, setMessageText] = useState("");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: group, isLoading: groupLoading } = useQuery<GroupDetail>({
     queryKey: ["/api/groups", id],
@@ -68,11 +71,12 @@ export default function GroupChatPage() {
   }, [messages]);
 
   const sendMessage = useMutation({
-    mutationFn: async (text: string) => {
-      await apiRequest("POST", `/api/groups/${id}/messages`, { text });
+    mutationFn: async ({ text, imageUrl }: { text: string; imageUrl?: string | null }) => {
+      await apiRequest("POST", `/api/groups/${id}/messages`, { text, imageUrl });
     },
     onSuccess: () => {
       setMessageText("");
+      setImagePreview(null);
       queryClient.invalidateQueries({ queryKey: ["/api/groups", id, "messages"] });
     },
   });
@@ -138,8 +142,19 @@ export default function GroupChatPage() {
   });
 
   const handleSend = () => {
-    if (!messageText.trim()) return;
-    sendMessage.mutate(messageText.trim());
+    if (!messageText.trim() && !imagePreview) return;
+    sendMessage.mutate({ text: messageText.trim() || (imagePreview ? "📷 Photo" : ""), imageUrl: imagePreview });
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -272,7 +287,15 @@ export default function GroupChatPage() {
                       {formatTime(msg.createdAt)}
                     </span>
                   </div>
-                  <p className="text-sm">{msg.text}</p>
+                  {msg.imageUrl && (
+                    <img
+                      src={msg.imageUrl}
+                      alt="Shared image"
+                      className="max-w-[240px] rounded-lg mb-1 cursor-pointer"
+                      data-testid={`msg-image-${msg.id}`}
+                    />
+                  )}
+                  {msg.text && msg.text !== "📷 Photo" && <p className="text-sm">{msg.text}</p>}
                 </div>
               </div>
             ))}
@@ -280,19 +303,48 @@ export default function GroupChatPage() {
           </div>
 
           <div className="border-t bg-card px-4 py-3">
+            {imagePreview && (
+              <div className="mb-2 relative inline-block">
+                <img src={imagePreview} alt="Preview" className="max-h-24 rounded-lg" />
+                <button
+                  className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-xs"
+                  onClick={() => setImagePreview(null)}
+                  data-testid="button-remove-image"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
             <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                className="hidden"
+                onChange={handleImageSelect}
+                data-testid="input-image-file"
+              />
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="button-attach-image"
+              >
+                <ImagePlus className="w-4 h-4" />
+              </Button>
               <Input
                 placeholder="Type a message..."
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={sendMessage.isPending}
+                className="flex-1"
                 data-testid="input-message"
               />
               <Button
                 size="icon"
                 onClick={handleSend}
-                disabled={!messageText.trim() || sendMessage.isPending}
+                disabled={(!messageText.trim() && !imagePreview) || sendMessage.isPending}
                 data-testid="button-send"
               >
                 <Send className="w-4 h-4" />

@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { userApi } from '../lib/api';
 import { User } from '../lib/types';
@@ -37,8 +38,27 @@ export default function ProfileScreen() {
     fetchUser();
   }, []);
 
+  const handlePickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant access to your photo library to update your profile picture.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      await userApi.updateAvatar(result.assets[0].uri);
+      const response = await userApi.getProfile();
+      setUser(response.data);
+    }
+  };
+
   const displayUser = user || {
-    displayName: 'Ngobo D...',
+    displayName: 'Ngobo D.',
     email: 'ngocbo@yopmail.com',
     phone: '+27781669885',
     avatarUrl: '',
@@ -69,12 +89,16 @@ export default function ProfileScreen() {
         <View style={styles.card}>
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {displayUser.displayName?.charAt(0) || 'U'}
-                </Text>
-              </View>
-              <TouchableOpacity style={styles.cameraButton}>
+              {displayUser.avatarUrl ? (
+                <Image source={{ uri: displayUser.avatarUrl }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {displayUser.displayName?.charAt(0) || 'U'}
+                  </Text>
+                </View>
+              )}
+              <TouchableOpacity style={styles.cameraButton} onPress={handlePickAvatar}>
                 <Ionicons name="camera" size={14} color={colors.primaryForeground} />
               </TouchableOpacity>
             </View>
@@ -231,6 +255,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.muted,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
   avatarText: {
     fontSize: 24,
