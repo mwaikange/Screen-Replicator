@@ -46,6 +46,7 @@ export default function GroupChatScreen() {
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [isMember, setIsMember] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [messageText, setMessageText] = useState('');
   const [showMembers, setShowMembers] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -72,8 +73,9 @@ export default function GroupChatScreen() {
     setMembers(membersRes.data);
 
     const { data: authData } = await supabase.auth.getUser();
-    const currentUserId = authData?.user?.id || '';
-    const memberEntry = membersRes.data.find((m: GroupMember) => m.userId === currentUserId);
+    const userId = authData?.user?.id || '';
+    setCurrentUserId(userId);
+    const memberEntry = membersRes.data.find((m: GroupMember) => m.userId === userId);
     setIsMember(!!memberEntry);
     setUserRole(memberEntry?.role || null);
 
@@ -175,23 +177,37 @@ export default function GroupChatScreen() {
     navigation.goBack();
   };
 
-  const renderMessage = ({ item }: { item: GroupMessage }) => (
-    <View style={styles.messageRow}>
-      <View style={styles.messageAvatar}>
-        <Text style={styles.messageAvatarText}>{item.userName.charAt(0)}</Text>
-      </View>
-      <View style={styles.messageContent}>
-        <View style={styles.messageHeader}>
-          <Text style={styles.messageName}>{item.userName}</Text>
-          <Text style={styles.messageTime}>{formatTime(item.createdAt)}</Text>
-        </View>
-        {item.imageUrl && (
-          <Image source={{ uri: item.imageUrl }} style={styles.messageImage} resizeMode="cover" />
+  const renderMessage = ({ item }: { item: GroupMessage }) => {
+    const isOwn = currentUserId && item.userId === currentUserId;
+    return (
+      <View style={[styles.messageRow, isOwn ? styles.messageRowOwn : styles.messageRowOther]}>
+        {!isOwn && (
+          <View style={styles.messageAvatar}>
+            <Text style={styles.messageAvatarText}>{item.userName.charAt(0)}</Text>
+          </View>
         )}
-        {item.text && item.text !== '📷 Photo' && <Text style={styles.messageText}>{item.text}</Text>}
+        <View style={[styles.messageBubbleContainer, isOwn ? styles.messageBubbleContainerOwn : styles.messageBubbleContainerOther]}>
+          <View style={[styles.messageHeaderRow, isOwn ? styles.messageHeaderOwn : null]}>
+            <Text style={[styles.messageName, isOwn ? styles.messageNameOwn : null]}>{item.userName}</Text>
+            <Text style={[styles.messageTime, isOwn ? styles.messageTimeOwn : null]}>{formatTime(item.createdAt)}</Text>
+          </View>
+          <View style={[styles.messageBubble, isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther]}>
+            {item.imageUrl && (
+              <Image source={{ uri: item.imageUrl }} style={styles.messageImage} resizeMode="cover" />
+            )}
+            {item.text && item.text !== '📷 Photo' && (
+              <Text style={[styles.messageText, isOwn ? styles.messageTextOwn : null]}>{item.text}</Text>
+            )}
+          </View>
+        </View>
+        {isOwn && (
+          <View style={styles.messageAvatar}>
+            <Text style={styles.messageAvatarText}>{item.userName.charAt(0)}</Text>
+          </View>
+        )}
       </View>
-    </View>
-  );
+    );
+  };
 
   if (!group) {
     return (
@@ -326,7 +342,7 @@ export default function GroupChatScreen() {
                   <View style={styles.memberAvatar}>
                     <Text style={styles.memberAvatarText}>{member.userName.charAt(0)}</Text>
                   </View>
-                  <View style={styles.memberInfo}>
+                  <View style={styles.memberInfoCol}>
                     <Text style={styles.memberName}>{member.userName}</Text>
                     <Text style={styles.memberRole}>{member.role}</Text>
                   </View>
@@ -454,7 +470,7 @@ export default function GroupChatScreen() {
                     <View style={styles.memberAvatar}>
                       <Text style={styles.memberAvatarText}>{request.userName.charAt(0)}</Text>
                     </View>
-                    <View style={styles.memberInfo}>
+                    <View style={styles.memberInfoCol}>
                       <Text style={styles.memberName}>{request.userName}</Text>
                       <Text style={styles.memberRole}>{formatTime(request.createdAt)}</Text>
                     </View>
@@ -574,6 +590,9 @@ const styles = StyleSheet.create({
   joinButtonTextOutline: {
     color: colors.cardForeground,
   },
+  joinButtonDisabled: {
+    opacity: 0.6,
+  },
   chatContainer: {
     flex: 1,
   },
@@ -595,7 +614,14 @@ const styles = StyleSheet.create({
   messageRow: {
     flexDirection: 'row',
     marginBottom: 16,
-    gap: 10,
+    gap: 8,
+    alignItems: 'flex-end',
+  },
+  messageRowOwn: {
+    justifyContent: 'flex-end',
+  },
+  messageRowOther: {
+    justifyContent: 'flex-start',
   },
   messageAvatar: {
     width: 32,
@@ -610,28 +636,65 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.mutedForeground,
   },
-  messageContent: {
-    flex: 1,
+  messageBubbleContainer: {
+    maxWidth: '75%',
   },
-  messageHeader: {
+  messageBubbleContainerOwn: {
+    alignItems: 'flex-end',
+  },
+  messageBubbleContainerOther: {
+    alignItems: 'flex-start',
+  },
+  messageHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 2,
   },
+  messageHeaderOwn: {
+    flexDirection: 'row-reverse',
+  },
   messageName: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
+    color: colors.cardForeground,
+  },
+  messageNameOwn: {
     color: colors.cardForeground,
   },
   messageTime: {
     fontSize: 11,
     color: colors.mutedForeground,
   },
+  messageTimeOwn: {
+    color: colors.mutedForeground,
+  },
+  messageBubble: {
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  messageBubbleOwn: {
+    backgroundColor: colors.primary,
+    borderBottomRightRadius: 4,
+  },
+  messageBubbleOther: {
+    backgroundColor: colors.muted,
+    borderBottomLeftRadius: 4,
+  },
   messageText: {
     fontSize: 14,
     color: colors.cardForeground,
     lineHeight: 20,
+  },
+  messageTextOwn: {
+    color: colors.primaryForeground,
+  },
+  messageImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 8,
+    marginVertical: 4,
   },
   inputBar: {
     paddingHorizontal: spacing.md,
@@ -662,12 +725,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -6,
     right: -6,
-  },
-  messageImage: {
-    width: 200,
-    height: 150,
-    borderRadius: 8,
-    marginVertical: 4,
   },
   messageInput: {
     flex: 1,
@@ -741,7 +798,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.mutedForeground,
   },
-  memberInfo: {
+  memberInfoCol: {
     flex: 1,
   },
   memberName: {
@@ -907,9 +964,6 @@ const styles = StyleSheet.create({
     color: colors.mutedForeground,
     textAlign: 'center',
     paddingVertical: 16,
-  },
-  joinButtonDisabled: {
-    opacity: 0.6,
   },
   requestRow: {
     flexDirection: 'row',
