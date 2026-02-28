@@ -508,21 +508,44 @@ export const postsApi = {
 
 export const groupsApi = {
   getAll: async () => {
+    const userId = await getCurrentUserId();
+
     const { data, error } = await supabase
       .from('groups')
-      .select('id, name, area, is_public, member_count, created_by')
+      .select(`
+        id, name, geohash_prefix, visibility, created_at, created_by,
+        group_members(count)
+      `)
       .order('created_at', { ascending: false });
 
     if (error) return makeResponse([]);
 
-    const groups: Group[] = (data || []).map((g: any) => ({
-      id: g.id,
-      name: g.name,
-      area: g.area || '',
-      isPublic: g.is_public ?? true,
-      memberCount: g.member_count || 0,
-      createdBy: g.created_by,
-    }));
+    let membershipSet = new Set<string>();
+    let pendingSet = new Set<string>();
+    if (userId) {
+      const [membershipsRes, pendingRes] = await Promise.all([
+        supabase.from('group_members').select('group_id').eq('user_id', userId),
+        supabase.from('group_requests').select('group_id').eq('user_id', userId).eq('status', 'pending'),
+      ]);
+      (membershipsRes.data || []).forEach((m: any) => membershipSet.add(m.group_id));
+      (pendingRes.data || []).forEach((r: any) => pendingSet.add(r.group_id));
+    }
+
+    const groups: Group[] = (data || []).map((g: any) => {
+      const memberCountArr = g.group_members;
+      const memberCount = Array.isArray(memberCountArr) && memberCountArr.length > 0
+        ? memberCountArr[0].count : 0;
+      return {
+        id: g.id,
+        name: g.name,
+        area: g.geohash_prefix || '',
+        isPublic: g.visibility === 'public',
+        memberCount,
+        createdBy: g.created_by,
+        isMember: membershipSet.has(g.id),
+        requestPending: pendingSet.has(g.id),
+      };
+    });
 
     return makeResponse(groups);
   },
@@ -530,18 +553,25 @@ export const groupsApi = {
   getById: async (id: string) => {
     const { data, error } = await supabase
       .from('groups')
-      .select('id, name, area, is_public, member_count, created_by')
+      .select(`
+        id, name, geohash_prefix, visibility, created_at, created_by,
+        group_members(count)
+      `)
       .eq('id', id)
       .single();
 
     if (error || !data) return makeResponse(null);
 
+    const memberCountArr = (data as any).group_members;
+    const memberCount = Array.isArray(memberCountArr) && memberCountArr.length > 0
+      ? memberCountArr[0].count : 0;
+
     return makeResponse({
       id: data.id,
       name: data.name,
-      area: data.area || '',
-      isPublic: data.is_public ?? true,
-      memberCount: data.member_count || 0,
+      area: (data as any).geohash_prefix || '',
+      isPublic: (data as any).visibility === 'public',
+      memberCount,
       createdBy: data.created_by,
     } as Group);
   },
@@ -550,7 +580,7 @@ export const groupsApi = {
     const { data, error } = await supabase
       .from('group_messages')
       .select(`
-        id, group_id, user_id, content, image_url, created_at,
+        id, group_id, user_id, message, image_url, created_at,
         profiles!group_messages_user_id_fkey(display_name, avatar_url)
       `)
       .eq('group_id', groupId)
@@ -564,7 +594,7 @@ export const groupsApi = {
       userId: m.user_id,
       userName: m.profiles?.display_name || 'Anonymous',
       userAvatar: m.profiles?.avatar_url || '',
-      text: m.content || '',
+      text: m.message || '',
       imageUrl: m.image_url || null,
       createdAt: m.created_at,
     }));
@@ -586,11 +616,11 @@ export const groupsApi = {
       .insert({
         group_id: groupId,
         user_id: userId,
-        content: text || (finalImageUrl ? '📷 Photo' : ''),
+        message: text || (finalImageUrl ? '📷 Photo' : ''),
         image_url: finalImageUrl,
       })
       .select(`
-        id, group_id, user_id, content, image_url, created_at,
+        id, group_id, user_id, message, image_url, created_at,
         profiles!group_messages_user_id_fkey(display_name, avatar_url)
       `)
       .single();
@@ -604,7 +634,7 @@ export const groupsApi = {
       userId: data.user_id,
       userName: msgProfile?.display_name || 'Anonymous',
       userAvatar: msgProfile?.avatar_url || '',
-      text: data.content || '',
+      text: data.message || '',
       imageUrl: data.image_url || null,
       createdAt: data.created_at,
     };
@@ -655,8 +685,8 @@ export const groupsApi = {
       }
       return makeResponse({ joined: false, status: status || 'requested' });
     } catch (err: any) {
-      const { data: group } = await supabase.from('groups').select('is_public').eq('id', groupId).single();
-      if (group?.is_public) {
+      const { data: group } = await supabase.from('groups').select('visibility').eq('id', groupId).single();
+      if (group?.visibility === 'public') {
         const { error: insertErr } = await supabase.from('group_members').insert({
           group_id: groupId,
           user_id: userId,
@@ -667,7 +697,7 @@ export const groupsApi = {
           return makeResponse({ joined: true, status: 'joined' });
         }
       } else {
-        const { error: reqErr } = await supabase.from('group_join_requests').insert({
+        const { error: reqErr } = await supabase.from('group_requests').insert({
           group_id: groupId,
           user_id: userId,
           status: 'pending',
@@ -689,24 +719,31 @@ export const groupsApi = {
   update: async (groupId: string, data: { name?: string; area?: string; isPublic?: boolean }) => {
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
-    if (data.area !== undefined) updateData.area = data.area;
-    if (data.isPublic !== undefined) updateData.is_public = data.isPublic;
+    if (data.area !== undefined) updateData.geohash_prefix = data.area;
+    if (data.isPublic !== undefined) updateData.visibility = data.isPublic ? 'public' : 'private';
 
     const { data: updated, error } = await supabase
       .from('groups')
       .update(updateData)
       .eq('id', groupId)
-      .select('id, name, area, is_public, member_count, created_by')
+      .select(`
+        id, name, geohash_prefix, visibility, created_at, created_by,
+        group_members(count)
+      `)
       .single();
 
     if (error) return makeResponse(null);
 
+    const memberCountArr = (updated as any).group_members;
+    const memberCount = Array.isArray(memberCountArr) && memberCountArr.length > 0
+      ? memberCountArr[0].count : 0;
+
     return makeResponse({
       id: updated.id,
       name: updated.name,
-      area: updated.area || '',
-      isPublic: updated.is_public ?? true,
-      memberCount: updated.member_count || 0,
+      area: (updated as any).geohash_prefix || '',
+      isPublic: (updated as any).visibility === 'public',
+      memberCount,
       createdBy: updated.created_by,
     } as Group);
   },
@@ -723,10 +760,10 @@ export const groupsApi = {
 
   getJoinRequests: async (groupId: string) => {
     const { data, error } = await supabase
-      .from('group_join_requests')
+      .from('group_requests')
       .select(`
         id, group_id, user_id, status, created_at,
-        profiles!group_join_requests_user_id_fkey(display_name, avatar_url)
+        profiles:user_id(display_name, avatar_url)
       `)
       .eq('group_id', groupId)
       .eq('status', 'pending')
@@ -755,8 +792,8 @@ export const groupsApi = {
       });
       if (error) throw error;
     } catch {
-      await supabase.from('group_join_requests').update({ status: 'approved' }).eq('id', requestId);
-      const { data: req } = await supabase.from('group_join_requests').select('user_id').eq('id', requestId).single();
+      await supabase.from('group_requests').update({ status: 'approved' }).eq('id', requestId);
+      const { data: req } = await supabase.from('group_requests').select('user_id').eq('id', requestId).single();
       if (req) {
         await supabase.from('group_members').insert({
           group_id: groupId,
@@ -769,7 +806,7 @@ export const groupsApi = {
   },
 
   denyRequest: async (groupId: string, requestId: string) => {
-    await supabase.from('group_join_requests').update({ status: 'denied' }).eq('id', requestId);
+    await supabase.from('group_requests').update({ status: 'denied' }).eq('id', requestId);
     return makeResponse({ success: true });
   },
 
@@ -780,9 +817,8 @@ export const groupsApi = {
     try {
       const { data: result, error } = await supabase.rpc('create_group_with_creator', {
         p_name: data.name || 'New Group',
-        p_area: data.area || '',
-        p_is_public: data.isPublic ?? true,
-        p_user_id: userId,
+        p_geohash_prefix: data.area || '',
+        p_visibility: (data.isPublic ?? true) ? 'public' : 'private',
       });
 
       if (error) throw error;
@@ -791,17 +827,23 @@ export const groupsApi = {
 
       const { data: group } = await supabase
         .from('groups')
-        .select('id, name, area, is_public, member_count, created_by')
+        .select(`
+          id, name, geohash_prefix, visibility, created_at, created_by,
+          group_members(count)
+        `)
         .eq('id', groupId)
         .single();
 
       if (group) {
+        const memberCountArr = (group as any).group_members;
+        const memberCount = Array.isArray(memberCountArr) && memberCountArr.length > 0
+          ? memberCountArr[0].count : 1;
         return makeResponse({
           id: group.id,
           name: group.name,
-          area: group.area || '',
-          isPublic: group.is_public ?? true,
-          memberCount: group.member_count || 1,
+          area: (group as any).geohash_prefix || '',
+          isPublic: (group as any).visibility === 'public',
+          memberCount,
           createdBy: group.created_by,
         } as Group);
       }
@@ -811,12 +853,14 @@ export const groupsApi = {
       .from('groups')
       .insert({
         name: data.name || 'New Group',
-        area: data.area || '',
-        is_public: data.isPublic ?? true,
+        geohash_prefix: data.area || '',
+        visibility: (data.isPublic ?? true) ? 'public' : 'private',
         created_by: userId,
-        member_count: 1,
       })
-      .select('id, name, area, is_public, member_count, created_by')
+      .select(`
+        id, name, geohash_prefix, visibility, created_at, created_by,
+        group_members(count)
+      `)
       .single();
 
     if (error) throw new Error(error.message);
@@ -830,8 +874,8 @@ export const groupsApi = {
     return makeResponse({
       id: newGroup.id,
       name: newGroup.name,
-      area: newGroup.area || '',
-      isPublic: newGroup.is_public ?? true,
+      area: (newGroup as any).geohash_prefix || '',
+      isPublic: (newGroup as any).visibility === 'public',
       memberCount: 1,
       createdBy: userId,
     } as Group);

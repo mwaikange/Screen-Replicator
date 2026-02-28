@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { groupsApi } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { Group } from '../lib/types';
 
 const appLogo = require('../../assets/logo.jpg');
@@ -23,9 +24,12 @@ export default function GroupsScreen() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const fetchGroups = async () => {
     try {
+      const { data: authData } = await supabase.auth.getUser();
+      setCurrentUserId(authData?.user?.id || null);
       const response = await groupsApi.getAll();
       setGroups(response.data);
     } catch (error) {
@@ -54,7 +58,6 @@ export default function GroupsScreen() {
   const handleJoin = async (group: Group) => {
     const res = await groupsApi.join(group.id);
     if (res.data.status === 'joined') {
-      Alert.alert('Joined', 'You have joined the group!');
       navigation.navigate('GroupChat', { groupId: group.id });
     } else if (res.data.status === 'requested') {
       Alert.alert('Requested', 'Your join request has been sent.');
@@ -104,6 +107,7 @@ export default function GroupsScreen() {
             <GroupCard
               key={group.id}
               group={group}
+              currentUserId={currentUserId}
               onOpen={() => navigation.navigate('GroupChat', { groupId: group.id })}
               onJoin={() => handleJoin(group)}
             />
@@ -120,10 +124,75 @@ export default function GroupsScreen() {
   );
 }
 
-function GroupCard({ group, onOpen, onJoin }: { group: Group; onOpen: () => void; onJoin: () => void }) {
+function GroupCard({
+  group,
+  currentUserId,
+  onOpen,
+  onJoin,
+}: {
+  group: Group;
+  currentUserId: string | null;
+  onOpen: () => void;
+  onJoin: () => void;
+}) {
+  const isCreator = currentUserId && group.createdBy === currentUserId;
+  const isMember = group.isMember;
+  const isPending = group.requestPending;
+
+  const getButtonConfig = () => {
+    if (isMember) {
+      return {
+        label: 'Open Group',
+        icon: 'chatbubble-outline' as const,
+        style: styles.actionButtonPrimary,
+        textStyle: styles.actionButtonTextPrimary,
+        action: onOpen,
+        disabled: false,
+      };
+    }
+    if (isPending) {
+      return {
+        label: 'Request Pending',
+        icon: 'time-outline' as const,
+        style: styles.actionButtonDisabled,
+        textStyle: styles.actionButtonTextDisabled,
+        action: () => {},
+        disabled: true,
+      };
+    }
+    if (group.isPublic) {
+      return {
+        label: 'Join Group',
+        icon: 'people-outline' as const,
+        style: styles.actionButtonPrimary,
+        textStyle: styles.actionButtonTextPrimary,
+        action: onJoin,
+        disabled: false,
+      };
+    }
+    return {
+      label: 'Request to Join',
+      icon: 'lock-closed-outline' as const,
+      style: styles.actionButtonPrimary,
+      textStyle: styles.actionButtonTextPrimary,
+      action: onJoin,
+      disabled: false,
+    };
+  };
+
+  const btn = getButtonConfig();
+
   return (
     <View style={styles.groupCard}>
-      <Text style={styles.groupName}>{group.name}</Text>
+      <View style={styles.groupNameRow}>
+        <Text style={styles.groupName}>{group.name}</Text>
+        {isCreator && (
+          <View style={styles.creatorBadge}>
+            <Ionicons name="shield-checkmark" size={12} color="#ea580c" />
+            <Text style={styles.creatorBadgeText}>Creator</Text>
+          </View>
+        )}
+      </View>
       <View style={styles.groupMeta}>
         <View style={styles.metaItem}>
           <Ionicons name="location-outline" size={16} color={colors.mutedForeground} />
@@ -142,22 +211,14 @@ function GroupCard({ group, onOpen, onJoin }: { group: Group; onOpen: () => void
         <Ionicons name="people-outline" size={16} color={colors.mutedForeground} />
         <Text style={styles.memberText}>{group.memberCount} members</Text>
       </View>
-      <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.openButton} onPress={onOpen}>
-          <Ionicons name="chatbubble-outline" size={16} color={colors.cardForeground} />
-          <Text style={styles.openButtonText}>Open</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.joinButton, !group.isPublic && styles.joinButtonOutline]}
-          onPress={onJoin}
-        >
-          <Text
-            style={[styles.joinButtonText, !group.isPublic && styles.joinButtonTextOutline]}
-          >
-            {group.isPublic ? 'Join Group' : 'Request to Join'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        style={btn.style}
+        onPress={btn.action}
+        disabled={btn.disabled}
+      >
+        <Ionicons name={btn.icon} size={16} color={btn.disabled ? colors.mutedForeground : colors.primaryForeground} />
+        <Text style={btn.textStyle}>{btn.label}</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -251,11 +312,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  groupNameRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
   groupName: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.cardForeground,
-    marginBottom: 8,
+    flex: 1,
+    marginRight: 8,
+  },
+  creatorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fdba74',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  creatorBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#ea580c',
   },
   groupMeta: {
     flexDirection: 'row',
@@ -295,45 +379,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.mutedForeground,
   },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  openButton: {
-    flex: 1,
+  actionButtonPrimary: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 6,
-    paddingVertical: 12,
-  },
-  openButtonText: {
-    color: colors.cardForeground,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  joinButton: {
-    flex: 1,
     backgroundColor: colors.primary,
     borderRadius: 6,
     paddingVertical: 12,
-    alignItems: 'center',
   },
-  joinButtonOutline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  joinButtonText: {
+  actionButtonTextPrimary: {
     color: colors.primaryForeground,
     fontSize: 14,
     fontWeight: '600',
   },
-  joinButtonTextOutline: {
-    color: colors.cardForeground,
+  actionButtonDisabled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.muted,
+    borderRadius: 6,
+    paddingVertical: 12,
+    opacity: 0.7,
+  },
+  actionButtonTextDisabled: {
+    color: colors.mutedForeground,
+    fontSize: 14,
+    fontWeight: '600',
   },
   emptyContainer: {
     paddingVertical: 32,
