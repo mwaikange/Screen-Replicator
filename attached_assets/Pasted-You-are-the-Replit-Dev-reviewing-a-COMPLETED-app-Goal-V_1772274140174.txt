@@ -1,0 +1,49 @@
+You are the Replit Dev reviewing a COMPLETED app.
+
+Goal:
+Verify the app works EXACTLY according to the Vercel Dev documentation already provided, and fix ONLY what is needed when something does not match.
+
+Hard rules (token + scope control):
+1) Do NOT redesign, refactor, or add new features.
+2) Do NOT “improve” UI unless the docs explicitly require it.
+3) Make the smallest possible code changes (surgical patches).
+4) Prefer config/env fixes over code changes where possible.
+5) If something is unclear, do not speculate—mark it as DOC GAP and proceed with what can be tested.
+6) Keep responses short: use checklists + file paths + exact edits.
+
+Inputs you must use:
+- Vercel Dev API Integration Doc: [PASTE DOC HERE]
+- Vercel Dev Page/Action Doc(s): [PASTE DOC(S) HERE]
+- Replit project codebase (current)
+
+Process (follow in this order):
+
+PHASE 1 — Setup sanity (fast)
+- Confirm env vars match the docs (names + values format).
+- Confirm base URLs, redirect URLs, webhook URLs, and Supabase keys are correct for this environment.
+- Output ONLY: ✅/❌ list + what to change.
+
+PHASE 2 — Doc-to-app validation (page/action QA)
+For each page and each action in the docs:
+- Test it in the running Replit app.
+- Mark as: PASS / FAIL / BLOCKED (and why).
+- If FAIL: fix it with minimal change.
+- After fixing: retest and mark PASS.
+
+PHASE 3 — API contract verification (must match docs)
+For each documented endpoint/webhook:
+- Confirm request payload keys, headers, signature rules, and responses match docs.
+- Fix mismatches only.
+- Add basic logging for failures if missing (minimal).
+
+Deliverable format (strict):
+A) “QA Status Table” with columns:
+   Page/Action | Doc Expectation | Actual Result | Status | Fix Summary | Files Changed
+B) “Patch Notes” (bullets) with:
+   - Exact file paths changed
+   - What line/section changed
+   - Why (mapped to doc requirement)
+C) “Remaining Issues”
+   - Only items that are blocked by missing doc info or missing credentials.
+
+Start now. First do PHASE 1 only and report results. Then proceed to PHASE 2.
