@@ -14,7 +14,30 @@ function getStorageUrl(bucket: string, filePath: string): string {
   return `${supabaseUrl}/storage/v1/object/public/${bucket}/${filePath}`;
 }
 
-function getClient(req: any) {
+async function getClient(req: any) {
+  if (req.session?.refreshToken) {
+    const token = req.session.accessToken;
+    if (token) {
+      try {
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+        const expiresAt = payload.exp * 1000;
+        if (Date.now() < expiresAt - 60000) {
+          return getAuthClient(token);
+        }
+      } catch {}
+    }
+    const { data, error } = await supabase.auth.refreshSession({
+      refresh_token: req.session.refreshToken,
+    });
+    if (data?.session) {
+      req.session.accessToken = data.session.access_token;
+      req.session.refreshToken = data.session.refresh_token;
+      return getAuthClient(data.session.access_token);
+    }
+    if (error) {
+      console.error("Token refresh failed:", error.message);
+    }
+  }
   const token = req.session?.accessToken;
   return token ? getAuthClient(token) : supabase;
 }
@@ -74,6 +97,7 @@ export async function registerRoutes(
       }
       req.session.userId = data.user.id;
       req.session.accessToken = data.session?.access_token || "";
+      req.session.refreshToken = data.session?.refresh_token || "";
       res.status(201).json({
         id: data.user.id,
         email: data.user.email,
@@ -101,6 +125,7 @@ export async function registerRoutes(
 
       req.session.userId = data.user.id;
       req.session.accessToken = data.session.access_token;
+      req.session.refreshToken = data.session.refresh_token;
 
       const { data: profile } = await supabase
         .from("profiles")
@@ -148,7 +173,7 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Not authenticated" });
       }
 
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data: profile } = await db
         .from("profiles")
         .select("*")
@@ -188,7 +213,7 @@ export async function registerRoutes(
 
   app.get("/api/posts", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       let query = db
         .from("incidents")
         .select(`
@@ -272,7 +297,7 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("incidents")
         .insert({
@@ -333,7 +358,7 @@ export async function registerRoutes(
 
   app.get("/api/posts/:id", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("incidents")
         .select(`
@@ -391,7 +416,7 @@ export async function registerRoutes(
 
   app.get("/api/posts/:id/comments", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("incident_comments")
         .select(`id, incident_id, user_id, content, image_url, created_at, profiles:user_id(display_name, avatar_url)`)
@@ -424,7 +449,7 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("incident_comments")
         .insert({
@@ -455,7 +480,7 @@ export async function registerRoutes(
 
   app.get("/api/posts/:id/timeline", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("incident_timeline")
         .select(`id, incident_id, user_id, event_type, description, created_at, profiles:user_id(display_name)`)
@@ -487,7 +512,7 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const db = getClient(req);
+      const db = await getClient(req);
       const { vote } = req.body;
       if (vote !== "up" && vote !== "down") return res.status(400).json({ message: "Vote must be 'up' or 'down'" });
 
@@ -526,7 +551,7 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data: existing } = await db
         .from("incident_likes")
         .select("id")
@@ -555,7 +580,7 @@ export async function registerRoutes(
       const file = req.file;
       if (!file) return res.status(400).json({ message: "No file uploaded" });
 
-      const db = getClient(req);
+      const db = await getClient(req);
       const avatarUrl = `/attached_assets/${file.filename}`;
       const { error } = await db
         .from("profiles")
@@ -582,7 +607,7 @@ export async function registerRoutes(
 
   app.get("/api/groups", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("groups")
         .select(`
@@ -635,7 +660,7 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db.rpc("create_group_with_creator", {
         p_name: req.body.name,
         p_geohash_prefix: req.body.area || req.body.geohash_prefix || "",
@@ -651,7 +676,7 @@ export async function registerRoutes(
 
   app.get("/api/groups/:id", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("groups")
         .select(`
@@ -706,7 +731,7 @@ export async function registerRoutes(
       if (req.body.area !== undefined) updateData.geohash_prefix = req.body.area;
       if (req.body.isPublic !== undefined) updateData.visibility = req.body.isPublic ? "public" : "private";
 
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("groups")
         .update(updateData)
@@ -730,7 +755,7 @@ export async function registerRoutes(
 
   app.delete("/api/groups/:id", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       const { error } = await db.from("groups").delete().eq("id", req.params.id);
       if (error) return res.status(404).json({ message: "Group not found" });
       res.json({ deleted: true });
@@ -741,7 +766,7 @@ export async function registerRoutes(
 
   app.get("/api/groups/:id/messages", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("group_messages")
         .select(`id, group_id, user_id, message, image_url, created_at, profiles:user_id(display_name, avatar_url)`)
@@ -778,7 +803,7 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const db = getClient(req);
+      const db = await getClient(req);
       const text = req.body.text || (req.body.imageUrl ? "📷 Photo" : "");
       const { data, error } = await db
         .from("group_messages")
@@ -811,7 +836,7 @@ export async function registerRoutes(
 
   app.get("/api/groups/:id/members", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("group_members")
         .select(`id, group_id, user_id, role, joined_at, profiles:user_id(display_name, avatar_url)`)
@@ -843,7 +868,7 @@ export async function registerRoutes(
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db.rpc("request_join_group", {
         p_group_id: req.params.id,
       });
@@ -870,7 +895,7 @@ export async function registerRoutes(
     try {
       const userId = req.session.userId;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const db = getClient(req);
+      const db = await getClient(req);
       await db.from("group_members").delete().eq("group_id", req.params.id).eq("user_id", userId);
       res.json({ left: true });
     } catch (error) {
@@ -880,7 +905,7 @@ export async function registerRoutes(
 
   app.get("/api/groups/:id/requests", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("group_requests")
         .select(`id, group_id, user_id, status, created_at, profiles:user_id(display_name, avatar_url)`)
@@ -910,7 +935,7 @@ export async function registerRoutes(
 
   app.post("/api/groups/:id/requests/:requestId/approve", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db.rpc("approve_group_request", {
         p_request_id: req.params.requestId,
       });
@@ -923,7 +948,7 @@ export async function registerRoutes(
 
   app.post("/api/groups/:id/requests/:requestId/deny", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       const { data, error } = await db
         .from("group_requests")
         .update({ status: "rejected", updated_at: new Date().toISOString() })
@@ -940,7 +965,7 @@ export async function registerRoutes(
 
   app.delete("/api/groups/:id/members/:userId", async (req, res) => {
     try {
-      const db = getClient(req);
+      const db = await getClient(req);
       await db.from("group_members").delete().eq("group_id", req.params.id).eq("user_id", req.params.userId);
       res.json({ removed: true });
     } catch (error) {
@@ -955,5 +980,6 @@ declare module "express-session" {
   interface SessionData {
     userId: string;
     accessToken: string;
+    refreshToken: string;
   }
 }
