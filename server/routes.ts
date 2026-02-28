@@ -598,12 +598,14 @@ export async function registerRoutes(
 
       const userId = req.session.userId;
       let membershipSet = new Set<string>();
+      let pendingSet = new Set<string>();
       if (userId) {
-        const { data: memberships } = await db
-          .from("group_members")
-          .select("group_id")
-          .eq("user_id", userId);
-        (memberships || []).forEach((m: any) => membershipSet.add(m.group_id));
+        const [membershipsRes, pendingRes] = await Promise.all([
+          db.from("group_members").select("group_id").eq("user_id", userId),
+          db.from("group_requests").select("group_id").eq("user_id", userId).eq("status", "pending"),
+        ]);
+        (membershipsRes.data || []).forEach((m: any) => membershipSet.add(m.group_id));
+        (pendingRes.data || []).forEach((r: any) => pendingSet.add(r.group_id));
       }
 
       const groups = (data || []).map((g: any) => {
@@ -618,9 +620,10 @@ export async function registerRoutes(
           memberCount,
           createdBy: g.created_by,
           isMember: membershipSet.has(g.id),
+          requestPending: pendingSet.has(g.id),
         };
       });
-      res.json(groups);
+      res.json({ groups, currentUserId: userId || null });
     } catch (error) {
       console.error("Groups error:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -689,6 +692,7 @@ export async function registerRoutes(
         createdBy: data.created_by,
         isMember,
         userRole,
+        currentUserId: userId || null,
       });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });

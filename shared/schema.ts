@@ -85,6 +85,8 @@ export type Group = {
   isPublic: boolean;
   memberCount: number;
   createdBy: string;
+  isMember?: boolean;
+  requestPending?: boolean;
 };
 
 export const insertGroupSchema = z.object({

@@ -12,8 +12,8 @@ A mobile-first community safety platform for reporting incidents, tracking missi
   - `feed.tsx` - Community feed with posts
   - `map.tsx` - Incident map with severity markers
   - `report.tsx` - Multi-step incident reporting form with image upload
-  - `groups.tsx` - Community groups listing with create group dialog
-  - `group-chat.tsx` - Group chat page with messages, image sharing, members modal, settings modal (creator), join requests
+  - `groups.tsx` - Community groups listing with create group dialog, single contextual button per group card (Open Group/Join Group/Request to Join/Request Pending), creator badge with crown icon
+  - `group-chat.tsx` - Group chat page with WhatsApp-style message alignment (own messages right-aligned with primary color, others left-aligned with muted), image sharing, members modal, settings modal (creator), join requests
   - `profile.tsx` - User profile with avatar upload and subscription
   - `subscribe.tsx` - Subscription plans with WhatsApp payment redirect
   - `post-detail.tsx` - Post detail with comments, timeline, voting

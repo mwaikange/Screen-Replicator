@@ -35,7 +35,7 @@ import { useParams, useLocation } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import type { GroupMessage, GroupMember, GroupJoinRequest, Group } from "@shared/schema";
 
-type GroupDetail = Group & { isMember: boolean; userRole: string | null };
+type GroupDetail = Group & { isMember: boolean; userRole: string | null; currentUserId: string | null };
 
 export default function GroupChatPage() {
   const { id } = useParams<{ id: string }>();
@@ -164,6 +164,8 @@ export default function GroupChatPage() {
     }
   };
 
+  const currentUserId = group?.currentUserId;
+
   if (groupLoading) {
     return (
       <div className="min-h-screen bg-background pb-20">
@@ -273,32 +275,41 @@ export default function GroupChatPage() {
                 No messages yet. Start the conversation!
               </div>
             )}
-            {messages.map((msg) => (
-              <div key={msg.id} className="flex items-start gap-3" data-testid={`message-${msg.id}`}>
-                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    {msg.userName.charAt(0)}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                    <span className="text-sm font-semibold">{msg.userName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatTime(msg.createdAt)}
+            {messages.map((msg) => {
+              const isOwn = currentUserId && msg.userId === currentUserId;
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex items-end gap-2 ${isOwn ? "flex-row-reverse" : "flex-row"}`}
+                  data-testid={`message-${msg.id}`}
+                >
+                  <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      {msg.userName.charAt(0)}
                     </span>
                   </div>
-                  {msg.imageUrl && (
-                    <img
-                      src={msg.imageUrl}
-                      alt="Shared image"
-                      className="max-w-[240px] rounded-lg mb-1 cursor-pointer"
-                      data-testid={`msg-image-${msg.id}`}
-                    />
-                  )}
-                  {msg.text && msg.text !== "📷 Photo" && <p className="text-sm">{msg.text}</p>}
+                  <div className={`max-w-[75%] min-w-0 ${isOwn ? "items-end" : "items-start"} flex flex-col`}>
+                    <div className={`flex items-center gap-2 mb-0.5 flex-wrap ${isOwn ? "flex-row-reverse" : ""}`}>
+                      <span className="text-xs font-semibold">{msg.userName}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatTime(msg.createdAt)}
+                      </span>
+                    </div>
+                    <div className={`rounded-2xl px-3 py-2 ${isOwn ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted rounded-bl-sm"}`}>
+                      {msg.imageUrl && (
+                        <img
+                          src={msg.imageUrl}
+                          alt="Shared image"
+                          className="max-w-[220px] rounded-lg mb-1 cursor-pointer"
+                          data-testid={`msg-image-${msg.id}`}
+                        />
+                      )}
+                      {msg.text && msg.text !== "📷 Photo" && <p className="text-sm break-words">{msg.text}</p>}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
 
