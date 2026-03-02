@@ -11,10 +11,10 @@ const appLogo = require('../../assets/logo.jpg');
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const severityLegend = [
-  { level: 'Critical', color: '#ef4444' },
-  { level: 'High', color: '#f87171' },
-  { level: 'Medium', color: '#f59e0b' },
-  { level: 'Low', color: '#fbbf24' },
+  { level: 'Critical', color: '#EF4444' },
+  { level: 'High', color: '#F97316' },
+  { level: 'Medium', color: '#EAB308' },
+  { level: 'Low', color: '#BEF264' },
 ];
 
 const typeLabels: Record<string, { label: string; color: string }> = {
@@ -26,45 +26,19 @@ const typeLabels: Record<string, { label: string; color: string }> = {
   suspicious_activity: { label: 'Suspicious Activity', color: '#ca8a04' },
 };
 
-function getSeverityFromType(type: string): 'critical' | 'high' | 'medium' | 'low' {
-  switch (type) {
-    case 'missing_person':
-    case 'gender_based_violence':
-      return 'critical';
-    case 'incident':
-    case 'theft':
-      return 'high';
-    case 'alert':
-      return 'medium';
-    case 'suspicious_activity':
-      return 'low';
-    default:
-      return 'medium';
-  }
+function getSeverityColor(severity: number): string {
+  if (severity >= 5) return '#EF4444';
+  if (severity >= 4) return '#F97316';
+  if (severity >= 3) return '#EAB308';
+  return '#BEF264';
 }
 
-const postPositions: Record<string, { top: number; left: number }> = {
-  '1': { top: 0.22, left: 0.45 },
-  '2': { top: 0.32, left: 0.25 },
-  '3': { top: 0.35, left: 0.55 },
-  '4': { top: 0.42, left: 0.38 },
-  '5': { top: 0.55, left: 0.65 },
-  '6': { top: 0.48, left: 0.15 },
-};
-
-function IncidentMarker({ severity }: { severity: 'critical' | 'high' | 'medium' | 'low' }) {
-  const markerColors = {
-    critical: '#ef4444',
-    high: '#f87171',
-    medium: '#f59e0b',
-    low: '#fbbf24',
-  };
-
+function IncidentMarker({ markerColor }: { markerColor: string }) {
   return (
     <View style={styles.marker}>
-      <View style={[styles.markerOuter, { backgroundColor: markerColors[severity] }]}>
+      <View style={[styles.markerOuter, { backgroundColor: markerColor }]}>
         <View style={styles.markerInner}>
-          <View style={[styles.markerRing, { backgroundColor: markerColors[severity] }]}>
+          <View style={[styles.markerRing, { backgroundColor: markerColor }]}>
             <View style={styles.markerDot} />
           </View>
         </View>
@@ -79,7 +53,10 @@ export default function MapScreen() {
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
 
   useEffect(() => {
-    postsApi.getAll().then(res => setPosts(res.data));
+    postsApi.getAll().then(res => {
+      const verified = (res.data || []).filter((p: Post) => (p.verificationLevel || 0) > 0);
+      setPosts(verified);
+    });
   }, []);
 
   const handleMarkerPress = useCallback((post: Post) => {
@@ -139,26 +116,25 @@ export default function MapScreen() {
 
           <View style={styles.currentLocationDot} />
 
-          {posts.map((post) => {
-            const position = postPositions[post.id] || {
-              top: 0.3 + Math.random() * 0.4,
-              left: 0.1 + Math.random() * 0.7,
-            };
-            const severity = getSeverityFromType(post.type);
+          {posts.map((post, index) => {
+            const postSeverity = post.severity || 3;
+            const pinColor = getSeverityColor(postSeverity);
+            const topPct = post.latitude ? ((post.latitude + 90) / 180) * 0.7 + 0.1 : 0.3 + (index * 0.08) % 0.4;
+            const leftPct = post.longitude ? ((post.longitude + 180) / 360) * 0.7 + 0.1 : 0.1 + (index * 0.15) % 0.7;
             return (
               <TouchableOpacity
                 key={post.id}
                 style={[
                   styles.markerPosition,
                   {
-                    top: `${position.top * 100}%` as any,
-                    left: `${position.left * 100}%` as any,
+                    top: `${topPct * 100}%` as any,
+                    left: `${leftPct * 100}%` as any,
                   },
                 ]}
                 onPress={() => handleMarkerPress(post)}
                 activeOpacity={0.8}
               >
-                <IncidentMarker severity={severity} />
+                <IncidentMarker markerColor={pinColor} />
               </TouchableOpacity>
             );
           })}
@@ -169,19 +145,21 @@ export default function MapScreen() {
                 <TouchableOpacity style={styles.popupClose} onPress={handleClosePopup}>
                   <Ionicons name="close" size={18} color={colors.mutedForeground} />
                 </TouchableOpacity>
-                <View style={[styles.popupBadge, { backgroundColor: typeLabels[selectedPost.type]?.color || '#ea580c' }]}>
-                  <Text style={styles.popupBadgeText}>
-                    {typeLabels[selectedPost.type]?.label || 'Alert'}
-                  </Text>
+                <View style={styles.popupBadgeRow}>
+                  <View style={[styles.popupBadge, { backgroundColor: typeLabels[selectedPost.type]?.color || '#ea580c' }]}>
+                    <Text style={styles.popupBadgeText}>
+                      {typeLabels[selectedPost.type]?.label || 'Alert'}
+                    </Text>
+                  </View>
+                  <View style={[styles.severityChip, { backgroundColor: getSeverityColor(selectedPost.severity || 3) }]} />
                 </View>
                 <Text style={styles.popupTitle} numberOfLines={3}>{selectedPost.title}</Text>
                 <View style={styles.popupLocation}>
                   <Ionicons name="location-outline" size={14} color={colors.mutedForeground} />
                   <Text style={styles.popupLocationText}>{selectedPost.userTown}</Text>
                 </View>
-                <Text style={styles.popupTown}>Town: {selectedPost.userTown}</Text>
                 <TouchableOpacity style={styles.viewDetailsButton} onPress={handleViewDetails}>
-                  <Text style={styles.viewDetailsText}>View Details</Text>
+                  <Text style={styles.viewDetailsText}>View Incident</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -378,12 +356,22 @@ const styles = StyleSheet.create({
     zIndex: 1,
     padding: 4,
   },
+  popupBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
   popupBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 4,
-    marginBottom: 8,
+  },
+  severityChip: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   popupBadgeText: {
     fontSize: 12,
@@ -402,16 +390,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 4,
+    marginBottom: 12,
   },
   popupLocationText: {
     fontSize: 13,
     color: colors.mutedForeground,
-  },
-  popupTown: {
-    fontSize: 13,
-    color: colors.mutedForeground,
-    marginBottom: 12,
   },
   viewDetailsButton: {
     backgroundColor: colors.primary,

@@ -1,0 +1,47 @@
+The map is currently showing every single incident including unverified ones. Fix it to only show verified incidents, and fix the pin colouring. Here is exactly what needs to change.
+Fix 1 — Map must only show verified incidents
+The query must filter to only incidents where verification_level is greater than 0:
+javascriptconst { data: incidents } = await supabase
+  .from("incidents")
+  .select("id, type_id, title, lat, lng, status, verification_level, incident_types(label, severity)")
+  .gte("lat", southLat)
+  .lte("lat", northLat)
+  .gte("lng", westLng)
+  .lte("lng", eastLng)
+  .neq("status", "archived")
+  .gt("verification_level", 0)        // ONLY verified incidents on map
+  .limit(200)
+If the map is not using a bounding box yet and loads all incidents at once, use this simpler version:
+javascriptconst { data: incidents } = await supabase
+  .from("incidents")
+  .select("id, type_id, title, lat, lng, status, verification_level, incident_types(label, severity)")
+  .neq("status", "archived")
+  .gt("verification_level", 0)
+  .limit(200)
+Fix 2 — Pin colours must be based on severity from incident_types
+Each pin colour must match the severity of the incident type:
+javascriptconst getSeverityColor = (severity) => {
+  if (severity >= 5) return "#EF4444"   // Critical — red
+  if (severity >= 4) return "#F97316"   // High — orange
+  if (severity >= 3) return "#EAB308"   // Medium — yellow
+  return "#BEF264"                      // Low — light yellow/green
+}
+Use incident.incident_types.severity to determine the pin colour for each marker.
+Fix 3 — Feed must show ALL incidents, map shows only verified
+The feed query stays as-is — no verification filter on the feed. Only the map query gets the verification_level > 0 filter. Do not add this filter to the feed.
+Fix 4 — Verified badge on feed posts
+Posts on the feed must show a visual indicator when verification_level > 0. Add a small "Verified" badge or checkmark on the incident card when verification_level is greater than 0. When verification_level is 0 show nothing or show "Unverified."
+javascript{incident.verification_level > 0 && (
+  <View style={styles.verifiedBadge}>
+    <Text style={styles.verifiedText}>✓ Verified</Text>
+  </View>
+)}
+Fix 5 — Map popup on pin tap
+Tapping a pin must show a small popup/callout with:
+
+Incident title
+Incident type label (e.g. "Vehicle Theft")
+Severity colour chip
+"View Incident" button that navigates to the incident detail screen
+
+Do not change the existing map UI styling — only fix the data filter and pin colours.

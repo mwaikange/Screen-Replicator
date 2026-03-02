@@ -32,6 +32,8 @@ export type Post = {
   radius: number;
   createdAt: string;
   verified: boolean;
+  verificationLevel?: number;
+  severity?: number;
   likes: number;
   comments: number;
   shares: number;

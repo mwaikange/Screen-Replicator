@@ -279,10 +279,14 @@ export async function registerRoutes(
           radius: 200,
           createdAt: item.created_at,
           verified: (item.verification_level || 0) > 0,
+          verificationLevel: item.verification_level || 0,
+          severity: incidentType?.severity || 3,
           likes: likeMap[item.id] || 0,
           comments: commentMap[item.id] || 0,
           shares: 0,
           votes: v || { upvotes: 0, downvotes: 0, userVote: null },
+          latitude: item.lat,
+          longitude: item.lng,
         };
       });
 
@@ -322,26 +326,22 @@ export async function registerRoutes(
         if (typeRow) typeId = typeRow.id;
       }
 
+      const insertData: any = {
+        type_id: typeId,
+        title: req.body.title || "Untitled",
+        description: req.body.description || null,
+        town: req.body.town || null,
+        lat: lat || null,
+        lng: lng || null,
+        geohash: geohash || null,
+        area_radius_m: req.body.radius || 200,
+        created_by: userId,
+      };
+
       const { data, error } = await db
         .from("incidents")
-        .insert({
-          created_by: userId,
-          title: req.body.title || "Untitled",
-          description: req.body.description || "",
-          type_id: typeId,
-          town: req.body.town || "",
-          lat: lat || null,
-          lng: lng || null,
-          geohash,
-          area_radius_m: req.body.radius || 200,
-          status: "active",
-        })
-        .select(`
-          id, type_id, title, description, town, lat, lng,
-          status, verification_level, created_at, created_by,
-          incident_types(id, code, label, severity),
-          profiles:created_by(id, display_name, avatar_url)
-        `)
+        .insert(insertData)
+        .select()
         .single();
 
       if (error) return res.status(400).json({ message: error.message });
@@ -356,8 +356,19 @@ export async function registerRoutes(
         }
       }
 
-      const profile = Array.isArray((data as any).profiles) ? (data as any).profiles[0] : (data as any).profiles;
-      const incidentType = Array.isArray((data as any).incident_types) ? (data as any).incident_types[0] : (data as any).incident_types;
+      const { data: fullData } = await db
+        .from("incidents")
+        .select(`
+          id, type_id, title, description, town, lat, lng,
+          status, verification_level, created_at, created_by,
+          incident_types(id, code, label, severity),
+          profiles:created_by(id, display_name, avatar_url)
+        `)
+        .eq("id", data.id)
+        .single();
+
+      const profile = Array.isArray((fullData as any)?.profiles) ? (fullData as any).profiles[0] : (fullData as any)?.profiles;
+      const incidentType = Array.isArray((fullData as any)?.incident_types) ? (fullData as any).incident_types[0] : (fullData as any)?.incident_types;
 
       res.status(201).json({
         id: data.id,
@@ -372,6 +383,8 @@ export async function registerRoutes(
         radius: 200,
         createdAt: data.created_at,
         verified: false,
+        verificationLevel: 0,
+        severity: incidentType?.severity || 3,
         likes: 0,
         comments: 0,
         shares: 0,
@@ -428,10 +441,14 @@ export async function registerRoutes(
         radius: 200,
         createdAt: data.created_at,
         verified: (data.verification_level || 0) > 0,
+        verificationLevel: data.verification_level || 0,
+        severity: incidentType?.severity || 3,
         likes: likeCount || 0,
         comments: commentCount || 0,
         shares: 0,
         votes: { upvotes, downvotes, userVote },
+        latitude: data.lat,
+        longitude: data.lng,
       });
     } catch (error) {
       console.error("Get post error:", error);

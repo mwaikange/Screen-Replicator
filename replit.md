@@ -10,7 +10,7 @@ A mobile-first community safety platform for reporting incidents, tracking missi
   - `login.tsx` - User authentication
   - `signup.tsx` - User registration
   - `feed.tsx` - Community feed with posts
-  - `map.tsx` - Incident map with severity markers
+  - `map.tsx` - Incident map showing only verified incidents (verificationLevel > 0), severity-based pin colors (critical=red, high=orange, medium=yellow, low=lime), popup with severity dot and "View Incident" button
   - `report.tsx` - Multi-step incident reporting form with image upload
   - `groups.tsx` - Community groups listing with create group dialog, single contextual button per group card (Open Group/Join Group/Request to Join/Request Pending), creator badge with crown icon
   - `group-chat.tsx` - Group chat page with WhatsApp-style message alignment (own messages right-aligned with primary color, others left-aligned with muted), image sharing, members modal, settings modal (creator), join requests

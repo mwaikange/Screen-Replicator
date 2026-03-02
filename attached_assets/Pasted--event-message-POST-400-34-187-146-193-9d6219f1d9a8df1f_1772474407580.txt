@@ -1,0 +1,203 @@
+{
+  "event_message": "POST | 400 | 34.187.146.193 | 9d6219f1d9a8df1f | https://tdkeamquekkpalauorpk.supabase.co/rest/v1/incidents?select=id%2Ctype_id%2Ctitle%2Cdescription%2Ctown%2Clat%2Clng%2Cstatus%2Cverification_level%2Ccreated_at%2Ccreated_by%2Cincident_types%28id%2Ccode%2Clabel%2Cseverity%29%2Cprofiles%3Acreated_by%28id%2Cdisplay_name%2Cavatar_url%29 | node",
+  "id": "10506a16-6581-47da-b8f2-b455b61b327d",
+  "metadata": [
+    {
+      "load_balancer_experimental_routing": null,
+      "load_balancer_geo_aware_info": [],
+      "load_balancer_redirect_identifier": null,
+      "logflare_worker": [
+        {
+          "worker_id": "TKEYJF"
+        }
+      ],
+      "request": [
+        {
+          "cf": [
+            {
+              "asOrganization": "Google LLC",
+              "asn": 396982,
+              "botManagement": [
+                {
+                  "corporateProxy": false,
+                  "detectionIds": [
+                    152120193
+                  ],
+                  "ja3Hash": "d0d3996b6658370814364b87b7844772",
+                  "ja4": "t13d5213h1_b262b3658495_66863fb0a24c",
+                  "ja4Signals": [
+                    {
+                      "browser_ratio_1h": 0.029402183368802,
+                      "cache_ratio_1h": 0.11331669986248,
+                      "h2h3_ratio_1h": 0.00029773209826089,
+                      "heuristic_ratio_1h": 0.068000182509422,
+                      "ips_quantile_1h": 0.99956911802292,
+                      "ips_rank_1h": 255,
+                      "paths_rank_1h": 141,
+                      "reqs_quantile_1h": 0.9998192191124,
+                      "reqs_rank_1h": 107,
+                      "uas_rank_1h": 193
+                    }
+                  ],
+                  "jsDetection": [
+                    {
+                      "passed": false
+                    }
+                  ],
+                  "score": 1,
+                  "staticResource": false,
+                  "verifiedBot": false
+                }
+              ],
+              "city": "The Dalles",
+              "clientAcceptEncoding": "gzip, deflate, br",
+              "clientTcpRtt": 7,
+              "clientTrustScore": 1,
+              "colo": "SEA",
+              "continent": "NA",
+              "country": "US",
+              "edgeRequestKeepAliveStatus": 1,
+              "httpProtocol": "HTTP/1.1",
+              "isEUCountry": null,
+              "latitude": "45.59456",
+              "longitude": "-121.17868",
+              "metroCode": "820",
+              "postalCode": "97058",
+              "region": "Oregon",
+              "regionCode": "OR",
+              "requestPriority": null,
+              "timezone": "America/Los_Angeles",
+              "tlsCipher": "AEAD-AES256-GCM-SHA384",
+              "tlsClientAuth": [
+                {
+                  "certPresented": "0",
+                  "certRevoked": "0",
+                  "certVerified": "NONE"
+                }
+              ],
+              "tlsClientCiphersSha1": "kXrN3VEKDdzz2cPKTQaKzpxVTxQ=",
+              "tlsClientExtensionsSha1": "F6bXfye79OtPFsjnipufoBERSq4=",
+              "tlsClientExtensionsSha1Le": "PHN9SOFIC3IOu3LzddUG4fgXQhc=",
+              "tlsClientHelloLength": "1884",
+              "tlsClientRandom": "MCpQFULerZ+ks1c+nKhLpnUkJ0tvLwp9JKBrQLFuJcU=",
+              "tlsExportedAuthenticator": [
+                {
+                  "clientFinished": "8e001f7d7d5e06ea649e9df8660ec8ca34c775e6fb8f83ce77a4ecca93202490e03c23e97ee8a4c783f7c29a55ff8971",
+                  "clientHandshake": "94634f386b79271fea5688de7a1b1d00ece0619f6cffa20da859937d93e325ce812fe722549ea5a39db047bbf7efaf1a",
+                  "serverFinished": "cd20dcc38795c2900752ecedb235acc2c4b306deb04dce69191babd2eeae4697a51bda618742a016d1eb857f4352ef95",
+                  "serverHandshake": "f648d6b37c4ac13b7b94bb110042f047de944acc6274a606e725a8356467a723efcab553e42aaba8398f21c94c8979f4"
+                }
+              ],
+              "tlsVersion": "TLSv1.3",
+              "verifiedBotCategory": null
+            }
+          ],
+          "headers": [
+            {
+              "accept": "application/vnd.pgrst.object+json",
+              "cf_cache_status": null,
+              "cf_connecting_ip": "34.187.146.193",
+              "cf_ipcountry": "US",
+              "cf_ray": "9d6219f1d9a8df1f",
+              "content_length": "202",
+              "content_location": null,
+              "content_range": null,
+              "content_type": "application/json",
+              "date": null,
+              "host": "tdkeamquekkpalauorpk.supabase.co",
+              "prefer": "return=representation",
+              "range": null,
+              "referer": null,
+              "sb_gateway_mode": null,
+              "sb_gateway_version": null,
+              "user_agent": "node",
+              "x_client_info": "supabase-js-node/2.97.0",
+              "x_forwarded_for": null,
+              "x_forwarded_host": null,
+              "x_forwarded_proto": "https",
+              "x_forwarded_user_agent": null,
+              "x_kong_proxy_latency": null,
+              "x_kong_upstream_latency": null,
+              "x_real_ip": "34.187.146.193"
+            }
+          ],
+          "host": "tdkeamquekkpalauorpk.supabase.co",
+          "method": "POST",
+          "path": "/rest/v1/incidents",
+          "port": null,
+          "protocol": "https:",
+          "sb": [
+            {
+              "apikey": [],
+              "auth_user": "9f42400a-fc3d-4758-aaac-deaf79a2c7ea",
+              "jwt": [
+                {
+                  "apikey": [
+                    {
+                      "invalid": null,
+                      "payload": [
+                        {
+                          "algorithm": "HS256",
+                          "expires_at": 2077850324,
+                          "issuer": "supabase",
+                          "role": "anon",
+                          "signature_prefix": "iiGErI",
+                          "subject": null
+                        }
+                      ]
+                    }
+                  ],
+                  "authorization": [
+                    {
+                      "invalid": null,
+                      "payload": [
+                        {
+                          "algorithm": "HS256",
+                          "expires_at": 1772475600,
+                          "issuer": "https://tdkeamquekkpalauorpk.supabase.co/auth/v1",
+                          "key_id": "j0nMN6IOQokTeeim",
+                          "role": "authenticated",
+                          "session_id": "4f14be6c-3d5c-40b5-bf2e-935b7af46e32",
+                          "signature_prefix": "uTJAG6",
+                          "subject": "9f42400a-fc3d-4758-aaac-deaf79a2c7ea"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "search": "?select=id%2Ctype_id%2Ctitle%2Cdescription%2Ctown%2Clat%2Clng%2Cstatus%2Cverification_level%2Ccreated_at%2Ccreated_by%2Cincident_types%28id%2Ccode%2Clabel%2Cseverity%29%2Cprofiles%3Acreated_by%28id%2Cdisplay_name%2Cavatar_url%29",
+          "url": "https://tdkeamquekkpalauorpk.supabase.co/rest/v1/incidents?select=id%2Ctype_id%2Ctitle%2Cdescription%2Ctown%2Clat%2Clng%2Cstatus%2Cverification_level%2Ccreated_at%2Ccreated_by%2Cincident_types%28id%2Ccode%2Clabel%2Cseverity%29%2Cprofiles%3Acreated_by%28id%2Cdisplay_name%2Cavatar_url%29"
+        }
+      ],
+      "response": [
+        {
+          "headers": [
+            {
+              "cf_cache_status": "DYNAMIC",
+              "cf_ray": "9d6219f20567df1f-SEA",
+              "content_length": null,
+              "content_location": null,
+              "content_range": null,
+              "content_type": "application/json; charset=utf-8",
+              "date": "Mon, 02 Mar 2026 17:25:33 GMT",
+              "proxy_status": "PostgREST; error=23514",
+              "sb_gateway_mode": null,
+              "sb_gateway_version": "1",
+              "sb_request_id": "019caf95-733b-7591-8f8f-00678e3a1884",
+              "transfer_encoding": "chunked",
+              "x_kong_proxy_latency": null,
+              "x_kong_upstream_latency": null,
+              "x_sb_error_code": null
+            }
+          ],
+          "origin_time": 343,
+          "status_code": 400
+        }
+      ]
+    }
+  ],
+  "timestamp": 1772472333115000
+}

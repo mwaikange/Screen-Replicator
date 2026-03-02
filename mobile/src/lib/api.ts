@@ -169,6 +169,8 @@ export const postsApi = {
         radius: 200,
         createdAt: item.created_at,
         verified: (item.verification_level || 0) > 0,
+        verificationLevel: item.verification_level || 0,
+        severity: incidentType?.severity || 3,
         likes: 0,
         comments: 0,
         shares: 0,
@@ -479,32 +481,39 @@ export const postsApi = {
       if (types) typeId = types.id;
     }
 
+    const insertData: any = {
+      type_id: typeId || null,
+      title: data.title || 'Untitled Report',
+      description: data.description || null,
+      town: data.town || null,
+      lat: data.latitude || null,
+      lng: data.longitude || null,
+      geohash: geohash || null,
+      area_radius_m: data.radius || 200,
+      created_by: userId,
+    };
+
     const { data: newIncident, error } = await supabase
       .from('incidents')
-      .insert({
-        created_by: userId,
-        title: data.title || 'Untitled Report',
-        description: data.description || '',
-        type_id: typeId || null,
-        town: data.town || '',
-        lat: data.latitude || null,
-        lng: data.longitude || null,
-        geohash: geohash || null,
-        area_radius_m: data.radius || 200,
-        status: 'active',
-      })
+      .insert(insertData)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    const { data: fullIncident } = await supabase
+      .from('incidents')
       .select(`
         id, type_id, title, description, town, lat, lng,
         status, verification_level, created_at, created_by,
         incident_types(id, code, label, severity),
         profiles:created_by(id, display_name, avatar_url, trust_score)
       `)
+      .eq('id', newIncident.id)
       .single();
 
-    if (error) throw new Error(error.message);
-
-    const profile = Array.isArray((newIncident as any).profiles) ? (newIncident as any).profiles[0] : (newIncident as any).profiles;
-    const incidentType = Array.isArray((newIncident as any).incident_types) ? (newIncident as any).incident_types[0] : (newIncident as any).incident_types;
+    const profile = Array.isArray((fullIncident as any)?.profiles) ? (fullIncident as any).profiles[0] : (fullIncident as any)?.profiles;
+    const incidentType = Array.isArray((fullIncident as any)?.incident_types) ? (fullIncident as any).incident_types[0] : (fullIncident as any)?.incident_types;
 
     if (imageUrls.length > 0) {
       for (const url of imageUrls) {

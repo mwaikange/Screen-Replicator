@@ -60,9 +60,14 @@ export type Post = {
   radius: number;
   createdAt: string;
   verified: boolean;
+  verificationLevel?: number;
+  severity?: number;
   likes: number;
   comments: number;
   shares: number;
+  votes?: { upvotes: number; downvotes: number; userVote: string | null };
+  latitude?: number;
+  longitude?: number;
 };
 
 export const insertPostSchema = z.object({
