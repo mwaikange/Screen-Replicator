@@ -128,7 +128,8 @@ React Native Expo app integrated with Supabase backend (https://app.ngumus-eye.s
 ### Supabase Integration
 - **Config**: `app.config.js` passes env vars via `expo.extra`; `supabase.ts` reads via `expo-constants` (`Constants.expoConfig.extra`)
 - **Auth**: signInWithPassword / signUp with expo-secure-store for session persistence
-- **Database tables**: profiles, incidents, incident_types, incident_media, incident_comments, incident_likes, incident_votes, incident_timeline, groups, group_members, group_messages, group_requests, user_subscriptions, cases, tracked_devices, support_requests
+- **Database tables**: profiles, incidents, incident_types, incident_media, comments (body, author, image_url), incident_reactions (reaction_type: helpful/verified/not_helpful), groups, group_members, group_messages, group_requests, user_subscriptions, cases, tracked_devices, support_requests
+- **IMPORTANT table renames**: `incident_comments` → `comments` (columns: `author` not `user_id`, `body` not `content`); `incident_likes`/`incident_votes` → `incident_reactions` (column: `reaction_type`); `incident_timeline` table does not exist (returns empty array)
 - **Groups schema**: `id, name, geohash_prefix, visibility, created_at, created_by` (NOT area/is_public/member_count); member count via `group_members(count)` sub-select
 - **Group messages schema**: `id, group_id, user_id, message, image_url, created_at` (column is `message`, NOT `content`)
 - **Incidents schema**: `id, type_id, title, description, town, lat, lng, status, verification_level, created_at, created_by` with FK to `incident_types(id, code, label, severity)`, `profiles:created_by(...)`, and related `incident_media(id, path, mime)`

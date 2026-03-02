@@ -245,18 +245,19 @@ export async function registerRoutes(
       let voteMap: Record<string, { upvotes: number; downvotes: number; userVote: string | null }> = {};
 
       if (postIds.length > 0) {
-        const { data: likes } = await db.from("incident_likes").select("incident_id").in("incident_id", postIds);
-        const { data: comments } = await db.from("incident_comments").select("incident_id").in("incident_id", postIds);
-        const { data: votes } = await db.from("incident_votes").select("incident_id, vote_type, user_id").in("incident_id", postIds);
+        const { data: reactions } = await db.from("incident_reactions").select("incident_id, reaction_type, user_id").in("incident_id", postIds);
+        const { data: comments } = await db.from("comments").select("incident_id").in("incident_id", postIds);
 
-        (likes || []).forEach((l: any) => { likeMap[l.incident_id] = (likeMap[l.incident_id] || 0) + 1; });
-        (comments || []).forEach((c: any) => { commentMap[c.incident_id] = (commentMap[c.incident_id] || 0) + 1; });
-        (votes || []).forEach((v: any) => {
-          if (!voteMap[v.incident_id]) voteMap[v.incident_id] = { upvotes: 0, downvotes: 0, userVote: null };
-          if (v.vote_type === "up") voteMap[v.incident_id].upvotes++;
-          else voteMap[v.incident_id].downvotes++;
-          if (v.user_id === userId) voteMap[v.incident_id].userVote = v.vote_type;
+        (reactions || []).forEach((r: any) => {
+          if (r.reaction_type === "helpful" || r.reaction_type === "verified") {
+            likeMap[r.incident_id] = (likeMap[r.incident_id] || 0) + 1;
+          }
+          if (!voteMap[r.incident_id]) voteMap[r.incident_id] = { upvotes: 0, downvotes: 0, userVote: null };
+          if (r.reaction_type === "helpful" || r.reaction_type === "verified") voteMap[r.incident_id].upvotes++;
+          else if (r.reaction_type === "not_helpful") voteMap[r.incident_id].downvotes++;
+          if (r.user_id === userId) voteMap[r.incident_id].userVote = r.reaction_type === "not_helpful" ? "down" : "up";
         });
+        (comments || []).forEach((c: any) => { commentMap[c.incident_id] = (commentMap[c.incident_id] || 0) + 1; });
       }
 
       const posts = (data || []).map((item: any) => {
@@ -298,17 +299,42 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const db = await getClient(req);
+
+      let geohash = null;
+      const lat = req.body.latitude;
+      const lng = req.body.longitude;
+      if (lat && lng) {
+        geohash = '';
+        const chars = '0123456789bcdefghjkmnpqrstuvwxyz';
+        let minLat = -90, maxLat = 90, minLng = -180, maxLng = 180;
+        let isLng = true, bit = 0, idx = 0;
+        while (geohash.length < 7) {
+          if (isLng) { const mid = (minLng + maxLng) / 2; if (lng >= mid) { idx = idx * 2 + 1; minLng = mid; } else { idx = idx * 2; maxLng = mid; } }
+          else { const mid = (minLat + maxLat) / 2; if (lat >= mid) { idx = idx * 2 + 1; minLat = mid; } else { idx = idx * 2; maxLat = mid; } }
+          isLng = !isLng; bit++;
+          if (bit === 5) { geohash += chars[idx]; idx = 0; bit = 0; }
+        }
+      }
+
+      let typeId = req.body.type_id || null;
+      if (!typeId && req.body.type) {
+        const { data: typeRow } = await db.from("incident_types").select("id").eq("code", req.body.type).maybeSingle();
+        if (typeRow) typeId = typeRow.id;
+      }
+
       const { data, error } = await db
         .from("incidents")
         .insert({
           created_by: userId,
           title: req.body.title || "Untitled",
           description: req.body.description || "",
-          type_id: req.body.type_id || null,
+          type_id: typeId,
           town: req.body.town || "",
-          lat: req.body.latitude || null,
-          lng: req.body.longitude || null,
-          status: "open",
+          lat: lat || null,
+          lng: lng || null,
+          geohash,
+          area_radius_m: req.body.radius || 200,
+          status: "active",
         })
         .select(`
           id, type_id, title, description, town, lat, lng,
@@ -379,15 +405,14 @@ export async function registerRoutes(
       const media = (data as any).incident_media || [];
       const images = media.map((m: any) => getStorageUrl("incident-media", m.path)).filter(Boolean);
 
-      const { count: likeCount } = await db.from("incident_likes").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id);
-      const { count: commentCount } = await db.from("incident_comments").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id);
-      const { data: votesData } = await db.from("incident_votes").select("vote_type, user_id").eq("incident_id", req.params.id);
+      const { data: reactionsData } = await db.from("incident_reactions").select("reaction_type, user_id").eq("incident_id", req.params.id);
+      const { count: commentCount } = await db.from("comments").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id);
 
-      let upvotes = 0, downvotes = 0, userVote: string | null = null;
-      (votesData || []).forEach((v: any) => {
-        if (v.vote_type === "up") upvotes++;
-        else downvotes++;
-        if (v.user_id === userId) userVote = v.vote_type;
+      let likeCount = 0, upvotes = 0, downvotes = 0, userVote: string | null = null;
+      (reactionsData || []).forEach((r: any) => {
+        if (r.reaction_type === "helpful" || r.reaction_type === "verified") { likeCount++; upvotes++; }
+        else if (r.reaction_type === "not_helpful") downvotes++;
+        if (r.user_id === userId) userVote = r.reaction_type === "not_helpful" ? "down" : "up";
       });
 
       res.json({
@@ -418,10 +443,10 @@ export async function registerRoutes(
     try {
       const db = await getClient(req);
       const { data, error } = await db
-        .from("incident_comments")
-        .select(`id, incident_id, user_id, content, image_url, created_at, profiles:user_id(display_name, avatar_url)`)
+        .from("comments")
+        .select(`id, incident_id, author, body, image_url, created_at, profiles:author(display_name, avatar_url)`)
         .eq("incident_id", req.params.id)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       if (error) return res.status(500).json({ message: error.message });
 
@@ -430,10 +455,10 @@ export async function registerRoutes(
         return {
           id: c.id,
           postId: c.incident_id,
-          userId: c.user_id,
+          userId: c.author,
           userName: profile?.display_name || "Anonymous",
           userAvatar: profile?.avatar_url || "",
-          text: c.content || "",
+          text: c.body || "",
           imageUrl: c.image_url || null,
           createdAt: c.created_at,
         };
@@ -451,13 +476,14 @@ export async function registerRoutes(
 
       const db = await getClient(req);
       const { data, error } = await db
-        .from("incident_comments")
+        .from("comments")
         .insert({
           incident_id: req.params.id,
-          user_id: userId,
-          content: req.body.text,
+          author: userId,
+          body: req.body.text,
+          image_url: null,
         })
-        .select(`id, incident_id, user_id, content, image_url, created_at, profiles:user_id(display_name, avatar_url)`)
+        .select(`id, incident_id, author, body, image_url, created_at, profiles:author(display_name, avatar_url)`)
         .single();
 
       if (error) return res.status(400).json({ message: error.message });
@@ -466,10 +492,10 @@ export async function registerRoutes(
       res.status(201).json({
         id: data.id,
         postId: data.incident_id,
-        userId: data.user_id,
+        userId: data.author,
         userName: profile?.display_name || "Anonymous",
         userAvatar: profile?.avatar_url || "",
-        text: data.content || "",
+        text: data.body || "",
         imageUrl: data.image_url || null,
         createdAt: data.created_at,
       });
@@ -480,28 +506,7 @@ export async function registerRoutes(
 
   app.get("/api/posts/:id/timeline", async (req, res) => {
     try {
-      const db = await getClient(req);
-      const { data, error } = await db
-        .from("incident_timeline")
-        .select(`id, incident_id, user_id, event_type, description, created_at, profiles:user_id(display_name)`)
-        .eq("incident_id", req.params.id)
-        .order("created_at", { ascending: true });
-
-      if (error) return res.json([]);
-
-      const timeline = (data || []).map((t: any) => {
-        const profile = Array.isArray(t.profiles) ? t.profiles[0] : t.profiles;
-        return {
-          id: t.id,
-          postId: t.incident_id,
-          userId: t.user_id,
-          userName: profile?.display_name || "System",
-          type: t.event_type || "update",
-          description: t.description || "",
-          createdAt: t.created_at,
-        };
-      });
-      res.json(timeline);
+      res.json([]);
     } catch (error) {
       res.json([]);
     }
@@ -516,29 +521,31 @@ export async function registerRoutes(
       const { vote } = req.body;
       if (vote !== "up" && vote !== "down") return res.status(400).json({ message: "Vote must be 'up' or 'down'" });
 
+      const reactionType = vote === "up" ? "helpful" : "not_helpful";
+
       const { data: existing } = await db
-        .from("incident_votes")
-        .select("id, vote_type")
+        .from("incident_reactions")
+        .select("id, reaction_type")
         .eq("incident_id", req.params.id)
         .eq("user_id", userId)
         .maybeSingle();
 
       if (existing) {
-        if (existing.vote_type === vote) {
-          await db.from("incident_votes").delete().eq("id", existing.id);
+        if (existing.reaction_type === reactionType) {
+          await db.from("incident_reactions").delete().eq("id", existing.id);
         } else {
-          await db.from("incident_votes").update({ vote_type: vote }).eq("id", existing.id);
+          await db.from("incident_reactions").update({ reaction_type: reactionType }).eq("id", existing.id);
         }
       } else {
-        await db.from("incident_votes").insert({ incident_id: req.params.id, user_id: userId, vote_type: vote });
+        await db.from("incident_reactions").insert({ incident_id: req.params.id, user_id: userId, reaction_type: reactionType });
       }
 
-      const { data: allVotes } = await db.from("incident_votes").select("vote_type, user_id").eq("incident_id", req.params.id);
+      const { data: allReactions } = await db.from("incident_reactions").select("reaction_type, user_id").eq("incident_id", req.params.id);
       let upvotes = 0, downvotes = 0, userVote: string | null = null;
-      (allVotes || []).forEach((v: any) => {
-        if (v.vote_type === "up") upvotes++;
-        else downvotes++;
-        if (v.user_id === userId) userVote = v.vote_type;
+      (allReactions || []).forEach((r: any) => {
+        if (r.reaction_type === "helpful" || r.reaction_type === "verified") upvotes++;
+        else if (r.reaction_type === "not_helpful") downvotes++;
+        if (r.user_id === userId) userVote = r.reaction_type === "not_helpful" ? "down" : "up";
       });
       res.json({ upvotes, downvotes, userVote });
     } catch (error) {
@@ -553,19 +560,20 @@ export async function registerRoutes(
 
       const db = await getClient(req);
       const { data: existing } = await db
-        .from("incident_likes")
+        .from("incident_reactions")
         .select("id")
         .eq("incident_id", req.params.id)
         .eq("user_id", userId)
+        .eq("reaction_type", "helpful")
         .maybeSingle();
 
       if (existing) {
-        await db.from("incident_likes").delete().eq("id", existing.id);
+        await db.from("incident_reactions").delete().eq("id", existing.id);
       } else {
-        await db.from("incident_likes").insert({ incident_id: req.params.id, user_id: userId });
+        await db.from("incident_reactions").insert({ incident_id: req.params.id, user_id: userId, reaction_type: "helpful" });
       }
 
-      const { count } = await db.from("incident_likes").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id);
+      const { count } = await db.from("incident_reactions").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id).in("reaction_type", ["helpful", "verified"]);
       res.json({ liked: !existing, likes: count || 0 });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
