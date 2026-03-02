@@ -1,0 +1,118 @@
+Fix 1 — Incident report submission still failing (error 23514)
+The Vercel dev has now confirmed the exact fields the incidents table expects. The insert must use these exact field names — not guessed names:
+javascriptconst { data: incident, error } = await supabase
+  .from("incidents")
+  .insert({
+    type_id: selectedTypeId,           // integer — from incident_types table
+    title: titleValue,                 // string — required
+    description: descriptionValue || null,
+    town: townValue || null,
+    lat: lat,                          // number — from GPS
+    lng: lng,                          // number — from GPS
+    geohash: geohash,                  // string — ngeohash.encode(lat, lng, 7)
+    area_radius_m: 200,
+    created_by: userId                 // UUID of current user
+  })
+  .select()
+  .single()
+Do NOT send status, category, type, street_address, suburb, province, or any other field not listed above. Sending extra fields that fail a constraint is what causes error 23514.
+The report screen is a 3-step wizard:
+
+Step 1: Category grid + incident type selection — load types from incident_types table dynamically
+Step 2: Location (GPS button + manual address fields) + description + date/time
+Step 3: Media upload (images/video) + review summary + Submit button
+
+GPS must use the device location API. After getting coordinates compute geohash:
+javascriptimport ngeohash from 'ngeohash'
+const geohash = ngeohash.encode(lat, lng, 7)
+After successful incident insert, upload any media files to /api/upload then insert records into incident_media:
+javascriptawait supabase.from("incident_media").insert({
+  incident_id: incident.id,
+  path: filePath,
+  mime: file.type
+})
+On success navigate to feed and show toast "Report submitted successfully."
+
+Fix 2 — Groups showing empty when real groups exist
+The groups screen shows "No groups yet" but groups exist in the database. The query must load ALL groups with no user_id filter:
+javascriptconst { data: groups, error } = await supabase
+  .from("groups")
+  .select(`
+    id, name, visibility, created_by, created_at,
+    group_members(user_id, role)
+  `)
+  .order("created_at", { ascending: false })
+No .eq("user_id", ...) filter. No .eq("created_by", ...) filter. All groups must be visible to all authenticated users.
+For each group determine membership client-side:
+javascriptconst isMember = group.group_members.some(m => m.user_id === currentUserId)
+const memberCount = group.group_members.length
+
+Fix 3 — Group Chat is not working and chats are missing
+The chat screen is either not wired to Supabase at all or is querying the wrong table. Fix it completely:
+Load messages:
+javascriptconst { data: messages } = await supabase
+  .from("group_messages")
+  .select(`
+    id, message, image_url, video_url, created_at, user_id,
+    profiles:user_id(display_name, avatar_url)
+  `)
+  .eq("group_id", groupId)
+  .order("created_at", { ascending: true })
+  .limit(50)
+Send message:
+javascript// First verify membership
+const { data: membership } = await supabase
+  .from("group_members")
+  .select("role")
+  .eq("group_id", groupId)
+  .eq("user_id", userId)
+  .maybeSingle()
+
+if (!membership) {
+  showError("You must be a member to post")
+  return
+}
+
+await supabase.from("group_messages").insert({
+  group_id: groupId,
+  user_id: userId,
+  message: messageText,
+  image_url: null,
+  video_url: null
+})
+Real-time — this is required, chat must update live without refresh:
+javascriptuseEffect(() => {
+  const channel = supabase
+    .channel(`group-messages-${groupId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "group_messages",
+        filter: `group_id=eq.${groupId}`
+      },
+      (payload) => {
+        setMessages(prev => [...prev, payload.new])
+      }
+    )
+    .subscribe()
+
+  return () => supabase.removeChannel(channel)
+}, [groupId])
+Delete own message — long press on own message shows delete option:
+javascriptawait supabase
+  .from("group_messages")
+  .delete()
+  .eq("id", messageId)
+  .eq("user_id", userId)
+
+Fix 4 — Do not break the existing chat UI styling
+The chat screen already has good UI styling. Only wire up the data layer as above. Do not change any colours, layout, bubble styles, or component structure on the chat screen.
+
+After all 4 fixes, confirm with console logs:
+
+Incident insert: log the returned incident.id on success
+Groups: log groups?.length — must be a real number greater than 0
+Chat messages: log messages?.length on load
+Chat real-time: log "New message received" when a message arrives
