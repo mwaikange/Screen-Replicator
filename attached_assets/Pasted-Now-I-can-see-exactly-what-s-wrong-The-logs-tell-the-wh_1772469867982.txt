@@ -1,0 +1,140 @@
+Now I can see exactly what's wrong. The logs tell the whole story clearly.
+
+**The problems are:**
+
+1. `incident_comments` table → **404** — wrong table name
+2. `incident_votes` table → **404** — wrong table name  
+3. `incident_likes` table → **404** — wrong table name
+4. `incident_timeline` table → **404** — wrong table name
+5. `case_type` column → **doesn't exist** — wrong column name
+6. Groups screen → **empty** (showing "No groups yet" but real groups exist on web)
+
+The mobile dev used **guessed table/column names** that don't match your actual Supabase database. The feed works (`incidents` → 200) but everything around it fails.
+
+**Paste this to your Replit dev:**
+
+---
+
+The app has wrong table and column names throughout. Do not guess — use only the exact names below. Fix every one of these.
+
+**Wrong table names — rename all of these in api.ts:**
+
+| What you wrote | Correct name to use |
+|---|---|
+| `incident_comments` | `comments` |
+| `incident_likes` | `incident_reactions` |
+| `incident_votes` | `incident_reactions` |
+| `incident_timeline` | `rating_events` (remove this query entirely — not needed in mobile) |
+| `case_type` column | `category` column |
+
+**Fix 1 — Comments (currently 404)**
+
+Replace any query to `incident_comments` with:
+```javascript
+const { data, error } = await supabase
+  .from("comments")
+  .select(`
+    id, body, created_at, author, image_url,
+    profiles:author(display_name, avatar_url)
+  `)
+  .eq("incident_id", incidentId)
+  .order("created_at", { ascending: true })
+```
+
+Insert comment:
+```javascript
+await supabase.from("comments").insert({
+  incident_id: incidentId,
+  author: userId,
+  body: commentText,
+  image_url: null
+})
+```
+
+**Fix 2 — Reactions/Likes/Votes (currently 404)**
+
+Remove ALL queries to `incident_likes`, `incident_votes` — replace with:
+```javascript
+// Get all reactions for an incident
+const { data } = await supabase
+  .from("incident_reactions")
+  .select("reaction_type, user_id")
+  .eq("incident_id", incidentId)
+
+// Toggle a reaction
+const { data: existing } = await supabase
+  .from("incident_reactions")
+  .select("id")
+  .eq("incident_id", incidentId)
+  .eq("user_id", userId)
+  .eq("reaction_type", "upvote")
+  .maybeSingle()
+
+if (existing) {
+  await supabase.from("incident_reactions").delete().eq("id", existing.id)
+} else {
+  await supabase.from("incident_reactions").insert({
+    incident_id: incidentId,
+    user_id: userId,
+    reaction_type: "upvote"
+  })
+}
+```
+
+**Fix 3 — Case submission (currently failing with "case_type column not found")**
+
+In the cases insert, rename `case_type` to `category`:
+```javascript
+await supabase.from("cases").insert({
+  user_id: userId,
+  category: selectedCaseType,   // NOT case_type — it is category
+  title: titleValue,
+  description: descriptionValue,
+  status: "open",
+  priority: selectedPriority || "medium",
+  police_cr_number: crNumberValue || null,
+  vehicle_number_plate: vehiclePlateValue || null,
+  serial_numbers: [],
+  reporter_name: profile.display_name,
+  reporter_phone: profile.phone,
+  reporter_email: profile.email,
+  location_address: locationValue || null,
+  town: townValue || null,
+  evidence: [],
+  documents: [],
+  files: []
+})
+```
+
+**Fix 4 — Groups showing empty when real groups exist**
+
+The groups query is either filtering incorrectly or querying the wrong table. Replace with:
+```javascript
+const { data: groups, error } = await supabase
+  .from("groups")
+  .select(`
+    id, name, visibility, created_by, created_at,
+    group_members(user_id, role)
+  `)
+  .order("created_at", { ascending: false })
+
+console.log("Groups loaded:", groups?.length, "Error:", error?.message)
+```
+
+Remove any `.eq("user_id", ...)` filter — the groups list should show ALL groups, not just ones the user created.
+
+**Fix 5 — Remove incident_timeline query entirely**
+
+Delete any code querying `incident_timeline` — this table does not exist. If there is a timeline/activity section on the incident detail screen, replace it with an empty array or remove the section entirely.
+
+**After fixing all five — run these confirmation checks:**
+
+```javascript
+console.log("Comments query result:", data?.length, error?.message)
+console.log("Reactions query result:", data?.length, error?.message)
+console.log("Groups query result:", data?.length, error?.message)
+```
+
+All three must log a number (even 0) with no error message. Any result that still shows a 404 or error message means that fix was not applied correctly.
+
+Rebuild the APK only after all console checks pass cleanly.

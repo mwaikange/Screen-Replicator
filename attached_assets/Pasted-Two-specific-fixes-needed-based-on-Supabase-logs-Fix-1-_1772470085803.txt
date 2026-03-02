@@ -1,0 +1,69 @@
+Two specific fixes needed based on Supabase logs.
+Fix 1 — Incident report submission failing (error 23502 — missing required field)
+The POST to incidents is returning 400 because a required column is not being sent. The most likely missing fields are type_id, lat, lng, or geohash which are NOT NULL in the database.
+First, add this log immediately before the insert to see exactly what is being sent:
+javascriptconsole.log("Submitting incident:", JSON.stringify({
+  type_id: selectedTypeId,
+  title: titleValue,
+  lat: lat,
+  lng: lng,
+  geohash: geohash,
+  created_by: userId
+}))
+Then fix the insert to include every required field:
+javascriptimport ngeohash from 'ngeohash'
+
+// Get GPS coordinates first
+const location = await Location.getCurrentPositionAsync({})
+const lat = location.coords.latitude
+const lng = location.coords.longitude
+const geohash = ngeohash.encode(lat, lng, 7)
+
+const { data, error } = await supabase
+  .from("incidents")
+  .insert({
+    type_id: selectedTypeId,        // required — must be a number from incident_types table
+    title: titleValue,              // required
+    description: descriptionValue || null,
+    town: townValue || null,
+    lat: lat,                       // required — from GPS
+    lng: lng,                       // required — from GPS
+    geohash: geohash,               // required — compute with ngeohash
+    area_radius_m: 200,
+    created_by: userId              // required — current user's UUID
+  })
+  .select()
+  .single()
+
+if (error) {
+  console.log("Incident insert error:", error.message, error.details, error.hint)
+  throw new Error(error.message)
+}
+Install ngeohash if not already installed:
+bashcd mobile && npx expo install ngeohash
+The incident type selector must use real type_id numbers — not strings. Load them first:
+javascriptconst { data: types } = await supabase
+  .from("incident_types")
+  .select("id, code, label, severity")
+  .order("label")
+Map the type grid buttons (Theft, Assault, Fraud etc.) to the real id numbers from this query. Do NOT hardcode the ids — load them dynamically and use whatever id the database returns for each type.
+Fix 2 — Groups still showing empty
+From the screenshots the Groups screen shows "No groups yet" but real groups exist. Paste the exact current groups query from api.ts here so I can confirm the filter. In the meantime replace it with this and check the console log:
+javascriptconst { data: groups, error } = await supabase
+  .from("groups")
+  .select(`
+    id, name, visibility, created_by, created_at,
+    group_members(user_id, role)
+  `)
+  .order("created_at", { ascending: false })
+
+console.log("Groups result:", groups?.length, "error:", error?.message)
+If groups?.length logs 0 with no error, then the groups table genuinely has no rows yet and the empty state is correct. If it logs an error, paste that error message.
+Fix 3 — Confirm these are now resolved from last round
+Run the app and check the console — confirm these no longer appear as 404:
+
+comments table — should be 200
+incident_reactions table — should be 200
+cases insert with category field — should be 201
+
+Rebuild APK only after all three console checks pass and the incident submission no longer shows error 23502.
