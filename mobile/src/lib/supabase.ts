@@ -63,4 +63,4 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-export { siteUrl };
+export { siteUrl, supabaseUrl };

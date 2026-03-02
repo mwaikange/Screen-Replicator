@@ -1,10 +1,16 @@
-import { supabase, siteUrl } from './supabase';
+import { supabase, siteUrl, supabaseUrl } from './supabase';
 import { User, Post, Group, Comment, TimelineEvent, GroupMessage, GroupMember, GroupJoinRequest, Case, TrackedDevice, SupportRequest } from './types';
 
 export const postImages: Record<string, any> = {};
 
 function makeResponse<T>(data: T) {
   return { data };
+}
+
+function getStorageUrl(bucket: string, filePath: string): string {
+  if (!filePath) return '';
+  if (filePath.startsWith('http')) return filePath;
+  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${filePath}`;
 }
 
 async function getCurrentUserId(): Promise<string | null> {
@@ -149,7 +155,7 @@ export const postsApi = {
       const profile = Array.isArray(item.profiles) ? item.profiles[0] : item.profiles;
       const incidentType = Array.isArray(item.incident_types) ? item.incident_types[0] : item.incident_types;
       const media = item.incident_media || [];
-      const images = media.map((m: any) => m.path).filter(Boolean);
+      const images = media.map((m: any) => getStorageUrl('incident-media', m.path)).filter(Boolean);
       return {
         id: item.id,
         userId: item.created_by,
@@ -174,37 +180,33 @@ export const postsApi = {
     if (posts.length > 0) {
       const postIds = posts.map(p => p.id);
 
-      const { data: likeCounts } = await supabase
-        .from('incident_likes')
-        .select('incident_id')
+      const { data: reactionCounts } = await supabase
+        .from('incident_reactions')
+        .select('incident_id, reaction_type, user_id')
         .in('incident_id', postIds);
 
       const { data: commentCounts } = await supabase
-        .from('incident_comments')
+        .from('comments')
         .select('incident_id')
         .in('incident_id', postIds);
 
-      const { data: votesData } = await supabase
-        .from('incident_votes')
-        .select('incident_id, vote_type, user_id')
-        .in('incident_id', postIds);
-
       const likeMap: Record<string, number> = {};
-      (likeCounts || []).forEach((l: any) => {
-        likeMap[l.incident_id] = (likeMap[l.incident_id] || 0) + 1;
+      const voteMap: Record<string, { up: number; down: number; userVote: 'up' | 'down' | null }> = {};
+      (reactionCounts || []).forEach((r: any) => {
+        if (r.reaction_type === 'helpful' || r.reaction_type === 'verified') {
+          likeMap[r.incident_id] = (likeMap[r.incident_id] || 0) + 1;
+        }
+        if (!voteMap[r.incident_id]) voteMap[r.incident_id] = { up: 0, down: 0, userVote: null };
+        if (r.reaction_type === 'helpful' || r.reaction_type === 'verified') voteMap[r.incident_id].up += 1;
+        else if (r.reaction_type === 'not_helpful') voteMap[r.incident_id].down += 1;
+        if (r.user_id === userId) {
+          voteMap[r.incident_id].userVote = (r.reaction_type === 'not_helpful') ? 'down' : 'up';
+        }
       });
 
       const commentMap: Record<string, number> = {};
       (commentCounts || []).forEach((c: any) => {
         commentMap[c.incident_id] = (commentMap[c.incident_id] || 0) + 1;
-      });
-
-      const voteMap: Record<string, { up: number; down: number; userVote: 'up' | 'down' | null }> = {};
-      (votesData || []).forEach((v: any) => {
-        if (!voteMap[v.incident_id]) voteMap[v.incident_id] = { up: 0, down: 0, userVote: null };
-        if (v.vote_type === 'up') voteMap[v.incident_id].up += 1;
-        else voteMap[v.incident_id].down += 1;
-        if (v.user_id === userId) voteMap[v.incident_id].userVote = v.vote_type;
       });
 
       posts.forEach(p => {
@@ -237,29 +239,30 @@ export const postsApi = {
     const profile = Array.isArray((data as any).profiles) ? (data as any).profiles[0] : (data as any).profiles;
     const incidentType = Array.isArray((data as any).incident_types) ? (data as any).incident_types[0] : (data as any).incident_types;
     const media = (data as any).incident_media || [];
-    const images = media.map((m: any) => m.path).filter(Boolean);
+    const images = media.map((m: any) => getStorageUrl('incident-media', m.path)).filter(Boolean);
 
-    const { count: likeCount } = await supabase
-      .from('incident_likes')
-      .select('*', { count: 'exact', head: true })
+    const { data: reactionsData } = await supabase
+      .from('incident_reactions')
+      .select('reaction_type, user_id')
       .eq('incident_id', id);
 
     const { count: commentCount } = await supabase
-      .from('incident_comments')
+      .from('comments')
       .select('*', { count: 'exact', head: true })
       .eq('incident_id', id);
 
-    const { data: votesData } = await supabase
-      .from('incident_votes')
-      .select('vote_type, user_id')
-      .eq('incident_id', id);
-
-    let upvotes = 0, downvotes = 0;
+    let likeCount = 0, upvotes = 0, downvotes = 0;
     let userVote: 'up' | 'down' | null = null;
-    (votesData || []).forEach((v: any) => {
-      if (v.vote_type === 'up') upvotes++;
-      else downvotes++;
-      if (v.user_id === userId) userVote = v.vote_type;
+    (reactionsData || []).forEach((r: any) => {
+      if (r.reaction_type === 'helpful' || r.reaction_type === 'verified') {
+        likeCount++;
+        upvotes++;
+      } else if (r.reaction_type === 'not_helpful') {
+        downvotes++;
+      }
+      if (r.user_id === userId) {
+        userVote = r.reaction_type === 'not_helpful' ? 'down' : 'up';
+      }
     });
 
     const post: Post = {
@@ -288,53 +291,38 @@ export const postsApi = {
 
   getComments: async (postId: string) => {
     const { data, error } = await supabase
-      .from('incident_comments')
+      .from('comments')
       .select(`
-        id, incident_id, user_id, content, image_url, created_at,
-        profiles!incident_comments_user_id_fkey(display_name, avatar_url)
-      `)
-      .eq('incident_id', postId)
-      .order('created_at', { ascending: false });
-
-    if (error) return makeResponse([]);
-
-    const comments: Comment[] = (data || []).map((c: any) => ({
-      id: c.id,
-      postId: c.incident_id,
-      userId: c.user_id,
-      userName: c.profiles?.display_name || 'Anonymous',
-      userAvatar: c.profiles?.avatar_url || '',
-      text: c.content || '',
-      imageUrl: c.image_url,
-      createdAt: c.created_at,
-    }));
-
-    return makeResponse(comments);
-  },
-
-  getTimeline: async (postId: string) => {
-    const { data, error } = await supabase
-      .from('incident_timeline')
-      .select(`
-        id, incident_id, user_id, event_type, description, created_at,
-        profiles!incident_timeline_user_id_fkey(display_name)
+        id, incident_id, author, body, image_url, created_at,
+        profiles:author(display_name, avatar_url)
       `)
       .eq('incident_id', postId)
       .order('created_at', { ascending: true });
 
-    if (error) return makeResponse([]);
+    if (error) {
+      console.error('Comments fetch error:', error.message);
+      return makeResponse([]);
+    }
 
-    const timeline: TimelineEvent[] = (data || []).map((t: any) => ({
-      id: t.id,
-      postId: t.incident_id,
-      userId: t.user_id,
-      userName: t.profiles?.display_name || 'System',
-      type: t.event_type || 'update',
-      description: t.description || '',
-      createdAt: t.created_at,
-    }));
+    const comments: Comment[] = (data || []).map((c: any) => {
+      const profile = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles;
+      return {
+        id: c.id,
+        postId: c.incident_id,
+        userId: c.author,
+        userName: profile?.display_name || 'Anonymous',
+        userAvatar: profile?.avatar_url || '',
+        text: c.body || '',
+        imageUrl: c.image_url,
+        createdAt: c.created_at,
+      };
+    });
 
-    return makeResponse(timeline);
+    return makeResponse(comments);
+  },
+
+  getTimeline: async (_postId: string) => {
+    return makeResponse([]);
   },
 
   addComment: async (postId: string, text: string) => {
@@ -342,15 +330,16 @@ export const postsApi = {
     if (!userId) throw new Error('Not authenticated');
 
     const { data, error } = await supabase
-      .from('incident_comments')
+      .from('comments')
       .insert({
         incident_id: postId,
-        user_id: userId,
-        content: text,
+        author: userId,
+        body: text,
+        image_url: null,
       })
       .select(`
-        id, incident_id, user_id, content, image_url, created_at,
-        profiles!incident_comments_user_id_fkey(display_name, avatar_url)
+        id, incident_id, author, body, image_url, created_at,
+        profiles:author(display_name, avatar_url)
       `)
       .single();
 
@@ -360,10 +349,10 @@ export const postsApi = {
     const comment: Comment = {
       id: data.id,
       postId: data.incident_id,
-      userId: data.user_id,
+      userId: data.author,
       userName: profile?.display_name || 'Anonymous',
       userAvatar: profile?.avatar_url || '',
-      text: data.content || '',
+      text: data.body || '',
       createdAt: data.created_at,
     };
 
@@ -374,24 +363,26 @@ export const postsApi = {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error('Not authenticated');
 
+    const reactionType = vote === 'up' ? 'helpful' : 'not_helpful';
+
     const { data: existing } = await supabase
-      .from('incident_votes')
-      .select('id, vote_type')
+      .from('incident_reactions')
+      .select('id, reaction_type')
       .eq('incident_id', postId)
       .eq('user_id', userId)
       .maybeSingle();
 
     if (existing) {
-      if (existing.vote_type === vote) {
-        await supabase.from('incident_votes').delete().eq('id', existing.id);
+      if (existing.reaction_type === reactionType) {
+        await supabase.from('incident_reactions').delete().eq('id', existing.id);
       } else {
-        await supabase.from('incident_votes').update({ vote_type: vote }).eq('id', existing.id);
+        await supabase.from('incident_reactions').update({ reaction_type: reactionType }).eq('id', existing.id);
       }
     } else {
-      await supabase.from('incident_votes').insert({
+      await supabase.from('incident_reactions').insert({
         incident_id: postId,
         user_id: userId,
-        vote_type: vote,
+        reaction_type: reactionType,
       });
     }
 
@@ -403,22 +394,37 @@ export const postsApi = {
     if (!userId) throw new Error('Not authenticated');
 
     const { data: existing } = await supabase
-      .from('incident_likes')
+      .from('incident_reactions')
       .select('id')
       .eq('incident_id', postId)
       .eq('user_id', userId)
+      .eq('reaction_type', 'helpful')
       .maybeSingle();
 
     if (existing) {
-      await supabase.from('incident_likes').delete().eq('id', existing.id);
+      await supabase.from('incident_reactions').delete().eq('id', existing.id);
     } else {
-      await supabase.from('incident_likes').insert({
+      await supabase.from('incident_reactions').insert({
         incident_id: postId,
         user_id: userId,
+        reaction_type: 'helpful',
       });
     }
 
     return postsApi.getById(postId);
+  },
+
+  getIncidentTypes: async () => {
+    const { data, error } = await supabase
+      .from('incident_types')
+      .select('id, code, label, severity')
+      .order('label');
+
+    if (error) {
+      console.error('Failed to load incident types:', error.message);
+      return makeResponse([]);
+    }
+    return makeResponse(data || []);
   },
 
   create: async (data: any) => {
@@ -437,12 +443,40 @@ export const postsApi = {
       }
     }
 
-    let geohash = null;
+    let geohash = '';
     if (data.latitude && data.longitude) {
-      try {
-        const ngeohash = require('ngeohash');
-        geohash = ngeohash.encode(data.latitude, data.longitude, 7);
-      } catch {}
+      const lat = data.latitude;
+      const lng = data.longitude;
+      const chars = '0123456789bcdefghjkmnpqrstuvwxyz';
+      let minLat = -90, maxLat = 90, minLng = -180, maxLng = 180;
+      let isLng = true;
+      let bit = 0;
+      let idx = 0;
+      while (geohash.length < 7) {
+        if (isLng) {
+          const mid = (minLng + maxLng) / 2;
+          if (lng >= mid) { idx = idx * 2 + 1; minLng = mid; }
+          else { idx = idx * 2; maxLng = mid; }
+        } else {
+          const mid = (minLat + maxLat) / 2;
+          if (lat >= mid) { idx = idx * 2 + 1; minLat = mid; }
+          else { idx = idx * 2; maxLat = mid; }
+        }
+        isLng = !isLng;
+        bit++;
+        if (bit === 5) { geohash += chars[idx]; idx = 0; bit = 0; }
+      }
+    }
+
+    let typeId = data.type_id;
+    if (!typeId && data.type) {
+      const { data: types } = await supabase
+        .from('incident_types')
+        .select('id, code')
+        .eq('code', data.type)
+        .limit(1)
+        .maybeSingle();
+      if (types) typeId = types.id;
     }
 
     const { data: newIncident, error } = await supabase
@@ -451,12 +485,13 @@ export const postsApi = {
         created_by: userId,
         title: data.title || 'Untitled Report',
         description: data.description || '',
-        type_id: data.type_id || null,
+        type_id: typeId || null,
         town: data.town || '',
         lat: data.latitude || null,
         lng: data.longitude || null,
-        geohash,
-        status: 'open',
+        geohash: geohash || null,
+        area_radius_m: data.radius || 200,
+        status: 'active',
       })
       .select(`
         id, type_id, title, description, town, lat, lng,

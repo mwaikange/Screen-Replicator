@@ -1,4 +1,4 @@
-import { useState, useCallback, memo } from 'react';
+import { useState, useCallback, useEffect, memo } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,7 +24,7 @@ import { postsApi } from '../lib/api';
 
 const appLogo = require('../../assets/logo.jpg');
 
-const incidentTypes = [
+const fallbackIncidentTypes = [
   { value: 'missing_person', label: 'Missing Person' },
   { value: 'incident', label: 'Crime Report' },
   { value: 'alert', label: 'Emergency Alert' },
@@ -56,6 +57,8 @@ export default function ReportScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationSet, setLocationSet] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [incidentTypes, setIncidentTypes] = useState(fallbackIncidentTypes);
+  const [typesLoading, setTypesLoading] = useState(true);
   const [formData, setFormData] = useState({
     type: '',
     town: '',
@@ -65,6 +68,18 @@ export default function ReportScreen() {
     title: '',
     description: '',
   });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await postsApi.getIncidentTypes();
+        if (result.data && result.data.length > 0) {
+          setIncidentTypes(result.data.map((t: any) => ({ value: t.code, label: t.label, id: t.id })));
+        }
+      } catch {}
+      setTypesLoading(false);
+    })();
+  }, []);
 
   const canContinueStep1 = formData.type !== '' && formData.town.trim() !== '';
   const canContinueStep2 = formData.title.trim() !== '';
