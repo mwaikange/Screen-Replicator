@@ -13,6 +13,7 @@ import GroupChatPage from "@/pages/group-chat";
 import ProfilePage from "@/pages/profile";
 import SubscribePage from "@/pages/subscribe";
 import PostDetailPage from "@/pages/post-detail";
+import CaseDeckPage from "@/pages/case-deck";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -29,6 +30,7 @@ function Router() {
       <Route path="/groups/:id" component={GroupChatPage} />
       <Route path="/profile" component={ProfilePage} />
       <Route path="/subscribe" component={SubscribePage} />
+      <Route path="/case-deck" component={CaseDeckPage} />
       <Route component={NotFound} />
     </Switch>
   );

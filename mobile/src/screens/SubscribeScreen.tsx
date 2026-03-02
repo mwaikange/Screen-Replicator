@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,11 +7,17 @@ import {
   TouchableOpacity,
   Image,
   Linking,
+  TextInput,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
+import { supabase } from '../lib/supabase';
+import { userApi } from '../lib/api';
+import { User } from '../lib/types';
 
 const appLogo = require('../../assets/logo.jpg');
 
@@ -243,10 +250,70 @@ function PlanCard({ plan }: { plan: Plan }) {
 
 export default function SubscribeScreen() {
   const navigation = useNavigation<any>();
+  const [user, setUser] = useState<User | null>(null);
+  const [voucherCode, setVoucherCode] = useState('');
+  const [redeeming, setRedeeming] = useState(false);
 
-  const subscriptionType = 'Individual 1 Month';
-  const subscriptionExpiry = '2/21/2026';
-  const daysRemaining = 10;
+  useEffect(() => {
+    userApi.getProfile().then(res => setUser(res.data)).catch(() => {});
+  }, []);
+
+  const hasActiveSubscription = user?.subscriptionStatus === 'active' && user?.subscriptionExpiry;
+  const daysRemaining = hasActiveSubscription && user?.subscriptionExpiry
+    ? Math.max(0, Math.ceil((new Date(user.subscriptionExpiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0;
+  const formattedExpiry = hasActiveSubscription && user?.subscriptionExpiry
+    ? new Date(user.subscriptionExpiry).toLocaleDateString()
+    : '';
+
+  const handleRedeemVoucher = async () => {
+    if (!voucherCode.trim()) return;
+    setRedeeming(true);
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) { Alert.alert('Error', 'Not authenticated'); return; }
+      const userId = authUser.id;
+      const code = voucherCode.trim().toUpperCase();
+
+      const { data: voucher } = await supabase
+        .from('vouchers')
+        .select('*, subscription_plans(*)')
+        .eq('code', code)
+        .eq('is_used', false)
+        .maybeSingle();
+
+      if (!voucher) {
+        Alert.alert('Error', 'Invalid or already used voucher code');
+        return;
+      }
+
+      await supabase.from('vouchers').update({
+        is_used: true,
+        used_by: userId,
+        used_at: new Date().toISOString(),
+      }).eq('code', code);
+
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + ((voucher as any).subscription_plans?.days || 30));
+
+      await supabase.from('user_subscriptions').insert({
+        user_id: userId,
+        plan_id: voucher.plan_id,
+        status: 'active',
+        starts_at: new Date().toISOString(),
+        expires_at: expiresAt.toISOString(),
+      });
+
+      Alert.alert('Success', `Voucher redeemed! ${(voucher as any).subscription_plans?.name || 'Subscription'} activated.`);
+      setVoucherCode('');
+      const res = await userApi.getProfile();
+      setUser(res.data);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to redeem voucher');
+    } finally {
+      setRedeeming(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -265,22 +332,53 @@ export default function SubscribeScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.activeSubCard}>
-          <Text style={styles.activeSubTitle}>Active Subscription</Text>
-          <Text style={styles.activeSubDescription}>
-            You currently have an active {subscriptionType} subscription
-          </Text>
-          <View style={styles.expiryRow}>
-            <Ionicons name="calendar-outline" size={16} color={colors.mutedForeground} />
-            <Text style={styles.expiryText}>Expires: {subscriptionExpiry}</Text>
+        {hasActiveSubscription && (
+          <View style={styles.activeSubCard}>
+            <Text style={styles.activeSubTitle}>Active Subscription</Text>
+            <Text style={styles.activeSubDescription}>
+              You currently have an active {user?.subscriptionPlanName || user?.subscriptionType} subscription
+            </Text>
+            <View style={styles.expiryRow}>
+              <Ionicons name="calendar-outline" size={16} color={colors.mutedForeground} />
+              <Text style={styles.expiryText}>Expires: {formattedExpiry}</Text>
+            </View>
+            <Text style={styles.daysRemainingText}>{daysRemaining} days remaining</Text>
+            <View style={styles.caseDeckButtonRow}>
+              <TouchableOpacity
+                style={styles.caseDeckButton}
+                onPress={() => navigation.navigate('Main', { screen: 'CaseDeck' } as any)}
+              >
+                <Text style={styles.caseDeckButtonText}>Go to My Case Deck</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <Text style={styles.daysRemainingText}>{daysRemaining} days remaining</Text>
-          <View style={styles.caseDeckButtonRow}>
+        )}
+
+        <View style={styles.voucherCard}>
+          <View style={styles.voucherHeader}>
+            <Ionicons name="ticket-outline" size={20} color={colors.primary} />
+            <Text style={styles.voucherTitle}>Redeem Voucher</Text>
+          </View>
+          <Text style={styles.voucherDescription}>Have a voucher code? Enter it below to activate your subscription.</Text>
+          <View style={styles.voucherInputRow}>
+            <TextInput
+              style={styles.voucherInput}
+              placeholder="Enter voucher code"
+              placeholderTextColor={colors.mutedForeground}
+              value={voucherCode}
+              onChangeText={setVoucherCode}
+              autoCapitalize="characters"
+            />
             <TouchableOpacity
-              style={styles.caseDeckButton}
-              onPress={() => navigation.navigate('Main', { screen: 'Profile' })}
+              style={[styles.redeemButton, (!voucherCode.trim() || redeeming) && { opacity: 0.5 }]}
+              onPress={handleRedeemVoucher}
+              disabled={!voucherCode.trim() || redeeming}
             >
-              <Text style={styles.caseDeckButtonText}>Go to My Case Deck</Text>
+              {redeeming ? (
+                <ActivityIndicator size="small" color={colors.primaryForeground} />
+              ) : (
+                <Text style={styles.redeemButtonText}>Redeem</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -556,5 +654,57 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 40,
+  },
+  voucherCard: {
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  voucherHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  voucherTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.cardForeground,
+  },
+  voucherDescription: {
+    fontSize: 14,
+    color: colors.mutedForeground,
+    marginBottom: 12,
+  },
+  voucherInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  voucherInput: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.cardForeground,
+  },
+  redeemButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  redeemButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primaryForeground,
   },
 });

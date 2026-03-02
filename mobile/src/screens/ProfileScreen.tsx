@@ -68,11 +68,19 @@ export default function ProfileScreen() {
     following: 0,
     subscriptionType: 'Free',
     subscriptionExpiry: '',
+    subscriptionStatus: 'none',
+    subscriptionPlanName: null,
   };
 
-  const daysRemaining = displayUser.subscriptionExpiry
+  const hasActiveSubscription = displayUser.subscriptionStatus === 'active' && displayUser.subscriptionExpiry;
+
+  const daysRemaining = hasActiveSubscription && displayUser.subscriptionExpiry
     ? Math.max(0, Math.ceil((new Date(displayUser.subscriptionExpiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
+
+  const formattedExpiry = hasActiveSubscription && displayUser.subscriptionExpiry
+    ? new Date(displayUser.subscriptionExpiry).toLocaleDateString()
+    : '';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -141,25 +149,38 @@ export default function ProfileScreen() {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Subscription</Text>
-          <Text style={styles.sectionSubtitle}>Active membership</Text>
-
-          <View style={styles.subscriptionRow}>
-            <Text style={styles.subscriptionType}>{displayUser.subscriptionType}</Text>
-            <View style={styles.activeBadge}>
-              <Text style={styles.activeBadgeText}>Active</Text>
-            </View>
-          </View>
-
-          <View style={styles.expiryRow}>
-            <Ionicons name="calendar-outline" size={16} color={colors.mutedForeground} />
-            <Text style={styles.expiryText}>Expires {displayUser.subscriptionExpiry}</Text>
-          </View>
-
-          <Text style={styles.daysRemaining}>{daysRemaining} days remaining</Text>
+          {hasActiveSubscription ? (
+            <>
+              <Text style={styles.sectionSubtitle}>Active membership</Text>
+              <View style={styles.subscriptionRow}>
+                <Text style={styles.subscriptionType}>
+                  {displayUser.subscriptionPlanName || displayUser.subscriptionType}
+                </Text>
+                <View style={styles.activeBadge}>
+                  <Text style={styles.activeBadgeText}>Active</Text>
+                </View>
+              </View>
+              <View style={styles.expiryRow}>
+                <Ionicons name="calendar-outline" size={16} color={colors.mutedForeground} />
+                <Text style={styles.expiryText}>Expires {formattedExpiry}</Text>
+              </View>
+              <Text style={styles.daysRemaining}>{daysRemaining} days remaining</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.sectionSubtitle}>No active subscription</Text>
+              <View style={styles.subscriptionRow}>
+                <Text style={[styles.subscriptionType, { color: colors.mutedForeground }]}>Free</Text>
+                <View style={[styles.activeBadge, { backgroundColor: colors.muted }]}>
+                  <Text style={[styles.activeBadgeText, { color: colors.mutedForeground }]}>Inactive</Text>
+                </View>
+              </View>
+            </>
+          )}
 
           <View style={styles.subscriptionButtons}>
             <TouchableOpacity style={styles.outlineButton} onPress={() => navigation.navigate('Subscribe')}>
-              <Text style={styles.outlineButtonText}>Renew / Upgrade</Text>
+              <Text style={styles.outlineButtonText}>{hasActiveSubscription ? 'Renew / Upgrade' : 'Subscribe'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('Main', { screen: 'CaseDeck' } as any)}>
               <Text style={styles.primaryButtonText}>My Case Deck</Text>

@@ -155,13 +155,16 @@ function PostCard({ post }: { post: Post }) {
         <p className="text-muted-foreground text-sm mt-1 line-clamp-2" data-testid={`text-description-${post.id}`}>{post.description}</p>
       </div>
 
-      {post.images && post.images.length > 0 && (
+      {post.images && post.images.length > 0 && post.images[0] && (
         <div className="w-full">
           <img
             src={post.images[0]}
             alt={post.title}
             className="w-full object-cover max-h-[300px]"
             data-testid={`img-post-${post.id}`}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
           />
         </div>
       )}

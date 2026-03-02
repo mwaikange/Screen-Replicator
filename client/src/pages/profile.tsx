@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { Pencil, Camera, Shield, Calendar, LogOut } from "lucide-react";
+import { Pencil, Camera, Shield, Calendar, LogOut, FolderOpen } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
@@ -69,11 +69,19 @@ export default function ProfilePage() {
     following: 0,
     subscriptionType: "Free",
     subscriptionExpiry: "",
+    subscriptionStatus: "none",
+    subscriptionPlanName: null,
   };
 
-  const daysRemaining = displayUser.subscriptionExpiry
+  const hasActiveSubscription = displayUser.subscriptionStatus === "active" && displayUser.subscriptionExpiry;
+
+  const daysRemaining = hasActiveSubscription && displayUser.subscriptionExpiry
     ? Math.max(0, Math.ceil((new Date(displayUser.subscriptionExpiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
+
+  const formattedExpiry = hasActiveSubscription && displayUser.subscriptionExpiry
+    ? new Date(displayUser.subscriptionExpiry).toLocaleDateString()
+    : "";
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -127,7 +135,7 @@ export default function ProfilePage() {
 
             <div className="flex items-center gap-2 mt-4 text-sm text-muted-foreground">
               <Shield className="w-4 h-4" />
-              <span>Trust Score: {displayUser.trustScore}</span>
+              <span data-testid="text-trust-score">Trust Score: {displayUser.trustScore}</span>
             </div>
           </CardContent>
         </Card>
@@ -136,12 +144,12 @@ export default function ProfilePage() {
           <CardContent className="py-4">
             <div className="flex items-center justify-around">
               <div className="text-center">
-                <p className="text-2xl font-bold">{displayUser.followers}</p>
+                <p className="text-2xl font-bold" data-testid="text-followers-count">{displayUser.followers}</p>
                 <p className="text-sm text-muted-foreground">Followers</p>
               </div>
               <Separator orientation="vertical" className="h-10" />
               <div className="text-center">
-                <p className="text-2xl font-bold">{displayUser.following}</p>
+                <p className="text-2xl font-bold" data-testid="text-following-count">{displayUser.following}</p>
                 <p className="text-sm text-muted-foreground">Following</p>
               </div>
             </div>
@@ -151,25 +159,37 @@ export default function ProfilePage() {
         <Card>
           <CardContent className="p-5">
             <h3 className="font-bold text-lg mb-1">Subscription</h3>
-            <p className="text-sm text-muted-foreground mb-4">Active membership</p>
-
-            <div className="flex items-center justify-between mb-3">
-              <span className="font-medium">{displayUser.subscriptionType}</span>
-              <Badge className="bg-green-500 text-white">Active</Badge>
-            </div>
-
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-              <Calendar className="w-4 h-4" />
-              <span>Expires {displayUser.subscriptionExpiry}</span>
-            </div>
-
-            <p className="text-sm text-primary font-medium mb-4">{daysRemaining} days remaining</p>
+            {hasActiveSubscription ? (
+              <>
+                <p className="text-sm text-muted-foreground mb-4">Active membership</p>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-medium" data-testid="text-subscription-plan">
+                    {displayUser.subscriptionPlanName || displayUser.subscriptionType}
+                  </span>
+                  <Badge className="bg-green-500 text-white" data-testid="badge-subscription-status">Active</Badge>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                  <Calendar className="w-4 h-4" />
+                  <span data-testid="text-subscription-expiry">Expires {formattedExpiry}</span>
+                </div>
+                <p className="text-sm text-primary font-medium mb-4" data-testid="text-days-remaining">{daysRemaining} days remaining</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground mb-4">No active subscription</p>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="font-medium text-muted-foreground">Free</span>
+                  <Badge variant="secondary" data-testid="badge-subscription-status">Inactive</Badge>
+                </div>
+              </>
+            )}
 
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => setLocation("/subscribe")} data-testid="button-renew">
-                Renew / Upgrade
+                {hasActiveSubscription ? "Renew / Upgrade" : "Subscribe"}
               </Button>
-              <Button className="flex-1" data-testid="button-case-deck">
+              <Button className="flex-1" onClick={() => setLocation("/case-deck")} data-testid="button-case-deck">
+                <FolderOpen className="w-4 h-4 mr-2" />
                 My Case Deck
               </Button>
             </div>

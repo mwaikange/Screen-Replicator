@@ -1,0 +1,105 @@
+The profile screen has three things broken. Fix all three strictly as per the Vercel documentation provided.
+Fix 1 — Followers and Following counts showing 0
+The follower and following counts are not being fetched. Add these two queries to the profile screen load and display the results:
+javascriptconst [followersRes, followingRes] = await Promise.all([
+  supabase
+    .from("user_follows")
+    .select("id", { count: "exact" })
+    .eq("following_id", userId),
+  supabase
+    .from("user_follows")
+    .select("id", { count: "exact" })
+    .eq("follower_id", userId)
+])
+
+const followersCount = followersRes.count || 0
+const followingCount = followingRes.count || 0
+Display these counts on the profile screen exactly where they currently show 0.
+
+Fix 2 — Subscription showing "Free" when user is actually subscribed
+The subscription check is querying the wrong table or wrong field names. The Vercel docs confirm the correct table is user_subscriptions and the voucher table uses is_used as the flag. Fix the subscription query:
+javascriptconst { data: subscription } = await supabase
+  .from("user_subscriptions")
+  .select("*, subscription_plans(*)")
+  .eq("user_id", userId)
+  .eq("status", "active")
+  .gte("expires_at", new Date().toISOString())
+  .order("expires_at", { ascending: false })
+  .maybeSingle()
+Display on profile:
+
+Plan name: subscription.subscription_plans.name
+Status badge: "Active" (green)
+Expiry date: formatted from subscription.expires_at
+Days remaining: calculate from expires_at minus today
+
+If subscription is null → show "No active subscription" with a "Subscribe" button that navigates to the Subscribe screen.
+
+Fix 3 — Case Deck not accessible even when subscribed
+The Case Deck subscription gate is checking the wrong table or wrong fields. The gate must use the exact same query as Fix 2 above. If subscription returns a valid row the user gets in. If it returns null they get redirected to Subscribe.
+javascript// Run this check at the top of the Case Deck screen before loading anything
+const { data: subscription } = await supabase
+  .from("user_subscriptions")
+  .select("id, status, expires_at")
+  .eq("user_id", userId)
+  .eq("status", "active")
+  .gte("expires_at", new Date().toISOString())
+  .maybeSingle()
+
+if (!subscription) {
+  navigation.replace("Subscribe")
+  return
+}
+// Only reaches here if subscription is valid — load case deck content
+
+Fix 4 — Voucher redemption must use correct field names
+The Vercel docs confirm the vouchers table uses is_used (boolean), used_by (user UUID), and used_at (timestamp). Fix the redemption flow:
+javascript// Step 1 — Validate voucher
+const { data: voucher } = await supabase
+  .from("vouchers")
+  .select("*, subscription_plans(*)")
+  .eq("code", voucherCode.trim().toUpperCase())
+  .eq("is_used", false)
+  .maybeSingle()
+
+if (!voucher) {
+  showError("Invalid or already used voucher code")
+  return
+}
+
+// Step 2 — Mark as used
+await supabase
+  .from("vouchers")
+  .update({
+    is_used: true,
+    used_by: userId,
+    used_at: new Date().toISOString()
+  })
+  .eq("code", voucherCode.trim().toUpperCase())
+
+// Step 3 — Create subscription
+const expiresAt = new Date()
+expiresAt.setDate(expiresAt.getDate() + voucher.subscription_plans.days)
+
+await supabase.from("user_subscriptions").insert({
+  user_id: userId,
+  plan_id: voucher.plan_id,
+  status: "active",
+  starts_at: new Date().toISOString(),
+  expires_at: expiresAt.toISOString()
+})
+
+Fix 5 — Trust score not showing
+Trust score comes from the profiles table field trust_score. Make sure the profile query includes it:
+javascriptconst { data: profile } = await supabase
+  .from("profiles")
+  .select("id, display_name, full_name, phone, email, avatar_url, trust_score, level, bio, created_at")
+  .eq("id", userId)
+  .single()
+Display profile.trust_score directly on the profile screen. If it is 0 display "0" — do not hide it.
+
+After all fixes confirm with these console logs before rebuilding APK:
+javascriptconsole.log("Followers:", followersCount, "Following:", followingCount)
+console.log("Subscription:", subscription?.status, subscription?.expires_at)
+console.log("Trust score:", profile?.trust_score)
+All three must log real values from Supabase, not zeros or null.
