@@ -66,20 +66,34 @@ export const authApi = {
 
     const userId = data.user.id;
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    const [profileRes, subscriptionRes, followersRes, followingRes] = await Promise.all([
+      supabase.from('profiles')
+        .select('id, display_name, full_name, phone, email, avatar_url, trust_score, level, bio, created_at, town')
+        .eq('id', userId)
+        .single(),
+      supabase.from('user_subscriptions')
+        .select('*, subscription_plans(*)')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .gte('expires_at', new Date().toISOString())
+        .order('expires_at', { ascending: false })
+        .maybeSingle(),
+      supabase.from('user_follows')
+        .select('id', { count: 'exact' })
+        .eq('following_id', userId),
+      supabase.from('user_follows')
+        .select('id', { count: 'exact' })
+        .eq('follower_id', userId),
+    ]);
 
-    const { data: subscription } = await supabase
-      .from('user_subscriptions')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .order('expires_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const profile = profileRes.data;
+    const subscription = subscriptionRes.data;
+    const followersCount = followersRes.count || 0;
+    const followingCount = followingRes.count || 0;
+
+    console.log('Followers:', followersCount, 'Following:', followingCount);
+    console.log('Subscription:', subscription?.status, subscription?.expires_at);
+    console.log('Trust score:', profile?.trust_score);
 
     const user: User = {
       id: userId,
@@ -89,10 +103,12 @@ export const authApi = {
       avatarUrl: profile?.avatar_url || '',
       level: profile?.level || 0,
       trustScore: profile?.trust_score || 0,
-      followers: profile?.followers_count || 0,
-      following: profile?.following_count || 0,
-      subscriptionType: subscription?.plan_name || 'Free',
-      subscriptionExpiry: subscription?.expires_at ? new Date(subscription.expires_at).toLocaleDateString() : '',
+      followers: followersCount,
+      following: followingCount,
+      subscriptionType: (subscription as any)?.subscription_plans?.name || (subscription ? 'Active' : 'Free'),
+      subscriptionExpiry: subscription?.expires_at || '',
+      subscriptionStatus: subscription ? 'active' : 'none',
+      subscriptionPlanName: (subscription as any)?.subscription_plans?.name || null,
       town: profile?.town || '',
     };
 
@@ -933,24 +949,38 @@ export const userApi = {
 
     const { data: authUser } = await supabase.auth.getUser();
 
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    const [profileRes, subscriptionRes, followersRes, followingRes] = await Promise.all([
+      supabase.from('profiles')
+        .select('id, display_name, full_name, phone, email, avatar_url, trust_score, level, bio, created_at, town')
+        .eq('id', userId)
+        .single(),
+      supabase.from('user_subscriptions')
+        .select('*, subscription_plans(*)')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .gte('expires_at', new Date().toISOString())
+        .order('expires_at', { ascending: false })
+        .maybeSingle(),
+      supabase.from('user_follows')
+        .select('id', { count: 'exact' })
+        .eq('following_id', userId),
+      supabase.from('user_follows')
+        .select('id', { count: 'exact' })
+        .eq('follower_id', userId),
+    ]);
 
-    if (profileError) {
-      console.error('Profile fetch error:', profileError);
+    const profile = profileRes.data;
+    const subscription = subscriptionRes.data;
+    const followersCount = followersRes.count || 0;
+    const followingCount = followingRes.count || 0;
+
+    if (profileRes.error) {
+      console.error('Profile fetch error:', profileRes.error);
     }
 
-    const { data: subscription } = await supabase
-      .from('user_subscriptions')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .order('expires_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    console.log('Followers:', followersCount, 'Following:', followingCount);
+    console.log('Subscription:', subscription?.status, subscription?.expires_at);
+    console.log('Trust score:', profile?.trust_score);
 
     const user: User = {
       id: userId,
@@ -960,10 +990,12 @@ export const userApi = {
       avatarUrl: profile?.avatar_url || '',
       level: profile?.level || 0,
       trustScore: profile?.trust_score || 0,
-      followers: profile?.followers_count || 0,
-      following: profile?.following_count || 0,
-      subscriptionType: subscription?.plan_name || 'Free',
-      subscriptionExpiry: subscription?.expires_at ? new Date(subscription.expires_at).toLocaleDateString() : '',
+      followers: followersCount,
+      following: followingCount,
+      subscriptionType: (subscription as any)?.subscription_plans?.name || (subscription ? 'Active' : 'Free'),
+      subscriptionExpiry: subscription?.expires_at || '',
+      subscriptionStatus: subscription ? 'active' : 'none',
+      subscriptionPlanName: (subscription as any)?.subscription_plans?.name || null,
       town: profile?.town || '',
     };
 

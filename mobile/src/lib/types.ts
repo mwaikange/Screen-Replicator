@@ -10,6 +10,8 @@ export type User = {
   following: number;
   subscriptionType: string;
   subscriptionExpiry: string;
+  subscriptionStatus?: string;
+  subscriptionPlanName?: string | null;
   town: string;
 };
 

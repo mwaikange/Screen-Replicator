@@ -60,8 +60,9 @@ A mobile-first community safety platform for reporting incidents, tracking missi
   - Support types: Emergency, Counseling, Legal Aid, Medical
   - Preferred contact method selection
   - Confidential request submission
-- **Profile**: View user info, trust score, subscription status, profile picture upload (camera button), Renew/Upgrade navigates to /subscribe, My Case Deck button
-- **Subscribe**: Subscription plans page with 12 plans across 3 categories (Individual: 1/3/6/12 months, Family: 1/3/6/12 months, Tourist: 5/10/14/30 days), active subscription banner at top, Pay Now buttons redirect to WhatsApp with pre-filled message including plan name and price, WhatsApp contact card at bottom
+- **Profile**: View user info, trust score (from profiles.trust_score), followers/following counts (from user_follows table), subscription status (from user_subscriptions + subscription_plans), profile picture upload (camera button), Renew/Upgrade or Subscribe button, My Case Deck navigates to /case-deck
+- **Subscribe**: Subscription plans page with 12 plans across 3 categories (Individual: 1/3/6/12 months, Family: 1/3/6/12 months, Tourist: 5/10/14/30 days), voucher redemption card with code input, active subscription banner at top (conditional), Pay Now buttons redirect to WhatsApp with pre-filled message including plan name and price, WhatsApp contact card at bottom
+- **Case Deck**: Subscription-gated page (/case-deck on web, CaseDeck screen on mobile) — checks user_subscriptions for active subscription before allowing access, redirects to Subscribe if no active subscription
 
 ## API Endpoints
 - `POST /api/auth/login` - Authenticate user

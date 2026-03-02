@@ -174,20 +174,30 @@ export async function registerRoutes(
       }
 
       const db = await getClient(req);
-      const { data: profile } = await db
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
+      const [profileRes, subscriptionRes, followersRes, followingRes] = await Promise.all([
+        db.from("profiles")
+          .select("id, display_name, full_name, phone, email, avatar_url, trust_score, level, bio, created_at")
+          .eq("id", userId)
+          .single(),
+        db.from("user_subscriptions")
+          .select("*, subscription_plans(*)")
+          .eq("user_id", userId)
+          .eq("status", "active")
+          .gte("expires_at", new Date().toISOString())
+          .order("expires_at", { ascending: false })
+          .maybeSingle(),
+        db.from("user_follows")
+          .select("id", { count: "exact" })
+          .eq("following_id", userId),
+        db.from("user_follows")
+          .select("id", { count: "exact" })
+          .eq("follower_id", userId),
+      ]);
 
-      const { data: subscription } = await db
-        .from("user_subscriptions")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("status", "active")
-        .order("expires_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const profile = profileRes.data;
+      const subscription = subscriptionRes.data;
+      const followersCount = followersRes.count || 0;
+      const followingCount = followingRes.count || 0;
 
       const { data: authData } = await supabase.auth.admin.getUserById(userId).catch(() => ({ data: null })) as any;
 
@@ -199,14 +209,69 @@ export async function registerRoutes(
         avatarUrl: profile?.avatar_url || "",
         level: profile?.level || 0,
         trustScore: profile?.trust_score || 0,
-        followers: profile?.followers_count || 0,
-        following: profile?.following_count || 0,
-        subscriptionType: subscription?.plan_name || "Free",
-        subscriptionExpiry: subscription?.expires_at ? new Date(subscription.expires_at).toLocaleDateString() : "",
+        followers: followersCount,
+        following: followingCount,
+        subscriptionType: subscription?.subscription_plans?.name || (subscription ? "Active" : "Free"),
+        subscriptionExpiry: subscription?.expires_at || "",
+        subscriptionStatus: subscription ? "active" : "none",
+        subscriptionPlanName: subscription?.subscription_plans?.name || null,
         town: profile?.town || "",
       });
     } catch (error) {
       console.error("Get user error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/voucher/redeem", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const db = await getClient(req);
+      const voucherCode = (req.body.code || "").trim().toUpperCase();
+      if (!voucherCode) return res.status(400).json({ message: "Voucher code is required" });
+
+      const { data: voucher } = await db
+        .from("vouchers")
+        .select("*, subscription_plans(*)")
+        .eq("code", voucherCode)
+        .eq("is_used", false)
+        .maybeSingle();
+
+      if (!voucher) {
+        return res.status(400).json({ message: "Invalid or already used voucher code" });
+      }
+
+      await db
+        .from("vouchers")
+        .update({
+          is_used: true,
+          used_by: userId,
+          used_at: new Date().toISOString(),
+        })
+        .eq("code", voucherCode);
+
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + (voucher.subscription_plans?.days || 30));
+
+      const { data: sub, error: subError } = await db.from("user_subscriptions").insert({
+        user_id: userId,
+        plan_id: voucher.plan_id,
+        status: "active",
+        starts_at: new Date().toISOString(),
+        expires_at: expiresAt.toISOString(),
+      }).select().single();
+
+      if (subError) return res.status(400).json({ message: subError.message });
+
+      res.json({
+        message: "Voucher redeemed successfully",
+        subscription: sub,
+        planName: voucher.subscription_plans?.name || "Subscription",
+      });
+    } catch (error) {
+      console.error("Voucher redeem error:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });

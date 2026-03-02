@@ -1,11 +1,15 @@
+import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { BottomNav } from "@/components/bottom-nav";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, MessageCircle, Calendar } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Check, MessageCircle, Calendar, Ticket, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { User } from "@shared/schema";
 
 interface Plan {
@@ -243,39 +247,95 @@ function PlanCard({ plan }: { plan: Plan }) {
 
 export default function SubscribePage() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [voucherCode, setVoucherCode] = useState("");
   const { data: user } = useQuery<User>({
     queryKey: ["/api/user"],
   });
 
-  const displayUser = user || {
-    subscriptionType: "Individual 1 Month",
-    subscriptionExpiry: "2/21/2026",
-  };
+  const redeemVoucher = useMutation({
+    mutationFn: async (code: string) => {
+      const res = await fetch("/api/voucher/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ code }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to redeem voucher");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      toast({ title: `Voucher redeemed! ${data.planName} activated.` });
+      setVoucherCode("");
+    },
+    onError: (error: Error) => {
+      toast({ title: error.message, variant: "destructive" });
+    },
+  });
 
-  const daysRemaining = 10;
+  const hasActiveSubscription = user?.subscriptionStatus === "active" && user?.subscriptionExpiry;
+
+  const daysRemaining = hasActiveSubscription && user?.subscriptionExpiry
+    ? Math.max(0, Math.ceil((new Date(user.subscriptionExpiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0;
+
+  const formattedExpiry = hasActiveSubscription && user?.subscriptionExpiry
+    ? new Date(user.subscriptionExpiry).toLocaleDateString()
+    : "";
 
   return (
     <div className="min-h-screen bg-background pb-20">
       <PageHeader title="Membership Packages" />
 
       <div className="px-4 py-4 space-y-6">
-        <Card className="border-primary/30 bg-blue-50 dark:bg-blue-950/20" data-testid="card-active-subscription">
+        {hasActiveSubscription && (
+          <Card className="border-primary/30 bg-blue-50 dark:bg-blue-950/20" data-testid="card-active-subscription">
+            <CardContent className="p-4">
+              <h3 className="text-lg font-bold text-primary mb-1" data-testid="text-active-subscription">Active Subscription</h3>
+              <p className="text-sm text-muted-foreground mb-2">
+                You currently have an active {user?.subscriptionPlanName || user?.subscriptionType} subscription
+              </p>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <Calendar className="w-4 h-4" />
+                <span>Expires: {formattedExpiry}</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">{daysRemaining} days remaining</p>
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => setLocation("/case-deck")}
+                  data-testid="button-case-deck"
+                >
+                  Go to My Case Deck
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card data-testid="card-voucher-redeem">
           <CardContent className="p-4">
-            <h3 className="text-lg font-bold text-primary mb-1" data-testid="text-active-subscription">Active Subscription</h3>
-            <p className="text-sm text-muted-foreground mb-2">
-              You currently have an active {displayUser.subscriptionType} subscription
-            </p>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-              <Calendar className="w-4 h-4" />
-              <span>Expires: {displayUser.subscriptionExpiry}</span>
+            <div className="flex items-center gap-2 mb-3">
+              <Ticket className="w-5 h-5 text-primary" />
+              <h3 className="font-bold text-base">Redeem Voucher</h3>
             </div>
-            <p className="text-sm text-muted-foreground mb-3">{daysRemaining} days remaining</p>
-            <div className="flex justify-end">
+            <p className="text-sm text-muted-foreground mb-3">Have a voucher code? Enter it below to activate your subscription.</p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter voucher code"
+                value={voucherCode}
+                onChange={(e) => setVoucherCode(e.target.value)}
+                data-testid="input-voucher-code"
+              />
               <Button
-                onClick={() => setLocation("/profile")}
-                data-testid="button-case-deck"
+                onClick={() => redeemVoucher.mutate(voucherCode)}
+                disabled={!voucherCode.trim() || redeemVoucher.isPending}
+                data-testid="button-redeem-voucher"
               >
-                Go to My Case Deck
+                {redeemVoucher.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Redeem"}
               </Button>
             </div>
           </CardContent>

@@ -1,0 +1,40 @@
+Images attached to feed posts are not rendering — showing broken image or raw text instead of the actual photo. Fix the image display in the feed and incident detail screen.
+The problem is one of these — check in this order:
+Check 1 — How is the image URL being constructed?
+The image path stored in incident_media is a relative path like userId/incidentId/photo.jpg. To display it the full URL must be constructed like this:
+javascriptconst getImageUrl = (path) => {
+  if (!path) return null
+  
+  // If it's already a full URL (Vercel Blob), use as-is
+  if (path.startsWith("https://")) return path
+  
+  // If it's a Supabase storage path, construct the full URL
+  return `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/incident-media/${path}`
+}
+Use this function everywhere an incident image is displayed:
+javascript<Image
+  source={{ uri: getImageUrl(media.path) }}
+  style={styles.postImage}
+  onError={(e) => console.log("Image load error:", e.nativeEvent.error, "path:", media.path)}
+/>
+Check 2 — Log the actual path value
+Add this log to see exactly what is stored:
+javascriptconsole.log("Media items:", JSON.stringify(incident.incident_media))
+This will show whether the path is a full URL, a relative path, or something unexpected.
+Check 3 — If image was uploaded via /api/upload to Vercel Blob
+The upload API returns a full https://public.blob.vercel-storage.com/... URL. If that URL is what's stored in incident_media.path then use it directly with no modification. Check the log from Check 2 to confirm.
+Check 4 — Feed card must render the first media item as the post image
+The feed card should show the first image from incident_media array if one exists:
+javascriptconst firstImage = incident.incident_media?.[0]
+const imageUrl = firstImage ? getImageUrl(firstImage.path) : null
+
+{imageUrl && (
+  <Image
+    source={{ uri: imageUrl }}
+    style={styles.postImage}
+    resizeMode="cover"
+    onError={(e) => console.log("Feed image error:", e.nativeEvent.error)}
+  />
+)}
+Do not show anything if there is no image — do not show a broken placeholder or raw text.
+Fix this on both the feed card and the incident detail screen. Rebuild APK after confirming the console log in Check 2 shows valid URL paths.

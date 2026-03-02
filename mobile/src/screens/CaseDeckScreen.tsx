@@ -13,8 +13,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
-import { casesApi } from '../lib/api';
+import { casesApi, userApi } from '../lib/api';
 import { Case } from '../lib/types';
+import { supabase } from '../lib/supabase';
 
 const appLogo = require('../../assets/logo.jpg');
 
@@ -81,6 +82,31 @@ export default function CaseDeckScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
+  const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
+
+  const checkSubscription = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { navigation.replace('Subscribe'); return; }
+      const { data: subscription } = await supabase
+        .from('user_subscriptions')
+        .select('id, status, expires_at')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .gte('expires_at', new Date().toISOString())
+        .maybeSingle();
+      if (!subscription) {
+        setHasSubscription(false);
+        navigation.replace('Subscribe');
+        return;
+      }
+      setHasSubscription(true);
+    } catch (error) {
+      console.error('Subscription check error:', error);
+      setHasSubscription(false);
+      navigation.replace('Subscribe');
+    }
+  }, [navigation]);
 
   const fetchCases = useCallback(async () => {
     try {
@@ -95,8 +121,8 @@ export default function CaseDeckScreen() {
   }, []);
 
   useEffect(() => {
-    fetchCases();
-  }, [fetchCases]);
+    checkSubscription().then(() => fetchCases());
+  }, [checkSubscription, fetchCases]);
 
   useFocusEffect(
     useCallback(() => {
