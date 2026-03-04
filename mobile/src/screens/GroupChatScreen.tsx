@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -62,14 +62,21 @@ export default function GroupChatScreen() {
 
   const flatListRef = useRef<FlatList>(null);
 
+  const loadMessages = useCallback(async () => {
+    try {
+      const res = await groupsApi.getMessages(groupId);
+      setMessages(res.data);
+    } catch (e) {
+      console.error('Failed to load messages:', e);
+    }
+  }, [groupId]);
+
   const loadData = async () => {
-    const [groupRes, messagesRes, membersRes] = await Promise.all([
+    const [groupRes, membersRes] = await Promise.all([
       groupsApi.getById(groupId),
-      groupsApi.getMessages(groupId),
       groupsApi.getMembers(groupId),
     ]);
     setGroup(groupRes.data);
-    setMessages(messagesRes.data);
     setMembers(membersRes.data);
 
     const { data: authData } = await supabase.auth.getUser();
@@ -89,20 +96,73 @@ export default function GroupChatScreen() {
       setEditArea(groupRes.data.area);
       setEditIsPublic(groupRes.data.isPublic);
     }
+
+    await loadMessages();
   };
 
   useEffect(() => {
     loadData();
   }, [groupId]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel(`group_messages_${groupId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'group_messages',
+          filter: `group_id=eq.${groupId}`,
+        },
+        () => {
+          loadMessages();
+        }
+      )
+      .subscribe();
+
+    const poll = setInterval(loadMessages, 3000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(poll);
+    };
+  }, [groupId, loadMessages]);
+
   const handleSend = async () => {
     if (!messageText.trim() && !imagePreview) return;
     await groupsApi.sendMessage(groupId, messageText.trim() || (imagePreview ? '📷 Photo' : ''), imagePreview);
     setMessageText('');
     setImagePreview(null);
-    const res = await groupsApi.getMessages(groupId);
-    setMessages(res.data);
+    await loadMessages();
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const handleDeleteMessage = (item: GroupMessage) => {
+    if (item.userId !== currentUserId) return;
+    Alert.alert(
+      'Delete Message',
+      'Are you sure you want to delete this message?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await supabase
+                .from('group_messages')
+                .delete()
+                .eq('id', item.id)
+                .eq('user_id', currentUserId);
+              await loadMessages();
+            } catch (e) {
+              console.error('Failed to delete message:', e);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handlePickImage = async () => {
@@ -180,32 +240,38 @@ export default function GroupChatScreen() {
   const renderMessage = ({ item }: { item: GroupMessage }) => {
     const isOwn = currentUserId && item.userId === currentUserId;
     return (
-      <View style={[styles.messageRow, isOwn ? styles.messageRowOwn : styles.messageRowOther]}>
-        {!isOwn && (
-          <View style={styles.messageAvatar}>
-            <Text style={styles.messageAvatarText}>{item.userName.charAt(0)}</Text>
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onLongPress={() => isOwn && handleDeleteMessage(item)}
+        delayLongPress={500}
+      >
+        <View style={[styles.messageRow, isOwn ? styles.messageRowOwn : styles.messageRowOther]}>
+          {!isOwn && (
+            <View style={styles.messageAvatar}>
+              <Text style={styles.messageAvatarText}>{item.userName.charAt(0)}</Text>
+            </View>
+          )}
+          <View style={[styles.messageBubbleContainer, isOwn ? styles.messageBubbleContainerOwn : styles.messageBubbleContainerOther]}>
+            <View style={[styles.messageHeaderRow, isOwn ? styles.messageHeaderOwn : null]}>
+              <Text style={[styles.messageName, isOwn ? styles.messageNameOwn : null]}>{item.userName}</Text>
+              <Text style={[styles.messageTime, isOwn ? styles.messageTimeOwn : null]}>{formatTime(item.createdAt)}</Text>
+            </View>
+            <View style={[styles.messageBubble, isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther]}>
+              {item.imageUrl && (
+                <Image source={{ uri: item.imageUrl }} style={styles.messageImage} resizeMode="cover" />
+              )}
+              {item.text && item.text !== '📷 Photo' && (
+                <Text style={[styles.messageText, isOwn ? styles.messageTextOwn : null]}>{item.text}</Text>
+              )}
+            </View>
           </View>
-        )}
-        <View style={[styles.messageBubbleContainer, isOwn ? styles.messageBubbleContainerOwn : styles.messageBubbleContainerOther]}>
-          <View style={[styles.messageHeaderRow, isOwn ? styles.messageHeaderOwn : null]}>
-            <Text style={[styles.messageName, isOwn ? styles.messageNameOwn : null]}>{item.userName}</Text>
-            <Text style={[styles.messageTime, isOwn ? styles.messageTimeOwn : null]}>{formatTime(item.createdAt)}</Text>
-          </View>
-          <View style={[styles.messageBubble, isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther]}>
-            {item.imageUrl && (
-              <Image source={{ uri: item.imageUrl }} style={styles.messageImage} resizeMode="cover" />
-            )}
-            {item.text && item.text !== '📷 Photo' && (
-              <Text style={[styles.messageText, isOwn ? styles.messageTextOwn : null]}>{item.text}</Text>
-            )}
-          </View>
+          {isOwn && (
+            <View style={styles.messageAvatar}>
+              <Text style={styles.messageAvatarText}>{item.userName.charAt(0)}</Text>
+            </View>
+          )}
         </View>
-        {isOwn && (
-          <View style={styles.messageAvatar}>
-            <Text style={styles.messageAvatarText}>{item.userName.charAt(0)}</Text>
-          </View>
-        )}
-      </View>
+      </TouchableOpacity>
     );
   };
 

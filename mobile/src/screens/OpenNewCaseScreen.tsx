@@ -16,23 +16,27 @@ import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { casesApi } from '../lib/api';
+import { ModalPicker, SelectorField } from '../components/ModalPicker';
 
-const caseTypes = [
-  { key: 'theft', label: 'Theft', icon: 'lock-closed-outline' as const },
-  { key: 'assault', label: 'Assault', icon: 'alert-circle-outline' as const },
-  { key: 'fraud', label: 'Fraud', icon: 'document-text-outline' as const },
-  { key: 'missing_person', label: 'Missing Person', icon: 'search-outline' as const },
-  { key: 'property_damage', label: 'Property Damage', icon: 'home-outline' as const },
-  { key: 'cybercrime', label: 'Cybercrime', icon: 'globe-outline' as const },
-  { key: 'domestic_violence', label: 'Domestic Violence', icon: 'shield-outline' as const },
-  { key: 'other', label: 'Other', icon: 'ellipsis-horizontal-outline' as const },
+const caseTypeOptions = [
+  { value: 'theft', label: 'Theft' },
+  { value: 'robbery', label: 'Robbery' },
+  { value: 'assault', label: 'Assault' },
+  { value: 'fraud', label: 'Fraud' },
+  { value: 'vandalism', label: 'Vandalism' },
+  { value: 'missing_person', label: 'Missing Person' },
+  { value: 'vehicle_accident', label: 'Vehicle Accident' },
+  { value: 'drug_related', label: 'Drug Related' },
+  { value: 'cybercrime', label: 'Cybercrime' },
+  { value: 'domestic_violence', label: 'Domestic Violence' },
+  { value: 'other', label: 'Other' },
 ];
 
 const priorityOptions = [
-  { key: 'low', label: 'Low', color: '#22c55e' },
-  { key: 'medium', label: 'Medium', color: '#f59e0b' },
-  { key: 'high', label: 'High', color: '#ef4444' },
-  { key: 'critical', label: 'Critical', color: '#dc2626' },
+  { value: 'low', label: 'Low', color: '#22c55e' },
+  { value: 'medium', label: 'Medium', color: '#f59e0b' },
+  { value: 'high', label: 'High', color: '#f97316' },
+  { value: 'urgent', label: 'Urgent', color: '#ef4444' },
 ];
 
 export default function OpenNewCaseScreen() {
@@ -43,6 +47,8 @@ export default function OpenNewCaseScreen() {
   const [selectedPriority, setSelectedPriority] = useState('medium');
   const [images, setImages] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [typePickerVisible, setTypePickerVisible] = useState(false);
+  const [priorityPickerVisible, setPriorityPickerVisible] = useState(false);
 
   const handlePickImage = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -122,50 +128,38 @@ export default function OpenNewCaseScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Case Type</Text>
-          <View style={styles.typeGrid}>
-            {caseTypes.map((type) => (
-              <TouchableOpacity
-                key={type.key}
-                style={[styles.typeOption, selectedType === type.key && styles.typeOptionSelected]}
-                onPress={() => setSelectedType(type.key)}
-                data-testid={`button-type-${type.key}`}
-              >
-                <Ionicons
-                  name={type.icon}
-                  size={20}
-                  color={selectedType === type.key ? colors.primaryForeground : colors.mutedForeground}
-                />
-                <Text style={[styles.typeLabel, selectedType === type.key && styles.typeLabelSelected]}>
-                  {type.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <SelectorField
+            label="Case Type"
+            value={caseTypeOptions.find(t => t.value === selectedType)?.label || ''}
+            placeholder="Select case type"
+            onPress={() => setTypePickerVisible(true)}
+          />
+          <ModalPicker
+            visible={typePickerVisible}
+            onClose={() => setTypePickerVisible(false)}
+            title="Select Case Type"
+            options={caseTypeOptions}
+            selectedValue={selectedType}
+            onSelect={setSelectedType}
+          />
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Priority</Text>
-          <View style={styles.priorityRow}>
-            {priorityOptions.map((p) => (
-              <TouchableOpacity
-                key={p.key}
-                style={[
-                  styles.priorityOption,
-                  selectedPriority === p.key && { borderColor: p.color, borderWidth: 2 },
-                ]}
-                onPress={() => setSelectedPriority(p.key)}
-                data-testid={`button-priority-${p.key}`}
-              >
-                <View style={[styles.priorityDot, { backgroundColor: p.color }]} />
-                <Text style={[
-                  styles.priorityLabel,
-                  selectedPriority === p.key && { color: colors.cardForeground, fontWeight: '600' },
-                ]}>
-                  {p.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <SelectorField
+            label="Priority"
+            value={priorityOptions.find(p => p.value === selectedPriority)?.label || ''}
+            placeholder="Select priority"
+            onPress={() => setPriorityPickerVisible(true)}
+          />
+          <ModalPicker
+            visible={priorityPickerVisible}
+            onClose={() => setPriorityPickerVisible(false)}
+            title="Select Priority"
+            options={priorityOptions}
+            selectedValue={selectedPriority}
+            onSelect={setSelectedPriority}
+          />
         </View>
 
         <View style={styles.section}>
@@ -274,59 +268,6 @@ const styles = StyleSheet.create({
   },
   textArea: {
     minHeight: 120,
-  },
-  typeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  typeOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  typeOptionSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  typeLabel: {
-    fontSize: 13,
-    color: colors.mutedForeground,
-  },
-  typeLabelSelected: {
-    color: colors.primaryForeground,
-    fontWeight: '500',
-  },
-  priorityRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  priorityOption: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  priorityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  priorityLabel: {
-    fontSize: 12,
-    color: colors.mutedForeground,
   },
   imageGrid: {
     flexDirection: 'row',

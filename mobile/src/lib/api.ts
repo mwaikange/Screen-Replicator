@@ -72,7 +72,7 @@ export const authApi = {
         .eq('id', userId)
         .single(),
       supabase.from('user_subscriptions')
-        .select('*, subscription_plans(*)')
+        .select('*, plans(*)')
         .eq('user_id', userId)
         .eq('status', 'active')
         .gte('expires_at', new Date().toISOString())
@@ -91,10 +91,6 @@ export const authApi = {
     const followersCount = followersRes.count || 0;
     const followingCount = followingRes.count || 0;
 
-    console.log('Followers:', followersCount, 'Following:', followingCount);
-    console.log('Subscription:', subscription?.status, subscription?.expires_at);
-    console.log('Trust score:', profile?.trust_score);
-
     const user: User = {
       id: userId,
       email: data.user.email || email,
@@ -105,10 +101,10 @@ export const authApi = {
       trustScore: profile?.trust_score || 0,
       followers: followersCount,
       following: followingCount,
-      subscriptionType: (subscription as any)?.subscription_plans?.name || (subscription ? 'Active' : 'Free'),
+      subscriptionType: (subscription as any)?.plans?.name || (subscription ? 'Active' : 'Free'),
       subscriptionExpiry: subscription?.expires_at || '',
       subscriptionStatus: subscription ? 'active' : 'none',
-      subscriptionPlanName: (subscription as any)?.subscription_plans?.name || null,
+      subscriptionPlanName: (subscription as any)?.plans?.name || null,
       town: profile?.town || '',
     };
 
@@ -211,14 +207,14 @@ export const postsApi = {
       const likeMap: Record<string, number> = {};
       const voteMap: Record<string, { up: number; down: number; userVote: 'up' | 'down' | null }> = {};
       (reactionCounts || []).forEach((r: any) => {
-        if (r.reaction_type === 'helpful' || r.reaction_type === 'verified') {
+        if (r.reaction_type === 'upvote' || r.reaction_type === 'love' || r.reaction_type === 'confirm') {
           likeMap[r.incident_id] = (likeMap[r.incident_id] || 0) + 1;
         }
         if (!voteMap[r.incident_id]) voteMap[r.incident_id] = { up: 0, down: 0, userVote: null };
-        if (r.reaction_type === 'helpful' || r.reaction_type === 'verified') voteMap[r.incident_id].up += 1;
-        else if (r.reaction_type === 'not_helpful') voteMap[r.incident_id].down += 1;
+        if (r.reaction_type === 'upvote' || r.reaction_type === 'love' || r.reaction_type === 'confirm') voteMap[r.incident_id].up += 1;
+        else if (r.reaction_type === 'downvote') voteMap[r.incident_id].down += 1;
         if (r.user_id === userId) {
-          voteMap[r.incident_id].userVote = (r.reaction_type === 'not_helpful') ? 'down' : 'up';
+          voteMap[r.incident_id].userVote = (r.reaction_type === 'downvote') ? 'down' : 'up';
         }
       });
 
@@ -272,14 +268,14 @@ export const postsApi = {
     let likeCount = 0, upvotes = 0, downvotes = 0;
     let userVote: 'up' | 'down' | null = null;
     (reactionsData || []).forEach((r: any) => {
-      if (r.reaction_type === 'helpful' || r.reaction_type === 'verified') {
+      if (r.reaction_type === 'upvote' || r.reaction_type === 'love' || r.reaction_type === 'confirm') {
         likeCount++;
         upvotes++;
-      } else if (r.reaction_type === 'not_helpful') {
+      } else if (r.reaction_type === 'downvote') {
         downvotes++;
       }
       if (r.user_id === userId) {
-        userVote = r.reaction_type === 'not_helpful' ? 'down' : 'up';
+        userVote = r.reaction_type === 'downvote' ? 'down' : 'up';
       }
     });
 
@@ -381,7 +377,7 @@ export const postsApi = {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error('Not authenticated');
 
-    const reactionType = vote === 'up' ? 'helpful' : 'not_helpful';
+    const reactionType = vote === 'up' ? 'upvote' : 'downvote';
 
     const { data: existing } = await supabase
       .from('incident_reactions')
@@ -416,7 +412,7 @@ export const postsApi = {
       .select('id')
       .eq('incident_id', postId)
       .eq('user_id', userId)
-      .eq('reaction_type', 'helpful')
+      .eq('reaction_type', 'upvote')
       .maybeSingle();
 
     if (existing) {
@@ -425,7 +421,7 @@ export const postsApi = {
       await supabase.from('incident_reactions').insert({
         incident_id: postId,
         user_id: userId,
-        reaction_type: 'helpful',
+        reaction_type: 'upvote',
       });
     }
 
@@ -955,7 +951,7 @@ export const userApi = {
         .eq('id', userId)
         .single(),
       supabase.from('user_subscriptions')
-        .select('*, subscription_plans(*)')
+        .select('*, plans(*)')
         .eq('user_id', userId)
         .eq('status', 'active')
         .gte('expires_at', new Date().toISOString())
@@ -974,14 +970,6 @@ export const userApi = {
     const followersCount = followersRes.count || 0;
     const followingCount = followingRes.count || 0;
 
-    if (profileRes.error) {
-      console.error('Profile fetch error:', profileRes.error);
-    }
-
-    console.log('Followers:', followersCount, 'Following:', followingCount);
-    console.log('Subscription:', subscription?.status, subscription?.expires_at);
-    console.log('Trust score:', profile?.trust_score);
-
     const user: User = {
       id: userId,
       email: authUser?.user?.email || '',
@@ -992,10 +980,10 @@ export const userApi = {
       trustScore: profile?.trust_score || 0,
       followers: followersCount,
       following: followingCount,
-      subscriptionType: (subscription as any)?.subscription_plans?.name || (subscription ? 'Active' : 'Free'),
+      subscriptionType: (subscription as any)?.plans?.name || (subscription ? 'Active' : 'Free'),
       subscriptionExpiry: subscription?.expires_at || '',
       subscriptionStatus: subscription ? 'active' : 'none',
-      subscriptionPlanName: (subscription as any)?.subscription_plans?.name || null,
+      subscriptionPlanName: (subscription as any)?.plans?.name || null,
       town: profile?.town || '',
     };
 
@@ -1244,7 +1232,7 @@ export const supportApi = {
     const requests: SupportRequest[] = (data || []).map((r: any) => ({
       id: r.id,
       userId: r.user_id,
-      type: r.type || 'counseling',
+      type: r.request_type || 'counseling',
       status: r.status || 'pending',
       description: r.description || '',
       contactMethod: r.contact_method || 'phone',
@@ -1262,7 +1250,7 @@ export const supportApi = {
       .from('support_requests')
       .insert({
         user_id: userId,
-        type: requestData.type || 'counseling',
+        request_type: requestData.type || 'counseling',
         description: requestData.description || '',
         contact_method: requestData.contactMethod || 'phone',
         status: 'pending',
@@ -1275,7 +1263,7 @@ export const supportApi = {
     return makeResponse({
       id: data.id,
       userId: data.user_id,
-      type: data.type,
+      type: data.request_type,
       status: data.status,
       description: data.description,
       contactMethod: data.contact_method,

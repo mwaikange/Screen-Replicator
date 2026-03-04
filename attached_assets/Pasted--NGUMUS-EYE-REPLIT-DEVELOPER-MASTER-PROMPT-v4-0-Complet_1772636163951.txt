@@ -1,0 +1,793 @@
+# NGUMUS EYE — REPLIT DEVELOPER MASTER PROMPT v4.0
+## Complete, Source-Code-Verified Fix & Build Instructions
+
+**Authority:** Vercel source code at `https://app.ngumus-eye.site` (direct inspection)  
+**Date:** March 2026 | **Supersedes all previous versions**
+
+> **How to use this document:** Every instruction here has been verified against the actual Vercel source code and database migration scripts. Where the official API documentation (v2.0.0) conflicts with source code, **source code wins**. All known API doc errors are flagged explicitly in the corrections table below.
+
+---
+
+## PART A — API DOCUMENTATION CORRECTIONS
+
+The official API documentation (v2.0.0) contains the following errors that will cause silent failures or database constraint violations if followed as written. Fix your code against these corrections before touching anything else.
+
+### A1. `incident_types` — columns are wrong in API doc
+
+| What API doc says | Actual column name | Impact |
+|---|---|---|
+| `incident_types.name` | `incident_types.label` | Queries return null for type display |
+| `incident_types.color` | **Does not exist** | This column is not in the DB |
+| `incident_types.icon` | **Does not exist** | This column is not in the DB |
+| `incident_types.id` | ✅ Correct | — |
+
+**Actual `incident_types` columns:** `id` (serial), `code` (text), `label` (text), `severity` (int)
+
+**Actual seed data (8 types):**
+```
+code: 'ALERT'      label: 'Emergency Alert'       severity: 5
+code: 'CRIME'      label: 'Crime Report'           severity: 4
+code: 'GBV'        label: 'Gender-Based Violence'  severity: 5
+code: 'FIRE'       label: 'Fire Emergency'         severity: 5
+code: 'MEDICAL'    label: 'Medical Emergency'      severity: 5
+code: 'MISSING'    label: 'Missing Person'         severity: 4
+code: 'SUSPICIOUS' label: 'Suspicious Activity'    severity: 2
+code: 'LOST'       label: 'Lost & Found'           severity: 1
+```
+
+**Severity-based pin colour** (since there is no `color` column, derive from severity):
+```typescript
+function getSeverityColor(severity: number): string {
+  if (severity >= 5) return '#EF4444';  // Critical — red
+  if (severity >= 4) return '#F97316';  // High — orange
+  if (severity >= 3) return '#EAB308';  // Medium — yellow
+  return '#BEF264';                     // Low — light green
+}
+```
+
+**Every query that selects `incident_types(id, name, color, icon)` must become:**
+```javascript
+incident_types(id, code, label, severity)
+```
+
+---
+
+### A2. `incidents` — reaction count columns are wrong in API doc
+
+API doc section 4.1 lists: `upvotes, downvotes, love_count, confirm_count`  
+**Actual columns added by migrations:** `upvotes` (int), `downvotes` (int), `loves` (int)  
+**`love_count` and `confirm_count` do not exist.**
+
+However, **the actual Vercel feed does not select these columns at all.** It fetches reactions from the `incident_reactions` table separately. The mobile app should do the same.
+
+**Reaction counts — correct approach:**
+```javascript
+// Batch-load reactions for all posts in feed:
+const { data: reactions } = await supabase
+  .from('incident_reactions')
+  .select('incident_id, reaction_type, user_id')
+  .in('incident_id', postIds);
+
+// Count them client-side:
+reactions.forEach(r => {
+  if (r.reaction_type === 'upvote')   counts[r.incident_id].upvotes++;
+  if (r.reaction_type === 'downvote') counts[r.incident_id].downvotes++;
+  if (r.reaction_type === 'love')     counts[r.incident_id].loves++;
+  if (r.reaction_type === 'confirm')  counts[r.incident_id].confirms++;
+});
+```
+
+**Valid reaction_type values (DB CHECK constraint):** `'upvote'`, `'downvote'`, `'love'`, `'confirm'`  
+**Invalid (will fail with constraint error):** `'helpful'`, `'not_helpful'`, `'verified'`
+
+---
+
+### A3. `incidents` — feed query does not use `upvotes`/`downvotes`
+
+The Vercel feed SELECT is:
+```javascript
+.select(`
+  id, title, description, type_id, created_at, created_by,
+  area_radius_m, verification_level, admin_verified, lat, lng, town,
+  incident_types(label, severity),
+  incident_media(path),
+  profiles!incidents_created_by_fkey(id, display_name, avatar_url)
+`)
+```
+
+Key observations:
+- Does **not** select `upvotes`, `downvotes`, or any reaction counts — these come from a separate reactions query
+- Uses `incident_types(label, severity)` — no `name`, no `color`, no `icon`
+- Uses `profiles!incidents_created_by_fkey` explicit FK hint — important for disambiguation
+- Selects `admin_verified` boolean (separate from `verification_level`)
+
+---
+
+### A4. Map — filter is `>= 1` not `> 0`
+
+API doc section 7.1 has no verification filter.  
+Vercel map page uses: `.gte('verification_level', 1)` (equivalent to `>= 1`)  
+The mobile master prompt previously said `.gt('verification_level', 0)` — both are equivalent, but use `.gte('verification_level', 1)` to match Vercel exactly.
+
+---
+
+### A5. `cases` — status values are wrong in API doc
+
+API doc section 8.5 lists: `open`, `new`, `in_progress`, `assigned`, `closed`, `archived`  
+**Actual DB CHECK constraint:** `'open'`, `'in_progress'`, `'closed'`, `'archived'`  
+**`'new'` and `'assigned'` do not exist as case status values.**
+
+**Correct `cases` status display:**
+```typescript
+const CASE_STATUS = {
+  'open':        { label: 'Open',        color: '#3B82F6' },  // blue
+  'in_progress': { label: 'In Progress', color: '#A855F7' },  // purple
+  'closed':      { label: 'Closed',      color: '#22C55E' },  // green
+  'archived':    { label: 'Archived',    color: '#6B7280' },  // grey
+};
+```
+
+**Stats computation (correct):**
+```typescript
+const activeCount  = cases.filter(c => c.status === 'open' || c.status === 'in_progress').length;
+const closedCount  = cases.filter(c => c.status === 'closed' || c.status === 'archived').length;
+```
+
+---
+
+### A6. `notifications` — two tables exist, each with a different purpose
+
+This is the most confusing part of the codebase. Both tables exist and are used:
+
+| Table | Written by | Read by | Schema |
+|---|---|---|---|
+| `notifications` | `followUser()` action | Nothing in current Vercel UI | `id, user_id, type, metadata (jsonb), is_read (bool), created_at` |
+| `user_notifications` | DB triggers (follow, group events) | Notifications page | `id, user_id, type, title, message, entity_id (uuid), read_at (timestamp), created_at` |
+
+**The mobile app Notifications screen must use `user_notifications`.**  
+The `notifications` table (old one) is a legacy write-only table — do not read from it.
+
+**`user_notifications` unread check uses `read_at IS NULL`** — there is no `is_read` column.
+
+**Valid `user_notifications.type` values (DB CHECK constraint):**  
+`'follow'`, `'group_request'`, `'subscription'`, `'system'`
+
+API doc section 11 incorrectly says `type: 'new_follower'`, `'incident_comment'`, `'incident_reaction'`, `'group_request_approved'`, `'group_message'`, `'subscription_expiring'` — **none of these exist in the `user_notifications` table**.
+
+**Correct type → navigation mapping:**
+```typescript
+switch (notification.type) {
+  case 'follow':
+    navigation.navigate('Profile', { userId: notification.entity_id }); break;
+  case 'group_request':
+    navigation.navigate('Groups'); break;   // entity_id = group_id
+  case 'subscription':
+    navigation.navigate('Subscribe'); break;
+  case 'system':
+    break;  // informational only
+}
+```
+
+**Real-time subscription for notifications must also use `user_notifications`:**
+```javascript
+// API doc section 18.2 says table: "notifications" — THIS IS WRONG
+// Correct:
+.on('postgres_changes', {
+  event: 'INSERT', schema: 'public',
+  table: 'user_notifications',    // ← user_notifications, NOT notifications
+  filter: `user_id=eq.${userId}`,
+}, ...)
+```
+
+---
+
+### A7. `groups` — use `visibility` string field, not `is_public` boolean
+
+API doc section 9.4 does not specify. The groups table has BOTH columns but the Vercel UI uses `visibility` string:
+```javascript
+// Reading visibility:
+group.visibility === 'public'   // ✅ use this
+group.is_public === true        // ❌ avoid — older field, inconsistently populated
+
+// Creating group:
+p_visibility: 'public' | 'private'   // ✅ RPC parameter is correct as-is
+```
+
+---
+
+### A8. Environment variable prefix for mobile is `EXPO_PUBLIC_`, not `NEXT_PUBLIC_`
+
+API doc section 22.3 says:
+```
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+NEXT_PUBLIC_SITE_URL=...
+```
+
+The mobile app (`mobile/src/lib/supabase.ts`) reads:
+```javascript
+process.env.EXPO_PUBLIC_SUPABASE_URL
+process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+process.env.EXPO_PUBLIC_SITE_URL
+```
+
+**Correct `mobile/.env`:**
+```
+EXPO_PUBLIC_SUPABASE_URL=https://[project].supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=[anon-key]
+EXPO_PUBLIC_SITE_URL=https://app.ngumus-eye.site
+```
+
+---
+
+### A9. `group_requests` RPC — do not pass `p_user_id`
+
+API doc section 9.3 shows the correct RPC call. But the mobile code adds an extra `p_user_id` parameter that the RPC does not accept (it uses `auth.uid()` internally):
+```javascript
+// WRONG (mobile currently does this):
+supabase.rpc('request_join_group', { p_group_id: groupId, p_user_id: userId })
+
+// CORRECT:
+supabase.rpc('request_join_group', { p_group_id: groupId })
+```
+
+Same for approve:
+```javascript
+// WRONG:
+supabase.rpc('approve_group_request', { p_request_id: id, p_group_id: groupId })
+
+// CORRECT:
+supabase.rpc('approve_group_request', { p_request_id: id })
+```
+
+---
+
+### A10. Voucher redemption uses RPC, not manual inserts
+
+API doc section 13 does not cover vouchers — see profile section. The Vercel action:
+```javascript
+// lib/actions/vouchers.ts — redeemVoucher()
+const { data, error } = await supabase.rpc('redeem_voucher', {
+  voucher_code: voucherCode  // parameter name is voucher_code (with underscore)
+})
+```
+
+The previous master prompt had `voucher_code: voucherCode.trim().toUpperCase()` — the RPC handles the normalisation itself, but trimming is fine.
+
+---
+
+### A11. `support_requests` — column is `request_type` not `type`
+
+API doc does not cover the Counseling screen directly. The `support_requests` table has:
+```
+request_type TEXT CHECK (request_type IN ('counseling', 'emergency', 'legal', 'other'))
+```
+Not `type`. Insert must use `request_type`.
+
+---
+
+## PART B — STORAGE INTEGRATION
+
+All file uploads go through the Vercel proxy endpoint. Never call Vercel Blob directly from mobile.
+
+### Upload endpoint:
+```
+POST https://app.ngumus-eye.site/api/upload
+Content-Type: multipart/form-data
+Field: "file"  (singular)
+```
+Returns: `{ "url": "https://public.blob.vercel-storage.com/..." }`
+
+### URL storage by upload type:
+| Upload | Table | Column |
+|---|---|---|
+| Incident photo/video | `incident_media` | `path` (stores full URL) |
+| Comment photo | `comments` | `image_url` |
+| Case evidence | `cases` | `evidence` (JSONB array, each item has `file_url`) |
+| Case documents | `cases` | `documents` (JSONB array, each item has `file_url`) |
+| Group chat image | `group_messages` | `image_url` |
+| Group chat video | `group_messages` | `video_url` |
+| Profile avatar | `profiles` | `avatar_url` |
+
+### Replit server fix (replace `/api/upload` with Vercel Blob):
+```typescript
+// server/routes.ts — replace diskStorage with memoryStorage + @vercel/blob
+import { put } from '@vercel/blob';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = /\.(jpg|jpeg|png|gif|mp4|mov|webp)$/i;
+    allowed.test(path.extname(file.originalname)) ? cb(null, true) : cb(new Error('Invalid file type'));
+  },
+});
+
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'No file provided' });
+    const maxSize = file.mimetype.startsWith('video/') ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > maxSize) return res.status(400).json({ error: `File too large` });
+    const ext = path.extname(file.originalname);
+    const blob = await put(`uploads/${randomUUID()}${ext}`, file.buffer, {
+      access: 'public',
+      contentType: file.mimetype,
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+    res.json({ url: blob.url });  // singular 'url', not 'urls' array
+  } catch (e: any) {
+    res.status(500).json({ error: e.message || 'Upload failed' });
+  }
+});
+```
+
+Add `BLOB_READ_WRITE_TOKEN` to Replit Secrets (get value from Vercel project dashboard → Settings → Environment Variables).
+
+### Image URL display helper (handles both old Supabase Storage paths and new Vercel Blob URLs):
+```typescript
+function getImageUrl(pathOrUrl: string | null): string | null {
+  if (!pathOrUrl) return null;
+  if (pathOrUrl.startsWith('https://') || pathOrUrl.startsWith('http://')) return pathOrUrl;
+  // Legacy Supabase Storage path
+  return `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/incident-media/${pathOrUrl}`;
+}
+```
+
+---
+
+## PART C — COMPLETE DATABASE REFERENCE
+
+### Final verified column names (source: DB migration scripts)
+
+| Table | Column | Type | Notes |
+|---|---|---|---|
+| `incidents` | `type_id` | int FK | → `incident_types.id` |
+| `incidents` | `lat`, `lng` | float | NOT `latitude`/`longitude` |
+| `incidents` | `created_by` | uuid | NOT `user_id` |
+| `incidents` | `town` | text | optional |
+| `incidents` | `verification_level` | int 0-3 | 0=unverified, 3=verified |
+| `incidents` | `admin_verified` | bool | feed filter: "verified" tab |
+| `incidents` | `upvotes`, `downvotes`, `loves` | int | updated by triggers; do not select in feed — use `incident_reactions` instead |
+| `incident_types` | `code` | text | e.g. `'CRIME'`, `'FIRE'` |
+| `incident_types` | `label` | text | e.g. `'Crime Report'` |
+| `incident_types` | `severity` | int 1-5 | used for pin colour |
+| `incident_reactions` | `reaction_type` | text | CHECK: `'upvote'`,`'downvote'`,`'love'`,`'confirm'` |
+| `comments` | `body` | text | NOT `content` |
+| `comments` | `author` | uuid | NOT `user_id` |
+| `group_messages` | `message` | text | NOT `content` |
+| `group_messages` | `image_url`, `video_url` | text | nullable |
+| `groups` | `visibility` | text | `'public'` or `'private'` |
+| `groups` | `is_public` | bool | legacy — prefer `visibility` |
+| `cases` | `status` | text | CHECK: `'open'`,`'in_progress'`,`'closed'`,`'archived'` |
+| `cases` | `priority` | text | CHECK: `'low'`,`'medium'`,`'high'`,`'urgent'` |
+| `cases` | `category` | text | e.g. `'theft'`, `'robbery'` |
+| `cases` | `evidence` | jsonb[] | array of objects with `file_url` |
+| `cases` | `documents` | jsonb[] | array of objects with `file_url` |
+| `plans` | — | — | NOT `subscription_plans` |
+| `user_notifications` | `read_at` | timestamp | null = unread. No `is_read` column |
+| `user_notifications` | `type` | text | CHECK: `'follow'`,`'group_request'`,`'subscription'`,`'system'` |
+| `user_notifications` | `entity_id` | uuid | follower_id or group_id |
+| `notifications` | `metadata` | jsonb | legacy table — written by followUser() only |
+| `support_requests` | `request_type` | text | NOT `type`. CHECK: `'counseling'`,`'emergency'`,`'legal'`,`'other'` |
+| `ad_inventory` | — | — | NOT `ads` |
+
+### Never include these in `incidents` INSERT (causes constraint error 23514):
+`status`, `category`, `verification_level`, `street_address`, `suburb`, `province`
+
+### RPC signatures (exact — no extra parameters):
+```javascript
+supabase.rpc('request_join_group',      { p_group_id: groupId })
+supabase.rpc('approve_group_request',   { p_request_id: requestId })
+supabase.rpc('create_group_with_creator', { p_name, p_geohash_prefix, p_visibility })
+supabase.rpc('remove_group_member',     { p_group_id, p_user_id_to_remove })
+supabase.rpc('redeem_voucher',          { voucher_code: code })
+```
+
+---
+
+## PART D — THE 8 FIXES (priority order)
+
+---
+
+### FIX 1 — Environment variable (unblocks all mobile uploads)
+
+Add to `mobile/.env`:
+```
+EXPO_PUBLIC_SITE_URL=https://app.ngumus-eye.site
+EXPO_PUBLIC_SUPABASE_URL=https://[your-project].supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=[your-anon-key]
+```
+
+The mobile `uploadMedia()` function is already correct — right field name, right response key. It only fails because `EXPO_PUBLIC_SITE_URL` is empty.
+
+---
+
+### FIX 2 — Rewrite Replit server `/api/upload` (see Part B above)
+
+The server currently saves to local disk and returns `{ urls: [] }` (array). Must be changed to Vercel Blob returning `{ url: '...' }` (singular string). Full code in Part B.
+
+---
+
+### FIX 3 — Fix reaction types everywhere
+
+**Find and replace in `mobile/src/lib/api.ts`:**
+
+```
+'helpful'     → 'upvote'
+'not_helpful' → 'downvote'
+'verified'    → 'confirm'
+```
+
+Fix the reaction counting logic:
+```typescript
+// BEFORE (wrong types):
+if (r.reaction_type === 'helpful' || r.reaction_type === 'verified') upvotes++;
+else if (r.reaction_type === 'not_helpful') downvotes++;
+
+// AFTER (correct types):
+if (r.reaction_type === 'upvote' || r.reaction_type === 'love' || r.reaction_type === 'confirm') upvotes++;
+else if (r.reaction_type === 'downvote') downvotes++;
+```
+
+---
+
+### FIX 4 — Fix subscription table name everywhere
+
+**Find and replace:**
+```
+subscription_plans    →  plans
+subscription_plans(*) →  plans(*)
+subscription?.subscription_plans  →  subscription?.plans
+```
+
+Files to check: `mobile/src/lib/api.ts`, `SubscribeScreen.tsx`, `CaseDeckScreen.tsx`
+
+**Fix voucher redemption** — use RPC (see Part A10):
+```typescript
+const { data, error } = await supabase.rpc('redeem_voucher', { voucher_code: code });
+```
+
+**Fix subscription check:**
+```typescript
+const { data: subscription } = await supabase
+  .from('user_subscriptions')
+  .select('id, status, expires_at, plans(*)')   // 'plans' not 'subscription_plans'
+  .eq('user_id', userId)
+  .eq('status', 'active')
+  .gte('expires_at', new Date().toISOString())
+  .maybeSingle();
+```
+
+---
+
+### FIX 5 — Fix `incident_types` field names throughout
+
+**Find and replace in all screens and `api.ts`:**
+```
+incident_types.name   →  incident_types.label
+incident_types.color  →  (remove — column does not exist, derive from severity instead)
+incident_types.icon   →  (remove — column does not exist)
+```
+
+**Fix all SELECT queries:**
+```javascript
+// BEFORE:
+incident_types(id, name, color, icon)
+
+// AFTER:
+incident_types(id, code, label, severity)
+```
+
+**Add severity colour helper** (since there is no color column):
+```typescript
+function getTypeColor(severity: number): string {
+  if (severity >= 5) return '#EF4444';
+  if (severity >= 4) return '#F97316';
+  if (severity >= 3) return '#EAB308';
+  return '#BEF264';
+}
+// Usage: getTypeColor(incident.incident_types?.severity || 1)
+```
+
+---
+
+### FIX 6 — Fix group chat real-time
+
+**File:** `mobile/src/screens/GroupChatScreen.tsx`
+
+Extract `loadMessages()` as a named callback. Add Supabase Realtime + 3-second polling:
+```typescript
+const loadMessages = useCallback(async () => {
+  const res = await groupsApi.getMessages(groupId);
+  if (res.data) {
+    setMessages(res.data);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
+  }
+}, [groupId]);
+
+useEffect(() => {
+  loadMessages();
+  const channel = supabase
+    .channel(`group-chat-${groupId}`)
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public',
+      table: 'group_messages',
+      filter: `group_id=eq.${groupId}`,
+    }, () => loadMessages())
+    .subscribe();
+  const poll = setInterval(loadMessages, 3000);
+  return () => { supabase.removeChannel(channel); clearInterval(poll); };
+}, [groupId, loadMessages]);
+```
+
+**Dashboard action required:** Supabase Dashboard → Database → Replication → enable `group_messages` table.
+
+**Add long-press delete own messages:**
+```tsx
+<TouchableOpacity
+  onLongPress={() => {
+    if (item.user_id !== currentUserId) return;
+    Alert.alert('Delete Message', 'Remove this message?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+          await supabase.from('group_messages').delete()
+            .eq('id', item.id).eq('user_id', currentUserId);
+          loadMessages();
+      }},
+    ]);
+  }}
+  delayLongPress={500} activeOpacity={1}
+>
+  {/* existing bubble */}
+</TouchableOpacity>
+```
+
+---
+
+### FIX 7 — Replace button grids with modal pickers
+
+Create `mobile/src/components/ModalPicker.tsx` — a reusable bottom-sheet picker component with `SelectorField` trigger. Apply to:
+- `ReportScreen.tsx` — incident type selector
+- `OpenNewCaseScreen.tsx` — case category selector + priority selector
+
+**Case categories (verified from Vercel source):**
+```typescript
+const CASE_CATEGORIES = [
+  { value: 'theft',             label: 'Theft' },
+  { value: 'robbery',           label: 'Robbery' },
+  { value: 'assault',           label: 'Assault' },
+  { value: 'fraud',             label: 'Fraud' },
+  { value: 'vandalism',         label: 'Vandalism' },
+  { value: 'missing_person',    label: 'Missing Person' },
+  { value: 'vehicle_accident',  label: 'Vehicle Accident' },
+  { value: 'drug_related',      label: 'Drug Related' },
+  { value: 'cybercrime',        label: 'Cybercrime' },
+  { value: 'domestic_violence', label: 'Domestic Violence' },
+  { value: 'other',             label: 'Other' },
+];
+```
+
+**Case priority (verified from DB constraint):**
+```typescript
+const CASE_PRIORITY = [
+  { value: 'low',    label: 'Low',    color: '#22C55E' },
+  { value: 'medium', label: 'Medium', color: '#EAB308' },
+  { value: 'high',   label: 'High',   color: '#F97316' },
+  { value: 'urgent', label: 'Urgent', color: '#EF4444' },
+  // NOTE: 'critical' does NOT exist — API doc is wrong
+];
+```
+
+---
+
+### FIX 8 — Fix map screen
+
+**File:** `mobile/src/screens/MapScreen.tsx`
+
+```typescript
+// Correct query (matches Vercel map page exactly):
+const { data } = await supabase
+  .from('incidents')
+  .select('id, title, lat, lng, town, verification_level, incident_types(label, severity)')
+  .gte('verification_level', 1)     // verified only, matches Vercel's .gte('verification_level', 1)
+  .not('lat', 'is', null)
+  .not('lng', 'is', null)
+  .order('created_at', { ascending: false })
+  .limit(200);
+
+// Pin colour (no 'color' column — derive from severity):
+const pinColor = getSeverityColor(incident.incident_types?.severity || 1);
+
+// Tap popup:
+{selectedIncident && (
+  <View style={styles.popup}>
+    <Text style={styles.popupTitle}>{selectedIncident.title}</Text>
+    <Text style={styles.popupType}>{selectedIncident.incident_types?.label}</Text>
+    <TouchableOpacity onPress={() => {
+      setSelectedIncident(null);
+      navigation.navigate('IncidentDetails', { incidentId: selectedIncident.id });
+    }}>
+      <Text>View Incident</Text>
+    </TouchableOpacity>
+  </View>
+)}
+```
+
+---
+
+## PART E — MISSING SCREENS
+
+### NotificationsScreen.tsx
+
+**Important corrections vs API doc:**
+- Reads from `user_notifications` (NOT `notifications`)
+- Unread = `read_at IS NULL` (no `is_read` column)
+- Valid types: `'follow'`, `'group_request'`, `'subscription'`, `'system'`
+- `entity_id` = the linked resource UUID (follower's user_id, or group_id)
+
+```typescript
+// Load:
+const { data } = await supabase
+  .from('user_notifications')
+  .select('*')
+  .eq('user_id', userId)
+  .order('created_at', { ascending: false })
+  .limit(50);
+
+// Unread count:
+const unread = data?.filter(n => !n.read_at).length || 0;
+
+// Mark read:
+await supabase.from('user_notifications')
+  .update({ read_at: new Date().toISOString() })
+  .eq('id', notificationId);
+
+// Mark all read:
+await supabase.from('user_notifications')
+  .update({ read_at: new Date().toISOString() })
+  .eq('user_id', userId)
+  .is('read_at', null);
+
+// Real-time:
+.on('postgres_changes', {
+  event: 'INSERT', schema: 'public',
+  table: 'user_notifications',    // ← NOT 'notifications'
+  filter: `user_id=eq.${userId}`,
+}, () => loadNotifications())
+```
+
+### SearchScreen.tsx
+
+**Corrections vs API doc:**
+- API doc says `incident_types(name, color)` — use `incident_types(label, severity)` instead
+- Debounce at 300ms, minimum 2 characters (matches Vercel)
+
+```typescript
+// Incidents search:
+const { data: incidents } = await supabase
+  .from('incidents')
+  .select('id, title, town, verification_level, created_at, incident_types(label, severity)')
+  .or(`title.ilike.%${query}%,description.ilike.%${query}%,town.ilike.%${query}%`)
+  .order('created_at', { ascending: false })
+  .limit(20);
+
+// Users search:
+const { data: users } = await supabase
+  .from('profiles')
+  .select('id, display_name, avatar_url, trust_score, level')
+  .ilike('display_name', `%${query}%`)
+  .limit(10);
+```
+
+### Register in App.tsx:
+```typescript
+import NotificationsScreen from './src/screens/NotificationsScreen';
+import SearchScreen from './src/screens/SearchScreen';
+
+<Stack.Screen name="Notifications" component={NotificationsScreen} options={{ animation: 'slide_from_right' }} />
+<Stack.Screen name="Search" component={SearchScreen} options={{ animation: 'slide_from_bottom' }} />
+```
+
+---
+
+## PART F — FEED IMPROVEMENTS
+
+### Correct feed query (matches Vercel exactly):
+```typescript
+const { data } = await supabase
+  .from('incidents')
+  .select(`
+    id, title, description, type_id, created_at, created_by,
+    area_radius_m, verification_level, lat, lng, town,
+    incident_types(code, label, severity),
+    incident_media(path),
+    profiles!incidents_created_by_fkey(id, display_name, avatar_url)
+  `)
+  .order('created_at', { ascending: false })
+  .limit(40);
+```
+
+### Verification badge (4 levels):
+```typescript
+const VERIFICATION = {
+  0: null,
+  1: { label: 'Reported',  color: '#EAB308' },
+  2: { label: 'Confirmed', color: '#3B82F6' },
+  3: { label: 'Verified',  color: '#22C55E' },
+};
+
+// In JSX:
+{VERIFICATION[post.verificationLevel] && (
+  <View style={[styles.badge, { backgroundColor: VERIFICATION[post.verificationLevel].color + '20' }]}>
+    <Ionicons name="checkmark-circle" size={12} color={VERIFICATION[post.verificationLevel].color} />
+    <Text style={{ color: VERIFICATION[post.verificationLevel].color }}>
+      {VERIFICATION[post.verificationLevel].label}
+    </Text>
+  </View>
+)}
+```
+
+### Ads injection (load from `ad_inventory`):
+```typescript
+const { data: ads } = await supabase
+  .from('ad_inventory')
+  .select('id, title, description, media_url, media_type, target_url, display_priority')
+  .eq('is_active', true)
+  .gte('end_date', new Date().toISOString())
+  .order('display_priority', { ascending: false })
+  .limit(10);
+
+// Inject one ad after every 5 incidents when building the FlatList data array
+```
+
+---
+
+## PART G — FINAL CHECKLIST
+
+**Fix 1 — Environment:**
+- [ ] `mobile/.env` has `EXPO_PUBLIC_SITE_URL=https://app.ngumus-eye.site`
+- [ ] Replit Secrets has `BLOB_READ_WRITE_TOKEN`
+
+**Fix 2 — Uploads:**
+- [ ] Report photo → appears in feed with image visible
+- [ ] Incident detail shows media gallery
+- [ ] Group chat image sends and displays inline
+- [ ] Profile avatar upload works
+
+**Fix 3 — Reactions:**
+- [ ] Tap Upvote → no DB error (used to fail with reaction type constraint)
+- [ ] Reaction counts display correctly on feed cards
+
+**Fix 4 — Subscriptions:**
+- [ ] Subscribed user → Profile shows plan name and expiry
+- [ ] Subscribed user → Case Deck loads (does NOT redirect to Subscribe)
+- [ ] Voucher redemption works end-to-end
+
+**Fix 5 — Incident types:**
+- [ ] Feed cards show incident type label correctly (not blank)
+- [ ] Report screen dropdown shows all 8 types from DB
+- [ ] Map pins are coloured by severity
+
+**Fix 6 — Group chat:**
+- [ ] Messages sent from web appear in mobile within 3 seconds
+- [ ] Long-press own message → delete option appears
+
+**Fix 7 — Dropdowns:**
+- [ ] Report: tap type field → modal picker slides up
+- [ ] New Case: tap category → modal picker slides up
+- [ ] New Case: tap priority → modal with colour dots slides up
+- [ ] No 'critical' option in priority (does not exist in DB)
+
+**Fix 8 — Map:**
+- [ ] Unverified incidents (level 0) not shown
+- [ ] Pins coloured by severity (not a non-existent color column)
+- [ ] Tap pin → popup appears → "View Incident" navigates correctly
+
+**New screens:**
+- [ ] Notification bell → opens Notifications screen
+- [ ] Notification tap navigates: follow→Profile, group_request→Groups, subscription→Subscribe
+- [ ] Unread uses `read_at IS NULL` check
+- [ ] Search shows results after 2+ chars typed
+- [ ] Incident result → navigates to detail
+- [ ] Person result → navigates to profile

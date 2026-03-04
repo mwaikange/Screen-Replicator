@@ -172,6 +172,8 @@ export type RootStackParamList = {
   OpenNewCase: undefined;
   DeviceTracking: undefined;
   Counseling: undefined;
+  Notifications: undefined;
+  Search: undefined;
 };
 
 export type MainTabParamList = {

@@ -42,17 +42,11 @@ async function getClient(req: any) {
   return token ? getAuthClient(token) : supabase;
 }
 
-const uploadStorage = multer.diskStorage({
-  destination: path.resolve(process.cwd(), "attached_assets"),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `upload_${randomUUID()}${ext}`);
-  },
-});
+const VERCEL_UPLOAD_URL = process.env.EXPO_PUBLIC_SITE_URL || "https://app.ngumus-eye.site";
 
 const upload = multer({
-  storage: uploadStorage,
-  limits: { fileSize: 25 * 1024 * 1024 },
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = /\.(jpg|jpeg|png|gif|mp4|mov|webp)$/i;
     if (allowed.test(path.extname(file.originalname))) {
@@ -62,6 +56,29 @@ const upload = multer({
     }
   },
 });
+
+async function proxyUploadToVercel(file: Express.Multer.File, authToken?: string): Promise<string> {
+  const formData = new FormData();
+  const blob = new Blob([file.buffer], { type: file.mimetype });
+  formData.append("file", blob, file.originalname);
+
+  const headers: Record<string, string> = {};
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+
+  const response = await fetch(`${VERCEL_UPLOAD_URL}/api/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "Upload failed");
+    throw new Error(`Upload proxy failed: ${errText}`);
+  }
+
+  const result = await response.json() as any;
+  return result.url || result.publicUrl || "";
+}
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -180,7 +197,7 @@ export async function registerRoutes(
           .eq("id", userId)
           .single(),
         db.from("user_subscriptions")
-          .select("*, subscription_plans(*)")
+          .select("*, plans(*)")
           .eq("user_id", userId)
           .eq("status", "active")
           .gte("expires_at", new Date().toISOString())
@@ -211,10 +228,10 @@ export async function registerRoutes(
         trustScore: profile?.trust_score || 0,
         followers: followersCount,
         following: followingCount,
-        subscriptionType: subscription?.subscription_plans?.name || (subscription ? "Active" : "Free"),
+        subscriptionType: subscription?.plans?.name || (subscription ? "Active" : "Free"),
         subscriptionExpiry: subscription?.expires_at || "",
         subscriptionStatus: subscription ? "active" : "none",
-        subscriptionPlanName: subscription?.subscription_plans?.name || null,
+        subscriptionPlanName: subscription?.plans?.name || null,
         town: profile?.town || "",
       });
     } catch (error) {
@@ -232,43 +249,17 @@ export async function registerRoutes(
       const voucherCode = (req.body.code || "").trim().toUpperCase();
       if (!voucherCode) return res.status(400).json({ message: "Voucher code is required" });
 
-      const { data: voucher } = await db
-        .from("vouchers")
-        .select("*, subscription_plans(*)")
-        .eq("code", voucherCode)
-        .eq("is_used", false)
-        .maybeSingle();
+      const { data, error } = await db.rpc("redeem_voucher", {
+        voucher_code: voucherCode,
+      });
 
-      if (!voucher) {
-        return res.status(400).json({ message: "Invalid or already used voucher code" });
+      if (error) {
+        return res.status(400).json({ message: error.message || "Invalid or already used voucher code" });
       }
-
-      await db
-        .from("vouchers")
-        .update({
-          is_used: true,
-          used_by: userId,
-          used_at: new Date().toISOString(),
-        })
-        .eq("code", voucherCode);
-
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + (voucher.subscription_plans?.days || 30));
-
-      const { data: sub, error: subError } = await db.from("user_subscriptions").insert({
-        user_id: userId,
-        plan_id: voucher.plan_id,
-        status: "active",
-        starts_at: new Date().toISOString(),
-        expires_at: expiresAt.toISOString(),
-      }).select().single();
-
-      if (subError) return res.status(400).json({ message: subError.message });
 
       res.json({
         message: "Voucher redeemed successfully",
-        subscription: sub,
-        planName: voucher.subscription_plans?.name || "Subscription",
+        subscription: data,
       });
     } catch (error) {
       console.error("Voucher redeem error:", error);
@@ -314,13 +305,13 @@ export async function registerRoutes(
         const { data: comments } = await db.from("comments").select("incident_id").in("incident_id", postIds);
 
         (reactions || []).forEach((r: any) => {
-          if (r.reaction_type === "helpful" || r.reaction_type === "verified") {
+          if (r.reaction_type === "upvote" || r.reaction_type === "love" || r.reaction_type === "confirm") {
             likeMap[r.incident_id] = (likeMap[r.incident_id] || 0) + 1;
           }
           if (!voteMap[r.incident_id]) voteMap[r.incident_id] = { upvotes: 0, downvotes: 0, userVote: null };
-          if (r.reaction_type === "helpful" || r.reaction_type === "verified") voteMap[r.incident_id].upvotes++;
-          else if (r.reaction_type === "not_helpful") voteMap[r.incident_id].downvotes++;
-          if (r.user_id === userId) voteMap[r.incident_id].userVote = r.reaction_type === "not_helpful" ? "down" : "up";
+          if (r.reaction_type === "upvote" || r.reaction_type === "love" || r.reaction_type === "confirm") voteMap[r.incident_id].upvotes++;
+          else if (r.reaction_type === "downvote") voteMap[r.incident_id].downvotes++;
+          if (r.user_id === userId) voteMap[r.incident_id].userVote = r.reaction_type === "downvote" ? "down" : "up";
         });
         (comments || []).forEach((c: any) => { commentMap[c.incident_id] = (commentMap[c.incident_id] || 0) + 1; });
       }
@@ -488,9 +479,9 @@ export async function registerRoutes(
 
       let likeCount = 0, upvotes = 0, downvotes = 0, userVote: string | null = null;
       (reactionsData || []).forEach((r: any) => {
-        if (r.reaction_type === "helpful" || r.reaction_type === "verified") { likeCount++; upvotes++; }
-        else if (r.reaction_type === "not_helpful") downvotes++;
-        if (r.user_id === userId) userVote = r.reaction_type === "not_helpful" ? "down" : "up";
+        if (r.reaction_type === "upvote" || r.reaction_type === "love" || r.reaction_type === "confirm") { likeCount++; upvotes++; }
+        else if (r.reaction_type === "downvote") downvotes++;
+        if (r.user_id === userId) userVote = r.reaction_type === "downvote" ? "down" : "up";
       });
 
       res.json({
@@ -603,7 +594,7 @@ export async function registerRoutes(
       const { vote } = req.body;
       if (vote !== "up" && vote !== "down") return res.status(400).json({ message: "Vote must be 'up' or 'down'" });
 
-      const reactionType = vote === "up" ? "helpful" : "not_helpful";
+      const reactionType = vote === "up" ? "upvote" : "downvote";
 
       const { data: existing } = await db
         .from("incident_reactions")
@@ -625,9 +616,9 @@ export async function registerRoutes(
       const { data: allReactions } = await db.from("incident_reactions").select("reaction_type, user_id").eq("incident_id", req.params.id);
       let upvotes = 0, downvotes = 0, userVote: string | null = null;
       (allReactions || []).forEach((r: any) => {
-        if (r.reaction_type === "helpful" || r.reaction_type === "verified") upvotes++;
-        else if (r.reaction_type === "not_helpful") downvotes++;
-        if (r.user_id === userId) userVote = r.reaction_type === "not_helpful" ? "down" : "up";
+        if (r.reaction_type === "upvote" || r.reaction_type === "love" || r.reaction_type === "confirm") upvotes++;
+        else if (r.reaction_type === "downvote") downvotes++;
+        if (r.user_id === userId) userVote = r.reaction_type === "downvote" ? "down" : "up";
       });
       res.json({ upvotes, downvotes, userVote });
     } catch (error) {
@@ -646,16 +637,16 @@ export async function registerRoutes(
         .select("id")
         .eq("incident_id", req.params.id)
         .eq("user_id", userId)
-        .eq("reaction_type", "helpful")
+        .eq("reaction_type", "upvote")
         .maybeSingle();
 
       if (existing) {
         await db.from("incident_reactions").delete().eq("id", existing.id);
       } else {
-        await db.from("incident_reactions").insert({ incident_id: req.params.id, user_id: userId, reaction_type: "helpful" });
+        await db.from("incident_reactions").insert({ incident_id: req.params.id, user_id: userId, reaction_type: "upvote" });
       }
 
-      const { count } = await db.from("incident_reactions").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id).in("reaction_type", ["helpful", "verified"]);
+      const { count } = await db.from("incident_reactions").select("*", { count: "exact", head: true }).eq("incident_id", req.params.id).in("reaction_type", ["upvote", "love", "confirm"]);
       res.json({ liked: !existing, likes: count || 0 });
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -671,7 +662,7 @@ export async function registerRoutes(
       if (!file) return res.status(400).json({ message: "No file uploaded" });
 
       const db = await getClient(req);
-      const avatarUrl = `/attached_assets/${file.filename}`;
+      const avatarUrl = await proxyUploadToVercel(file, req.session.accessToken);
       const { error } = await db
         .from("profiles")
         .update({ avatar_url: avatarUrl })
@@ -679,19 +670,22 @@ export async function registerRoutes(
 
       if (error) return res.status(500).json({ message: error.message });
       res.json({ avatarUrl });
-    } catch (error) {
-      res.status(500).json({ message: "Upload failed" });
+    } catch (error: any) {
+      console.error("Avatar upload error:", error);
+      res.status(500).json({ message: error.message || "Upload failed" });
     }
   });
 
-  app.post("/api/upload", upload.array("files", 10), async (req, res) => {
+  app.post("/api/upload", upload.single("file"), async (req, res) => {
     try {
-      const files = req.files as Express.Multer.File[];
-      if (!files || files.length === 0) return res.status(400).json({ message: "No files uploaded" });
-      const urls = files.map(f => `/attached_assets/${f.filename}`);
-      res.json({ urls });
-    } catch (error) {
-      res.status(500).json({ message: "Upload failed" });
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: "No file provided" });
+
+      const url = await proxyUploadToVercel(file, req.session.accessToken);
+      res.json({ url });
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      res.status(500).json({ error: error.message || "Upload failed" });
     }
   });
 

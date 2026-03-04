@@ -100,7 +100,7 @@ A mobile-first community safety platform for reporting incidents, tracking missi
 ### Mobile App (mobile/)
 React Native Expo app integrated with Supabase backend (https://app.ngumus-eye.site).
 
-- **App.tsx** - Main navigation setup with bottom tabs (Feed, Map, Report, Files/CaseDeck, Groups, Profile) + stack screens (IncidentDetails, Subscribe, GroupChat, CreateGroup, CaseDetail, OpenNewCase, DeviceTracking, Counseling)
+- **App.tsx** - Main navigation setup with bottom tabs (Feed, Map, Report, Files/CaseDeck, Groups, Profile) + stack screens (IncidentDetails, Subscribe, GroupChat, CreateGroup, CaseDetail, OpenNewCase, DeviceTracking, Counseling, Notifications, Search)
 - **src/lib/supabase.ts** - Supabase client with expo-secure-store for auth token persistence
 - **src/lib/api.ts** - Full Supabase API layer (auth, posts/incidents, groups, cases, devices, support)
 - **src/lib/types.ts** - Types including Case, TrackedDevice, SupportRequest, CaseEvidence, CaseDocument
@@ -119,12 +119,19 @@ React Native Expo app integrated with Supabase backend (https://app.ngumus-eye.s
   - CaseDetailScreen - Case details with evidence gallery, documents, status management
   - DeviceTrackingScreen - Device registration and status management (active/lost/stolen/recovered)
   - CounselingScreen - Support request form with emergency hotline (+264816802064)
+  - NotificationsScreen - User notifications from `user_notifications` table, real-time subscription, mark read/mark all read
+  - SearchScreen - Search incidents and profiles with debounced search (300ms, 2+ chars), tab switching
   - ProfileScreen - User profile with avatar upload, subscription, sign out via Supabase
   - SubscribeScreen - 12 subscription plans, WhatsApp payment redirect
 - **assets/** - App icons, splash screens, post images (post1-4.jpg), launcher.png, mwaikange-logo.png, ngumu-logo.jpg
 
+- **src/components/ModalPicker.tsx** - Reusable bottom-sheet modal picker (ModalPicker + SelectorField), used in ReportScreen and OpenNewCaseScreen for type/category/priority selection
+
 **IMPORTANT**: Mobile app must always replicate web app 1:1 for all screens and sub-pages.
 **Image Picker**: All image selection on mobile uses `expo-image-picker` (Google Play Store compliant) - used in ReportScreen, GroupChatScreen, ProfileScreen, and OpenNewCaseScreen.
+**Incident type codes**: ALERT, CRIME, GBV, FIRE, MEDICAL, MISSING, SUSPICIOUS, LOST (uppercase)
+**Verification levels**: 0=none, 1=Reported (#EAB308), 2=Confirmed (#3B82F6), 3=Verified (#22C55E)
+**Group chat real-time**: Supabase Realtime channel + 3s polling fallback + long-press delete own messages
 
 ### Supabase Integration
 - **Config**: `app.config.js` passes env vars via `expo.extra`; `supabase.ts` reads via `expo-constants` (`Constants.expoConfig.extra`)

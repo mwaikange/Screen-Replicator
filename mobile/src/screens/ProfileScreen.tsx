@@ -89,7 +89,7 @@ export default function ProfileScreen() {
           <Image source={appLogo} style={styles.headerLogo} resizeMode="contain" />
           <Text style={styles.headerTitle}>Profile</Text>
         </View>
-        <TouchableOpacity style={styles.notificationButton}>
+        <TouchableOpacity style={styles.notificationButton} onPress={() => navigation.navigate('Notifications')}>
           <Ionicons name="notifications-outline" size={20} color={colors.mutedForeground} />
           <View style={styles.notificationBadge} />
         </TouchableOpacity>

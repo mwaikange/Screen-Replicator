@@ -275,36 +275,16 @@ export default function SubscribeScreen() {
       const userId = authUser.id;
       const code = voucherCode.trim().toUpperCase();
 
-      const { data: voucher } = await supabase
-        .from('vouchers')
-        .select('*, subscription_plans(*)')
-        .eq('code', code)
-        .eq('is_used', false)
-        .maybeSingle();
+      const { data, error: rpcError } = await supabase.rpc('redeem_voucher', {
+        voucher_code: code,
+      });
 
-      if (!voucher) {
-        Alert.alert('Error', 'Invalid or already used voucher code');
+      if (rpcError) {
+        Alert.alert('Error', rpcError.message || 'Invalid or already used voucher code');
         return;
       }
 
-      await supabase.from('vouchers').update({
-        is_used: true,
-        used_by: userId,
-        used_at: new Date().toISOString(),
-      }).eq('code', code);
-
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + ((voucher as any).subscription_plans?.days || 30));
-
-      await supabase.from('user_subscriptions').insert({
-        user_id: userId,
-        plan_id: voucher.plan_id,
-        status: 'active',
-        starts_at: new Date().toISOString(),
-        expires_at: expiresAt.toISOString(),
-      });
-
-      Alert.alert('Success', `Voucher redeemed! ${(voucher as any).subscription_plans?.name || 'Subscription'} activated.`);
+      Alert.alert('Success', 'Voucher redeemed! Your subscription has been activated.');
       setVoucherCode('');
       const res = await userApi.getProfile();
       setUser(res.data);
