@@ -19,12 +19,58 @@ const severityLegend = [
 
 const typeLabels: Record<string, { label: string; color: string }> = {
   missing_person: { label: 'Missing Person', color: '#ef4444' },
+  MISSING_PERSON: { label: 'Missing Person', color: '#ef4444' },
   incident: { label: 'Crime Report', color: '#ef4444' },
+  CRIME: { label: 'Crime Report', color: '#ef4444' },
   alert: { label: 'Emergency Alert', color: '#ea580c' },
+  ALERT: { label: 'Emergency Alert', color: '#ea580c' },
   gender_based_violence: { label: 'Gender-Based Violence', color: '#9333ea' },
+  GBV: { label: 'Gender-Based Violence', color: '#9333ea' },
   theft: { label: 'Theft', color: '#dc2626' },
+  THEFT: { label: 'Theft', color: '#dc2626' },
   suspicious_activity: { label: 'Suspicious Activity', color: '#ca8a04' },
+  SUSPICIOUS: { label: 'Suspicious Activity', color: '#ca8a04' },
+  FRAUD: { label: 'Fraud', color: '#f59e0b' },
+  VANDALISM: { label: 'Vandalism', color: '#f97316' },
+  ASSAULT: { label: 'Assault', color: '#dc2626' },
+  ROBBERY: { label: 'Robbery', color: '#b91c1c' },
+  OTHER: { label: 'Other', color: '#6b7280' },
 };
+
+function groupAndOffsetPins(posts: Post[]): (Post & { offsetLat: number; offsetLng: number })[] {
+  const groups: Record<string, Post[]> = {};
+  for (const post of posts) {
+    const lat = post.latitude ? Math.round(post.latitude * 100) / 100 : 0;
+    const lng = post.longitude ? Math.round(post.longitude * 100) / 100 : 0;
+    const key = `${lat},${lng}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(post);
+  }
+
+  const result: (Post & { offsetLat: number; offsetLng: number })[] = [];
+  const SPIRAL_STEP = 0.003;
+
+  for (const key of Object.keys(groups)) {
+    const group = groups[key];
+    if (group.length === 1) {
+      result.push({ ...group[0], offsetLat: group[0].latitude || 0, offsetLng: group[0].longitude || 0 });
+    } else {
+      group.forEach((post, i) => {
+        if (i === 0) {
+          result.push({ ...post, offsetLat: post.latitude || 0, offsetLng: post.longitude || 0 });
+        } else {
+          const angle = (2 * Math.PI * i) / (group.length - 1);
+          const radius = SPIRAL_STEP * (1 + Math.floor(i / 6));
+          const offsetLat = (post.latitude || 0) + radius * Math.cos(angle);
+          const offsetLng = (post.longitude || 0) + radius * Math.sin(angle);
+          result.push({ ...post, offsetLat, offsetLng });
+        }
+      });
+    }
+  }
+
+  return result;
+}
 
 function getSeverityColor(severity: number): string {
   if (severity >= 5) return '#EF4444';
@@ -116,11 +162,12 @@ export default function MapScreen() {
 
           <View style={styles.currentLocationDot} />
 
-          {posts.map((post, index) => {
+          {groupAndOffsetPins(posts).map((post, index) => {
             const postSeverity = post.severity || 3;
             const pinColor = getSeverityColor(postSeverity);
-            const topPct = post.latitude ? ((post.latitude + 90) / 180) * 0.7 + 0.1 : 0.3 + (index * 0.08) % 0.4;
-            const leftPct = post.longitude ? ((post.longitude + 180) / 360) * 0.7 + 0.1 : 0.1 + (index * 0.15) % 0.7;
+            const topPct = post.offsetLat ? ((post.offsetLat + 90) / 180) * 0.7 + 0.1 : 0.3 + (index * 0.08) % 0.4;
+            const leftPct = post.offsetLng ? ((post.offsetLng + 180) / 360) * 0.7 + 0.1 : 0.1 + (index * 0.15) % 0.7;
+            const pinZIndex = 10 + postSeverity;
             return (
               <TouchableOpacity
                 key={post.id}
@@ -129,10 +176,12 @@ export default function MapScreen() {
                   {
                     top: `${topPct * 100}%` as any,
                     left: `${leftPct * 100}%` as any,
+                    zIndex: pinZIndex,
                   },
                 ]}
                 onPress={() => handleMarkerPress(post)}
                 activeOpacity={0.8}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
                 <IncidentMarker markerColor={pinColor} />
               </TouchableOpacity>

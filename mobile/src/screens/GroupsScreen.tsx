@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,8 +26,12 @@ export default function GroupsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [initialLoaded, setInitialLoaded] = useState(false);
 
-  const fetchGroups = async () => {
+  const fetchGroups = async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const { data: authData } = await supabase.auth.getUser();
       setCurrentUserId(authData?.user?.id || null);
@@ -37,22 +42,27 @@ export default function GroupsScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      if (!initialLoaded) {
+        setInitialLoaded(true);
+      }
     }
   };
 
   useEffect(() => {
-    fetchGroups();
+    fetchGroups(false);
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      fetchGroups();
-    }, [])
+      if (initialLoaded) {
+        fetchGroups(true);
+      }
+    }, [initialLoaded])
   );
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchGroups();
+    fetchGroups(true);
   };
 
   const handleJoin = async (group: Group) => {
@@ -102,7 +112,11 @@ export default function GroupsScreen() {
           </TouchableOpacity>
         </View>
 
-        {groups.length > 0 ? (
+        {loading && !initialLoaded ? (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : groups.length > 0 ? (
           groups.map((group) => (
             <GroupCard
               key={group.id}

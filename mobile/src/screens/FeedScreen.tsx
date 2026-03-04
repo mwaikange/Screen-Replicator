@@ -169,7 +169,7 @@ const PostCard = memo(function PostCard({ post, onPress, onCommentPress }: { pos
 
       {localImage ? (
         <Image source={localImage} style={styles.postImage} resizeMode="cover" />
-      ) : post.images && post.images.length > 0 && post.images[0].startsWith('http') ? (
+      ) : post.images && post.images.length > 0 && (post.images[0].startsWith('http') || post.images[0].startsWith('data:')) ? (
         <Image source={{ uri: post.images[0] }} style={styles.postImage} resizeMode="cover" onError={() => {}} />
       ) : null}
 

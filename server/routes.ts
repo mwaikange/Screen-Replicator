@@ -11,6 +11,7 @@ const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 function getStorageUrl(bucket: string, filePath: string): string {
   if (!filePath) return "";
   if (filePath.startsWith("http")) return filePath;
+  if (filePath.startsWith("data:")) return filePath;
   return `${supabaseUrl}/storage/v1/object/public/${bucket}/${filePath}`;
 }
 

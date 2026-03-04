@@ -18,6 +18,14 @@ import { User } from '../lib/types';
 
 const appLogo = require('../../assets/logo.jpg');
 
+const USER_LEVELS: Record<number, string> = {
+  1: 'Community Member',
+  2: 'Trusted Reporter',
+  3: 'Community Lead',
+  4: 'Moderator',
+  5: 'Administrator',
+};
+
 export default function ProfileScreen() {
   const navigation = useNavigation<any>();
   const [user, setUser] = useState<User | null>(null);
@@ -116,7 +124,7 @@ export default function ProfileScreen() {
               <View style={styles.nameRow}>
                 <Text style={styles.displayName}>{displayUser.displayName}</Text>
                 <View style={styles.levelBadge}>
-                  <Text style={styles.levelText}>Level {displayUser.level}</Text>
+                  <Text style={styles.levelText}>Lv.{displayUser.level} {USER_LEVELS[displayUser.level] || 'Member'}</Text>
                 </View>
               </View>
               <Text style={styles.email}>{displayUser.email}</Text>

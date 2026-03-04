@@ -141,7 +141,8 @@ React Native Expo app integrated with Supabase backend (https://app.ngumus-eye.s
 - **Groups schema**: `id, name, geohash_prefix, visibility, created_at, created_by` (NOT area/is_public/member_count); member count via `group_members(count)` sub-select
 - **Group messages schema**: `id, group_id, user_id, message, image_url, created_at` (column is `message`, NOT `content`)
 - **Incidents schema**: `id, type_id, title, description, town, lat, lng, status, verification_level, created_at, created_by` with FK to `incident_types(id, code, label, severity)`, `profiles:created_by(...)`, and related `incident_media(id, path, mime)`
-- **Image URLs**: `incident_media.path` is relative; construct full URL: `{SUPABASE_URL}/storage/v1/object/public/incident-media/{path}`
+- **Image URLs**: `incident_media.path` can be: 1) relative path → construct `{SUPABASE_URL}/storage/v1/object/public/incident-media/{path}`, 2) full `https://` URL → use directly, 3) `data:` URI → use directly. The `getStorageUrl()` helper handles all three formats.
+- **User levels**: 1=Community Member, 2=Trusted Reporter, 3=Community Lead, 4=Moderator, 5=Administrator (DB default: 1)
 - **RPCs**: create_group_with_creator (p_name, p_geohash_prefix, p_visibility), request_join_group (p_group_id), approve_group_request (p_request_id)
 - **RLS**: All data queries require authenticated Supabase client (use `getAuthClient(accessToken)` from server/supabase.ts)
 - **File uploads**: POST to https://app.ngumus-eye.site/api/upload with Bearer token
