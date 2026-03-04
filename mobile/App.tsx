@@ -24,6 +24,8 @@ import OpenNewCaseScreen from './src/screens/OpenNewCaseScreen';
 import CaseDetailScreen from './src/screens/CaseDetailScreen';
 import DeviceTrackingScreen from './src/screens/DeviceTrackingScreen';
 import CounselingScreen from './src/screens/CounselingScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
+import SearchScreen from './src/screens/SearchScreen';
 import { colors } from './src/lib/theme';
 import { RootStackParamList, MainTabParamList } from './src/lib/types';
 
@@ -182,6 +184,16 @@ export default function App() {
             name="Counseling" 
             component={CounselingScreen}
             options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen 
+            name="Notifications" 
+            component={NotificationsScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen 
+            name="Search" 
+            component={SearchScreen}
+            options={{ animation: 'slide_from_bottom' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

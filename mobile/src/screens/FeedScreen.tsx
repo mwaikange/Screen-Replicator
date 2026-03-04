@@ -38,12 +38,27 @@ function formatTimeAgo(dateString: string): string {
 }
 
 const typeLabels: Record<string, { label: string; color: string }> = {
+  ALERT: { label: 'Emergency Alert', color: '#EF4444' },
+  CRIME: { label: 'Crime Report', color: '#F97316' },
+  GBV: { label: 'Gender-Based Violence', color: '#9333ea' },
+  FIRE: { label: 'Fire Emergency', color: '#EF4444' },
+  MEDICAL: { label: 'Medical Emergency', color: '#EF4444' },
+  MISSING: { label: 'Missing Person', color: '#F97316' },
+  SUSPICIOUS: { label: 'Suspicious Activity', color: '#EAB308' },
+  LOST: { label: 'Lost & Found', color: '#BEF264' },
   missing_person: { label: 'Missing Person', color: '#ef4444' },
   incident: { label: 'Crime Report', color: '#ef4444' },
   alert: { label: 'Emergency Alert', color: '#ea580c' },
   gender_based_violence: { label: 'Gender-Based Violence', color: '#9333ea' },
   theft: { label: 'Theft', color: '#dc2626' },
   suspicious_activity: { label: 'Suspicious Activity', color: '#ca8a04' },
+};
+
+const VERIFICATION: Record<number, { label: string; color: string } | null> = {
+  0: null,
+  1: { label: 'Reported', color: '#EAB308' },
+  2: { label: 'Confirmed', color: '#3B82F6' },
+  3: { label: 'Verified', color: '#22C55E' },
 };
 
 type FeedItem = { type: 'post'; data: Post } | { type: 'ad'; adType: 'mwaikange' | 'ngumu'; id: string };
@@ -123,9 +138,12 @@ const PostCard = memo(function PostCard({ post, onPress, onCommentPress }: { pos
         <View style={styles.headerInfo}>
           <View style={styles.nameRow}>
             <Text style={styles.userName}>{post.userName}</Text>
-            {post.verified && (
-              <View style={styles.verifiedBadge}>
-                <Text style={styles.verifiedText}>Verified</Text>
+            {VERIFICATION[post.verificationLevel || 0] && (
+              <View style={[styles.verifiedBadge, { backgroundColor: VERIFICATION[post.verificationLevel || 0]!.color + '20' }]}>
+                <Ionicons name="checkmark-circle" size={12} color={VERIFICATION[post.verificationLevel || 0]!.color} />
+                <Text style={[styles.verifiedText, { color: VERIFICATION[post.verificationLevel || 0]!.color }]}>
+                  {VERIFICATION[post.verificationLevel || 0]!.label}
+                </Text>
               </View>
             )}
           </View>
@@ -151,8 +169,8 @@ const PostCard = memo(function PostCard({ post, onPress, onCommentPress }: { pos
 
       {localImage ? (
         <Image source={localImage} style={styles.postImage} resizeMode="cover" />
-      ) : post.images && post.images.length > 0 && !post.images[0].startsWith('local:') ? (
-        <Image source={{ uri: post.images[0] }} style={styles.postImage} resizeMode="cover" />
+      ) : post.images && post.images.length > 0 && post.images[0].startsWith('http') ? (
+        <Image source={{ uri: post.images[0] }} style={styles.postImage} resizeMode="cover" onError={() => {}} />
       ) : null}
 
       <View style={styles.engagementBar}>
@@ -214,7 +232,7 @@ const FilterTab = memo(function FilterTab({
   );
 });
 
-const Header = memo(function Header() {
+const Header = memo(function Header({ onNotifications, onSearch }: { onNotifications: () => void; onSearch: () => void }) {
   return (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
@@ -222,7 +240,10 @@ const Header = memo(function Header() {
         <Text style={styles.headerTitle}>Community Feed</Text>
       </View>
       <View style={styles.headerRight}>
-        <TouchableOpacity style={styles.notificationButton}>
+        <TouchableOpacity style={styles.notificationButton} onPress={onSearch}>
+          <Ionicons name="search-outline" size={20} color={colors.mutedForeground} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.notificationButton} onPress={onNotifications}>
           <Ionicons name="notifications-outline" size={20} color={colors.mutedForeground} />
           <View style={styles.notificationBadge} />
         </TouchableOpacity>
@@ -315,7 +336,10 @@ export default function FeedScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Header />
+      <Header
+        onNotifications={() => navigation.navigate('Notifications')}
+        onSearch={() => navigation.navigate('Search')}
+      />
 
       <View style={styles.filterContainer}>
         <View style={styles.filterRow}>

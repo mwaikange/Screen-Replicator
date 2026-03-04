@@ -1,0 +1,347 @@
+# NGUMUS EYE — COMPLETE GAP ANALYSIS
+## Vercel (Original) vs Replit Web App vs Replit Mobile App
+
+**Analyst:** Claude | **Date:** March 2026  
+**Verdict: ~35% complete.** The Replit developer built the structural skeleton correctly but made systematic errors that break every core feature: images, subscriptions, real-time chat, and map filtering.
+
+---
+
+## 1. ARCHITECTURE OVERVIEW
+
+### Vercel (Original — Authority)
+- **Framework:** Next.js 16 App Router with Server Actions
+- **Auth:** Supabase Auth (JWT, SSR cookies via `@supabase/ssr`)
+- **Storage:** Vercel Blob (`@vercel/blob`) — ALL file uploads go here
+- **Database:** Supabase (PostgreSQL with RLS)
+- **Real-time:** Supabase Realtime channels on `group_messages`
+- **Upload endpoint:** `/api/upload` → `put(filename, file, { access: 'public' })` → returns `{ url: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/...' }`
+- **Media storage pattern:** Upload to Vercel Blob → store the full public URL in Supabase DB columns
+
+### Replit Web App (client + server)
+- **Framework:** Express.js server + React SPA (Vite)
+- **Auth:** Session-based (`express-session` with `MemoryStore`) — converts Supabase JWT to server session
+- **Storage:** ❌ Local disk (`/attached_assets/`) via multer — **WRONG, files disappear on redeploy**
+- **Database:** Supabase (direct from server using service role)
+- **Real-time:** React Query polling every 3000ms — ✅ works for group chat
+- **Upload endpoint:** `/api/upload` expects `files` (array), saves to disk, returns `{ urls: ['/attached_assets/filename'] }` — **both field name and response format are wrong**
+
+### Replit Mobile App
+- **Framework:** React Native / Expo
+- **Auth:** Supabase Auth JS SDK directly, sessions stored in `SecureStore`
+- **Storage:** Calls `{EXPO_PUBLIC_SITE_URL}/api/upload` with field `file` (singular) → reads `result.url` (singular) — **correct field name, correct response field, but `EXPO_PUBLIC_SITE_URL` is not configured**
+- **Database:** Direct Supabase JS SDK calls
+- **Real-time:** ❌ None — messages load once and never update
+- **Target:** This is the PRIMARY deliverable
+
+---
+
+## 2. STORAGE DEEP DIVE — THE ROOT CAUSE OF ALL BROKEN IMAGES
+
+This is the most critical issue. Every image in the app is broken because of a chain of errors.
+
+### What the Vercel app does (correct):
+```
+File picked on client
+  → POST /api/upload (field: "file")
+  → Server calls: put(filename, file, { access: 'public' }) via @vercel/blob
+  → Returns: { url: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/..." }
+  → Client saves that full HTTPS URL into Supabase column
+  → Any client can load the image directly from that URL forever
+```
+
+### What the Replit server does (wrong):
+```
+File arrives at /api/upload (field: "files", array)
+  → multer saves to /attached_assets/upload_UUID.jpg (LOCAL DISK)
+  → Returns: { urls: ["/attached_assets/upload_UUID.jpg"] }  ← relative path, not a URL
+  → Client saves "/attached_assets/..." into Supabase column
+  → Mobile app tries to load "/attached_assets/..." as an image → 404
+  → On next Replit redeploy: /attached_assets/ is wiped → images gone forever
+```
+
+### What the Replit mobile app does (almost correct, blocked by server):
+```
+uploadMedia(localUri)
+  → formData.append('file', { uri, name, type })  ← correct field name
+  → POST `${EXPO_PUBLIC_SITE_URL}/api/upload`      ← correct endpoint
+  → reads result.url                               ← correct response field
+  → BUT: EXPO_PUBLIC_SITE_URL is not set → uploads go to empty string → fail silently
+  → AND: server returns { urls: [] } not { url: '' } → mismatch
+```
+
+### Where Vercel Blob URLs are stored — exact DB columns:
+
+| Upload type | Table | Column | Notes |
+|---|---|---|---|
+| Incident photos/videos | `incident_media` | `path` | Despite name "path", stores full Vercel Blob URL |
+| Comment photo | `comments` | `image_url` | Full URL |
+| Case evidence | `cases` | `evidence` (JSONB array) | Array of objects with `file_url` key |
+| Case documents | `cases` | `documents` (JSONB array) | Array of objects with `file_url` key |
+| Group chat image | `group_messages` | `image_url` | Full URL |
+| Group chat video | `group_messages` | `video_url` | Full URL |
+| Profile avatar | `profiles` | `avatar_url` | Full URL |
+| Group avatar | `groups` | `avatar_url` | Full URL |
+
+**Important — `incident_media.path`:** Despite the column being called `path`, the Vercel app stores FULL Vercel Blob URLs here (e.g. `https://hebbkx1anhila5yf.public.blob.vercel-storage.com/...`). The mobile app must handle both cases: if `path.startsWith('https://')` use it directly; otherwise construct the Supabase Storage URL as fallback.
+
+---
+
+## 3. DATABASE SCHEMA — CRITICAL FIELD NAME ERRORS
+
+The Replit dev made several table/column name mistakes that silently break features.
+
+### Wrong table name — breaks ALL subscriptions:
+| Feature | Correct | Replit mistake |
+|---|---|---|
+| Subscription plans | `plans` | ❌ `subscription_plans` |
+| Join to plans | `.select('*, plans(*)')` | ❌ `.select('*, subscription_plans(*)')` |
+
+This one error causes every subscription check to return null, making every user appear unsubscribed.
+
+### Wrong column names and field names:
+| Feature | Correct | Replit mistake |
+|---|---|---|
+| Incident creator | `incidents.created_by` | ❌ sometimes `user_id` |
+| Incident lat | `incidents.lat` | ❌ sometimes `latitude` |
+| Incident lng | `incidents.lng` | ❌ sometimes `longitude` |
+| Incident type FK | `incidents.type_id` (integer) | ❌ sometimes string `type` |
+| Comment text | `comments.body` | ❌ sometimes `content` |
+| Comment author | `comments.author` (UUID) | ❌ sometimes `user_id` |
+| Group message text | `group_messages.message` | ❌ sometimes `content` |
+| Case evidence | `cases.evidence` (JSONB array column) | ❌ expecting separate `case_files` table |
+| Notification table | `user_notifications` | ❌ `notifications` |
+
+### Fields that cause DB error 23514 (constraint violation) if sent:
+Do NOT include these when inserting into `incidents`:
+- `status` (has a check constraint; defaults to `'active'` automatically)
+- `category` (column doesn't exist — `type_id` is the FK)
+- `type` as a string (must use `type_id` integer FK)
+- `street_address`, `suburb`, `province` (columns don't exist in this schema)
+- `verification_level` (set by DB trigger, not by insert)
+
+### Reaction type values — Vercel uses different values than documentation suggests:
+The Vercel codebase uses: `'upvote'`, `'downvote'`, `'love'`, `'confirm'`
+(Not `'helpful'`, `'not_helpful'`, `'verified'` — check the actual DB enum before assuming)
+
+---
+
+## 4. FEATURE-BY-FEATURE COMPLETION STATUS
+
+### ✅ WORKING ON BOTH WEB AND MOBILE
+- **Authentication** (login/signup/logout) — both apps use Supabase auth correctly
+- **Groups list** — loads all groups with membership check
+- **Group Chat (Replit Web)** — React Query polls every 3s, membership check, send message, image upload (though images go to wrong storage)
+- **Device Tracking** — direct Supabase queries to `tracked_devices` working
+- **Case Deck list** — loads cases, status badges, filter tabs
+- **Case detail** — loads case data, status update, timeline notes
+- **Incident reactions** — insert/delete to `incident_reactions` working
+- **Comments** — insert to `comments` working
+
+### 🟡 PARTIAL — DATA WORKS BUT DISPLAY OR LOGIC IS BROKEN
+| Feature | What works | What's broken |
+|---|---|---|
+| Feed / Incident List | Fetches incidents correctly | Images broken (wrong URLs in DB) |
+| Incident Detail | Loads incident data | Media gallery shows nothing (wrong URLs) |
+| Report Incident | Core insert works | Images don't upload correctly; incident type UI wrong on mobile |
+| User Profile | Loads profile data | Subscription shows wrong (table name); avatar upload broken |
+| Case Deck access | CRUD works | Subscription gate always redirects (table name bug) |
+| Case New | Creates case | Case type + priority UI wrong on mobile (buttons not dropdowns) |
+| Subscription Subscribe | Page renders | Voucher redemption queries wrong table; plans not loaded from DB |
+| Map | Shows pins | No verification filter; pins not severity-coloured; no popup on tap |
+| Groups list | Loads groups | Group avatar upload broken (wrong storage) |
+| Group Chat (Mobile) | Loads messages once | No real-time; no polling; messages from others never appear |
+
+### ❌ MISSING — NOT IMPLEMENTED ON MOBILE
+| Feature | Status | Priority |
+|---|---|---|
+| Notifications screen | No screen exists | High — linked from notification bell in header |
+| Search screen | No screen exists | High — search bar taps go nowhere |
+| Public profile view (other user) | No screen exists | Medium |
+| Follow / Unfollow | Counts in DB, no UI buttons | Medium |
+| Incident timeline | `getTimeline` returns empty | Low |
+| Map pin popup with "View Incident" | Tap does nothing | Medium |
+| Verified badge on feed cards | No visual indicator | Low |
+| Delete own message in chat | Long-press does nothing | Low |
+
+### ❌ NOT IN REPLIT SCOPE (Vercel only)
+- Admin portal (`/admin/*`) — 8 admin pages
+- Password reset flow
+- Email confirmation flow
+- Ad cards in feed (`ads` table)
+- Incident verification workflow (admin triage)
+
+---
+
+## 5. CRITICAL BUG DETAILS
+
+### Bug 1 — ALL image uploads broken (server)
+**File:** `server/routes.ts`  
+**Problem:** `/api/upload` uses `multer.diskStorage` to save files to `/attached_assets/`. Returns `{ urls: ["/attached_assets/filename"] }`.  
+**Impact:** Every uploaded image — incidents, comments, chat, avatars, case evidence — is broken. Paths stored in DB are relative local paths that 404 everywhere and disappear on redeploy.  
+**Fix:** Rewrite `/api/upload` to use Vercel Blob (`@vercel/blob`). Use `multer.memoryStorage()`. Call `put(filename, file.buffer, { access: 'public' })`. Return `{ url: blob.url }` (singular, not array).
+
+### Bug 2 — Mobile upload never reaches server
+**File:** `mobile/src/lib/api.ts` — `uploadMedia()` function  
+**Problem:** `EXPO_PUBLIC_SITE_URL` environment variable is not set in the mobile `.env` file, so `uploadUrl` is an empty string and all uploads silently fail.  
+**Fix:** Add `EXPO_PUBLIC_SITE_URL=https://app.ngumus-eye.site` to `mobile/.env`. This is the Vercel production URL — it's the correct target because the Vercel `/api/upload` endpoint is the authority.
+
+### Bug 3 — Subscriptions always show as inactive
+**Files:** `mobile/src/lib/api.ts`, `mobile/src/screens/SubscribeScreen.tsx`, `mobile/src/screens/CaseDeckScreen.tsx`  
+**Problem:** All subscription queries join to `subscription_plans` table which does not exist. The table is called `plans`.  
+**Impact:** Every user appears unsubscribed. Case Deck always redirects to Subscribe. Profile shows no subscription. Voucher redemption fails.  
+**Fix:** Find and replace ALL occurrences of `subscription_plans` with `plans`. Update all `subscription?.subscription_plans` references to `subscription?.plans`.
+
+### Bug 4 — Mobile group chat never updates
+**File:** `mobile/src/screens/GroupChatScreen.tsx`  
+**Problem:** `useEffect` loads messages once on mount. No interval, no Supabase Realtime subscription, no refetch on focus.  
+**Impact:** Messages sent by other users are invisible until the user navigates away and back.  
+**Fix:** Add Supabase Realtime channel subscription on `group_messages` table + `setInterval(loadMessages, 3000)` fallback.
+
+### Bug 5 — Mobile upload field name vs Replit server mismatch
+**Files:** `mobile/src/lib/api.ts` sends `formData.append('file', ...)` (singular)  
+**Server:** `server/routes.ts` uses `upload.array('files', 10)` (plural array)  
+**Impact:** Even if storage were fixed, the mobile upload would fail with "No files uploaded" because the field names don't match.  
+**Fix:** When fixing the server upload route, use `upload.single('file')` to match what the mobile sends.
+
+### Bug 6 — Replit server upload response format mismatch
+**Server returns:** `{ urls: ['/attached_assets/...'] }` (array)  
+**Mobile reads:** `result.url || result.publicUrl` (singular)  
+**Fix:** When fixing the server, return `{ url: blob.url }` (singular string).
+
+### Bug 7 — Map shows unverified incidents
+**File:** `mobile/src/screens/MapScreen.tsx`  
+**Problem:** Map query has no filter on `verification_level`. Shows all incidents including unverified ones.  
+**Vercel spec:** Map ONLY shows incidents with `verification_level > 0`. Feed shows all incidents.  
+**Fix:** Add `.gt('verification_level', 0)` to the map query.
+
+### Bug 8 — Case Deck new case and Report screen UI wrong on mobile
+**Files:** `mobile/src/screens/OpenNewCaseScreen.tsx`, `mobile/src/screens/ReportScreen.tsx`  
+**Problem:** Incident type (Report), case type (New Case), and priority (New Case) are shown as grids of always-visible tappable buttons. The web app uses dropdown `<Select>` pickers.  
+**Fix:** Replace with modal bottom sheet pickers that open on tap. Same UX as a `<Select>` dropdown.
+
+---
+
+## 6. WHAT THE REPLIT DEV GOT RIGHT
+
+These are working correctly and should not be changed:
+
+- **Replit web group chat** — polling every 3s, optimistic messages, membership gate, image attach button, creator controls. This is the reference for the mobile port.
+- **Mobile auth** — `supabase.auth.signInWithPassword`, `SecureStore` sessions, auto-refresh. Correct.
+- **Mobile feed query** — joins to `incident_types` and `profiles` correctly.
+- **Mobile groups CRUD** — create, join, leave, requests all use correct Supabase queries.
+- **Mobile cases CRUD** — create/read/update against `cases` table works.
+- **Mobile device tracking** — insert/select `tracked_devices` with correct fields.
+- **Mobile report form** — 3-step wizard structure, GPS location capture, geohash calculation, DB insert fields are correct.
+- **`uploadMedia()` function** — field name `file` (singular) and response reading `result.url` are both correct. Only blocked by missing `EXPO_PUBLIC_SITE_URL` and wrong server implementation.
+- **Navigation structure** — Stack + Tab navigator, all screens registered.
+- **Mobile API organisation** — `api.ts` is well-structured with domain groupings.
+
+---
+
+## 7. CORRECT DB INSERT PATTERNS (Copy These Exactly)
+
+### Insert incident:
+```typescript
+await supabase.from('incidents').insert({
+  type_id: typeId,           // integer FK — look up from incident_types.id
+  title: data.title,
+  description: data.description || null,
+  town: data.town || null,
+  lat: data.latitude,
+  lng: data.longitude,
+  geohash: computedGeohash,  // 7 chars
+  area_radius_m: data.radius || 200,
+  created_by: userId,
+  // DO NOT send: status, category, verification_level, street_address, suburb, province
+});
+```
+
+### Insert incident media (after upload):
+```typescript
+await supabase.from('incident_media').insert({
+  incident_id: incidentId,
+  path: blobUrl,   // full https:// URL from Vercel Blob
+  mime: 'image/jpeg',
+});
+```
+
+### Insert comment:
+```typescript
+await supabase.from('comments').insert({
+  incident_id: incidentId,
+  author: userId,      // "author" not "user_id"
+  body: text,          // "body" not "content" or "text"
+  image_url: imageUrl || null,
+});
+```
+
+### Insert group message:
+```typescript
+await supabase.from('group_messages').insert({
+  group_id: groupId,
+  user_id: userId,
+  message: text,      // "message" not "content"
+  image_url: imageUrl || null,
+  video_url: null,
+});
+```
+
+### Check subscription (correct):
+```typescript
+const { data: subscription } = await supabase
+  .from('user_subscriptions')
+  .select('id, status, expires_at, plans(*)')   // "plans" not "subscription_plans"
+  .eq('user_id', userId)
+  .eq('status', 'active')
+  .gte('expires_at', new Date().toISOString())
+  .maybeSingle();
+
+const isSubscribed = !!subscription;
+const planName = subscription?.plans?.name;
+```
+
+### Redeem voucher:
+```typescript
+// 1. Find voucher
+const { data: voucher } = await supabase
+  .from('vouchers')
+  .select('*, plans(*)')
+  .eq('code', code.toUpperCase())
+  .eq('is_used', false)
+  .maybeSingle();
+
+// 2. Mark used
+await supabase.from('vouchers').update({
+  is_used: true, used_by: userId, used_at: new Date().toISOString()
+}).eq('id', voucher.id);
+
+// 3. Create subscription
+const expires = new Date();
+expires.setDate(expires.getDate() + (voucher.plans?.period_days || 30));
+await supabase.from('user_subscriptions').insert({
+  user_id: userId,
+  plan_id: voucher.plan_id,
+  status: 'active',
+  started_at: new Date().toISOString(),
+  expires_at: expires.toISOString(),
+});
+```
+
+---
+
+## 8. SUMMARY — PRIORITY FIX ORDER
+
+| Priority | Fix | Impact | Files |
+|---|---|---|---|
+| 🔴 1 | Rewrite `/api/upload` to use Vercel Blob | Fixes ALL images everywhere | `server/routes.ts` |
+| 🔴 2 | Set `EXPO_PUBLIC_SITE_URL=https://app.ngumus-eye.site` | Unblocks mobile uploads | `mobile/.env` |
+| 🔴 3 | Change `subscription_plans` → `plans` everywhere | Fixes ALL subscription checks | `mobile/src/lib/api.ts`, `SubscribeScreen.tsx`, `CaseDeckScreen.tsx` |
+| 🔴 4 | Add Realtime + polling to mobile GroupChatScreen | Fixes mobile group chat | `mobile/src/screens/GroupChatScreen.tsx` |
+| 🟡 5 | Replace option grids with modal pickers (Report + New Case) | Correct UX on mobile | `ReportScreen.tsx`, `OpenNewCaseScreen.tsx` |
+| 🟡 6 | Add `verification_level > 0` filter to map query | Correct data on map | `MapScreen.tsx` |
+| 🟡 7 | Add severity-based pin colours + tap popup to map | Full map feature parity | `MapScreen.tsx` |
+| 🟡 8 | Fix image URL rendering in Feed + Incident Detail | Shows post images | `FeedScreen.tsx`, `IncidentDetailsScreen.tsx` |
+| 🟡 9 | Create NotificationsScreen + SearchScreen | Missing screens | New files + `App.tsx` |
+| 🟢 10 | Add follow/unfollow buttons to profile | Follower feature | `ProfileScreen.tsx` |
+| 🟢 11 | Add verified badge to feed cards | Visual parity | `FeedScreen.tsx` |
+| 🟢 12 | Add long-press delete own message in chat | Chat parity | `GroupChatScreen.tsx` |

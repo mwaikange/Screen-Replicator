@@ -20,12 +20,27 @@ import { postsApi, postImages } from '../lib/api';
 import { Post, Comment, TimelineEvent } from '../lib/types';
 
 const typeLabels: Record<string, { label: string; bgColor: string }> = {
+  ALERT: { label: 'Emergency Alert', bgColor: '#EF4444' },
+  CRIME: { label: 'Crime Report', bgColor: '#F97316' },
+  GBV: { label: 'Gender-Based Violence', bgColor: '#9333ea' },
+  FIRE: { label: 'Fire Emergency', bgColor: '#EF4444' },
+  MEDICAL: { label: 'Medical Emergency', bgColor: '#EF4444' },
+  MISSING: { label: 'Missing Person', bgColor: '#F97316' },
+  SUSPICIOUS: { label: 'Suspicious Activity', bgColor: '#EAB308' },
+  LOST: { label: 'Lost & Found', bgColor: '#BEF264' },
   missing_person: { label: 'Missing Person', bgColor: '#ef4444' },
   incident: { label: 'Crime Report', bgColor: '#ef4444' },
   alert: { label: 'Emergency Alert', bgColor: '#ea580c' },
   gender_based_violence: { label: 'Gender-Based Violence', bgColor: '#9333ea' },
   theft: { label: 'Theft', bgColor: '#dc2626' },
   suspicious_activity: { label: 'Suspicious Activity', bgColor: '#ca8a04' },
+};
+
+const VERIFICATION: Record<number, { label: string; color: string } | null> = {
+  0: null,
+  1: { label: 'Reported', color: '#EAB308' },
+  2: { label: 'Confirmed', color: '#3B82F6' },
+  3: { label: 'Verified', color: '#22C55E' },
 };
 
 function formatTimeAgo(dateString: string): string {
@@ -146,7 +161,7 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
 
   const typeInfo = typeLabels[post.type] || typeLabels.alert;
   const localImage = postImages[post.id];
-  const remoteImages = (post.images || []).filter(img => !img.startsWith('local:'));
+  const remoteImages = (post.images || []).filter(img => img.startsWith('http'));
   const mediaCount = (localImage ? 1 : 0) + remoteImages.length;
 
   const tabs = [
@@ -175,9 +190,12 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
               <View style={[styles.typeBadge, { backgroundColor: typeInfo.bgColor }]}>
                 <Text style={styles.typeBadgeText}>{typeInfo.label}</Text>
               </View>
-              {post.verified && (
-                <View style={styles.verifiedBadge}>
-                  <Text style={styles.verifiedBadgeText}>Partner Verified</Text>
+              {VERIFICATION[post.verificationLevel || 0] && (
+                <View style={[styles.verifiedBadge, { backgroundColor: VERIFICATION[post.verificationLevel || 0]!.color + '20', borderColor: VERIFICATION[post.verificationLevel || 0]!.color }]}>
+                  <Ionicons name="checkmark-circle" size={12} color={VERIFICATION[post.verificationLevel || 0]!.color} />
+                  <Text style={[styles.verifiedBadgeText, { color: VERIFICATION[post.verificationLevel || 0]!.color }]}>
+                    {VERIFICATION[post.verificationLevel || 0]!.label}
+                  </Text>
                 </View>
               )}
             </View>
@@ -364,7 +382,7 @@ function TimelineTab({ events }: { events: TimelineEvent[] }) {
 }
 
 function MediaTab({ post, localImage }: { post: Post; localImage: any }) {
-  const remoteImages = (post.images || []).filter(img => !img.startsWith('local:'));
+  const remoteImages = (post.images || []).filter(img => img.startsWith('http'));
   const hasMedia = localImage || remoteImages.length > 0;
 
   if (!hasMedia) {
@@ -384,7 +402,7 @@ function MediaTab({ post, localImage }: { post: Post; localImage: any }) {
       )}
       {remoteImages.map((img, index) => (
         <View key={index} style={styles.mediaItem}>
-          <Image source={{ uri: img }} style={styles.mediaImage} resizeMode="cover" />
+          <Image source={{ uri: img }} style={styles.mediaImage} resizeMode="cover" onError={() => {}} />
         </View>
       ))}
     </View>

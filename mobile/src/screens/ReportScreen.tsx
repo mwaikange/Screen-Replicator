@@ -21,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { postsApi } from '../lib/api';
+import { ModalPicker, SelectorField } from '../components/ModalPicker';
 
 const appLogo = require('../../assets/logo.jpg');
 
@@ -59,6 +60,7 @@ export default function ReportScreen() {
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [incidentTypes, setIncidentTypes] = useState(fallbackIncidentTypes);
   const [typesLoading, setTypesLoading] = useState(true);
+  const [typePickerVisible, setTypePickerVisible] = useState(false);
   const [formData, setFormData] = useState({
     type: '',
     town: '',
@@ -208,26 +210,20 @@ export default function ReportScreen() {
                 </Text>
 
                 <Text style={styles.label}>Incident Type</Text>
-                <View style={styles.pickerContainer}>
-                  {incidentTypes.map((type) => (
-                    <TouchableOpacity
-                      key={type.value}
-                      style={[
-                        styles.pickerOption,
-                        formData.type === type.value && styles.pickerOptionActive,
-                      ]}
-                      onPress={() => setFormData(prev => ({ ...prev, type: type.value }))}
-                    >
-                      <View style={[styles.radio, formData.type === type.value && styles.radioActive]}>
-                        {formData.type === type.value && <View style={styles.radioDot} />}
-                      </View>
-                      <Text style={[
-                        styles.pickerOptionText,
-                        formData.type === type.value && styles.pickerOptionTextActive,
-                      ]}>{type.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <SelectorField
+                  label="Incident Type"
+                  value={getTypeLabel(formData.type) !== '-' ? getTypeLabel(formData.type) : ''}
+                  placeholder="Select incident type"
+                  onPress={() => setTypePickerVisible(true)}
+                />
+                <ModalPicker
+                  visible={typePickerVisible}
+                  onClose={() => setTypePickerVisible(false)}
+                  title="Select Incident Type"
+                  options={incidentTypes.map(t => ({ value: t.value, label: t.label }))}
+                  selectedValue={formData.type}
+                  onSelect={(value) => setFormData(prev => ({ ...prev, type: value }))}
+                />
 
                 <Text style={styles.label}>Town</Text>
                 <TextInput
@@ -579,48 +575,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.mutedForeground,
     marginTop: 4,
-  },
-  pickerContainer: {
-    gap: 8,
-  },
-  pickerOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 12,
-  },
-  pickerOptionActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary + '10',
-  },
-  pickerOptionText: {
-    fontSize: 14,
-    color: colors.cardForeground,
-  },
-  pickerOptionTextActive: {
-    color: colors.primary,
-    fontWeight: '500',
-  },
-  radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioActive: {
-    borderColor: colors.primary,
-  },
-  radioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.primary,
   },
   locationSuccess: {
     flexDirection: 'row',
