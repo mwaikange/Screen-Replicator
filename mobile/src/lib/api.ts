@@ -10,6 +10,7 @@ function makeResponse<T>(data: T) {
 function getStorageUrl(bucket: string, filePath: string): string {
   if (!filePath) return '';
   if (filePath.startsWith('http')) return filePath;
+  if (filePath.startsWith('data:')) return filePath;
   return `${supabaseUrl}/storage/v1/object/public/${bucket}/${filePath}`;
 }
 
@@ -97,7 +98,7 @@ export const authApi = {
       displayName: profile?.display_name || data.user.user_metadata?.display_name || email.split('@')[0],
       phone: profile?.phone || data.user.phone || '',
       avatarUrl: profile?.avatar_url || '',
-      level: profile?.level || 0,
+      level: profile?.level ?? 1,
       trustScore: profile?.trust_score || 0,
       followers: followersCount,
       following: followingCount,
@@ -564,15 +565,20 @@ export const postsApi = {
 
 export const groupsApi = {
   getAll: async () => {
-    const userId = await getCurrentUserId();
+    const [userIdResult, groupsResult] = await Promise.all([
+      getCurrentUserId(),
+      supabase
+        .from('groups')
+        .select(`
+          id, name, geohash_prefix, visibility, created_at, created_by,
+          member_count,
+          group_members(count)
+        `)
+        .order('created_at', { ascending: false }),
+    ]);
 
-    const { data, error } = await supabase
-      .from('groups')
-      .select(`
-        id, name, geohash_prefix, visibility, created_at, created_by,
-        group_members(count)
-      `)
-      .order('created_at', { ascending: false });
+    const userId = userIdResult;
+    const { data, error } = groupsResult;
 
     if (error) return makeResponse([]);
 
@@ -588,9 +594,11 @@ export const groupsApi = {
     }
 
     const groups: Group[] = (data || []).map((g: any) => {
+      const denormalizedCount = typeof g.member_count === 'number' ? g.member_count : null;
       const memberCountArr = g.group_members;
-      const memberCount = Array.isArray(memberCountArr) && memberCountArr.length > 0
+      const subSelectCount = Array.isArray(memberCountArr) && memberCountArr.length > 0
         ? memberCountArr[0].count : 0;
+      const memberCount = denormalizedCount !== null ? denormalizedCount : subSelectCount;
       return {
         id: g.id,
         name: g.name,
@@ -976,7 +984,7 @@ export const userApi = {
       displayName: profile?.display_name || authUser?.user?.user_metadata?.display_name || '',
       phone: profile?.phone || '',
       avatarUrl: profile?.avatar_url || '',
-      level: profile?.level || 0,
+      level: profile?.level ?? 1,
       trustScore: profile?.trust_score || 0,
       followers: followersCount,
       following: followingCount,

@@ -39,20 +39,26 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen bg-[#f0f0f0] flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <img
             src={ngumuLogo}
             alt="Ngumu's Eye"
-            className="w-24 h-24 mx-auto object-contain"
+            className="w-24 h-24 mx-auto rounded-full object-cover shadow-md"
             data-testid="img-login-logo"
           />
+          <h1 className="text-2xl font-bold mt-4" data-testid="text-app-name">
+            Ngumu's Eye
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1" data-testid="text-app-subtitle">
+            Community Safety Platform
+          </p>
         </div>
 
-        <Card className="shadow-lg">
-          <CardContent className="pt-6">
-            <h2 className="text-xl font-bold mb-2">Sign In</h2>
+        <Card className="shadow-lg rounded-2xl">
+          <CardContent className="pt-6 pb-6">
+            <h2 className="text-xl font-bold mb-1" data-testid="text-sign-in-heading">Sign In</h2>
             <p className="text-muted-foreground text-sm mb-6">
               Enter your credentials to access your account
             </p>
@@ -102,7 +108,7 @@ export default function LoginPage() {
 
               <Button
                 type="submit"
-                className="w-full"
+                className="w-full rounded-full"
                 disabled={loginMutation.isPending}
                 data-testid="button-sign-in"
               >

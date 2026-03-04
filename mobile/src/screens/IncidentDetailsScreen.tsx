@@ -161,7 +161,7 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
 
   const typeInfo = typeLabels[post.type] || typeLabels.alert;
   const localImage = postImages[post.id];
-  const remoteImages = (post.images || []).filter(img => img.startsWith('http'));
+  const remoteImages = (post.images || []).filter(img => img.startsWith('http') || img.startsWith('data:'));
   const mediaCount = (localImage ? 1 : 0) + remoteImages.length;
 
   const tabs = [
@@ -382,7 +382,7 @@ function TimelineTab({ events }: { events: TimelineEvent[] }) {
 }
 
 function MediaTab({ post, localImage }: { post: Post; localImage: any }) {
-  const remoteImages = (post.images || []).filter(img => img.startsWith('http'));
+  const remoteImages = (post.images || []).filter(img => img.startsWith('http') || img.startsWith('data:'));
   const hasMedia = localImage || remoteImages.length > 0;
 
   if (!hasMedia) {

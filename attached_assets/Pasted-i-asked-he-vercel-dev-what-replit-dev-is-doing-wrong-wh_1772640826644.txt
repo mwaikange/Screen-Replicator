@@ -1,0 +1,85 @@
+i asked he vercel dev - what replit dev is doing wrong - why the pics not showing after assement - vercel dev advised:
+
+## The Problem: Schema Mismatch
+
+The Replit dev is doing almost everything right, but there is **one critical mismatch** between how his mobile app saves media and how this web app reads it.
+
+---
+
+### How the Replit App Saves Media (His Flow)
+
+```plaintext
+incident_media table:
+  path = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/..."  ← FULL URL
+  mime = "image/jpeg"
+```
+
+He stores the **full public URL** in `incident_media.path`.
+
+---
+
+### How This Web App Reads Media (Our Feed)
+
+```javascript
+// feed/page.tsx — lines 112-118
+const mediaUrls = row.incident_media?.map((m: any) => {
+  if (!m.path) return null
+  const { data } = supabase.storage.from("incident-media").getPublicUrl(m.path)
+  return data.publicUrl   // ← treats path as a Supabase Storage filename
+}).filter(Boolean) || []
+```
+
+Our feed takes `m.path` and **runs it through Supabase Storage** to generate a URL — treating it as a **filename/key**, not a URL.
+
+**Result:** Supabase Storage wraps his full Vercel Blob URL inside another Supabase Storage URL, producing a broken URL like:
+
+```plaintext
+https://[project].supabase.co/storage/v1/object/public/incident-media/https://hebbkx1anhila5yf.public.blob.vercel-storage.com/...
+```
+
+Which 404s — so no image renders.
+
+---
+
+### The Fix: Two Options
+
+**Option A — Replit dev changes his storage column (Recommended)**
+
+Store just the **Vercel Blob URL directly** in a dedicated column instead of going through `incident_media.path`. His flow already gets the public URL back from `/api/upload` — he just needs to save it to:
+
+```plaintext
+incidents.image_url   ← single image (already exists in our schema)
+incidents.video_url   ← single video (already exists in our schema)
+```
+
+Or for multiple media, insert into `incident_media` but store the full Vercel Blob URL in `path` AND also store it in a column called `url` (or `public_url`).
+
+**Option B — We fix the feed reader to detect URL format**
+
+The feed needs to detect whether `m.path` is already a full URL or a Supabase Storage key:
+
+```javascript
+const mediaUrls = row.incident_media?.map((m: any) => {
+  if (!m.path) return null
+  // If path is already a full URL (Vercel Blob), use it directly
+  if (m.path.startsWith("http://") || m.path.startsWith("https://")) {
+    return m.path
+  }
+  // Otherwise treat as Supabase Storage key
+  const { data } = supabase.storage.from("incident-media").getPublicUrl(m.path)
+  return data.publicUrl
+}).filter(Boolean) || []
+```
+
+---
+
+### Recommended Action for Replit Dev
+
+**Tell him:** Use **Option B** on his side too — in his mobile app, when inserting into `incident_media`, store the full Vercel Blob URL in the `path` column. The web feed will be updated to handle both formats (full URL or Supabase key). Both apps will then work without further coordination.
+
+Let me apply Option B to the feed now:
+
+Fixed media URL resolutionNow apply the same logic to the incident detail page's media tab:
+
+Fixed media URL in detail pagev150Both the feed and the incident detail page now handle **both formats** of `incident_media.path` — if it's already a full `https://` URL (Vercel Blob, as the Replit
+

@@ -84,10 +84,10 @@ export default function CaseDeckScreen() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
 
-  const checkSubscription = useCallback(async () => {
+  const checkSubscription = useCallback(async (): Promise<boolean> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { navigation.replace('Subscribe'); return; }
+      if (!user) { navigation.replace('Subscribe'); return false; }
       const { data: subscription } = await supabase
         .from('user_subscriptions')
         .select('id, status, expires_at')
@@ -98,13 +98,15 @@ export default function CaseDeckScreen() {
       if (!subscription) {
         setHasSubscription(false);
         navigation.replace('Subscribe');
-        return;
+        return false;
       }
       setHasSubscription(true);
+      return true;
     } catch (error) {
       console.error('Subscription check error:', error);
       setHasSubscription(false);
       navigation.replace('Subscribe');
+      return false;
     }
   }, [navigation]);
 
@@ -121,13 +123,13 @@ export default function CaseDeckScreen() {
   }, []);
 
   useEffect(() => {
-    checkSubscription().then(() => fetchCases());
+    checkSubscription().then((ok) => { if (ok) fetchCases(); else setLoading(false); });
   }, [checkSubscription, fetchCases]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchCases();
-    }, [fetchCases])
+      checkSubscription().then((ok) => { if (ok) fetchCases(); });
+    }, [checkSubscription, fetchCases])
   );
 
   const filteredCases = activeFilter === 'all'

@@ -1,0 +1,301 @@
+# NGUMUS EYE — REPLIT DEV FIX PROMPT #2
+## Targeted fixes based on live testing screenshots
+
+---
+
+## ISSUE 1 — GROUPS SCREEN LOADS SLOWLY
+
+**Root cause:** Every time the Groups screen gets focus (tab tap, back navigation), `fetchGroups()` fires. This runs 3 sequential network calls before anything displays:
+1. `supabase.auth.getUser()` — async
+2. `groupsApi.getAll()` → groups query
+3. Inside getAll: two more parallel queries (`group_members`, `group_requests`)
+
+The screen shows a blank loading state every single time, even when the user just navigates back from a group.
+
+**Fix in `GroupsScreen.tsx`:**
+
+Cache the groups data so navigating back doesn't blank the screen. Only show the full loading spinner on first load — on refocus, refresh silently in the background:
+
+```typescript
+// CHANGE 1: Don't reset loading=true on focus refreshes, only on first mount
+const [initialLoaded, setInitialLoaded] = useState(false);
+
+const fetchGroups = async (silent = false) => {
+  if (!silent) setLoading(true);   // only show spinner on first load
+  try {
+    const { data: authData } = await supabase.auth.getUser();
+    setCurrentUserId(authData?.user?.id || null);
+    const response = await groupsApi.getAll();
+    setGroups(response.data);
+    setInitialLoaded(true);
+  } catch (error) {
+    console.error('Failed to fetch groups:', error);
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+};
+
+useEffect(() => {
+  fetchGroups(false);  // full load on mount
+}, []);
+
+useFocusEffect(
+  useCallback(() => {
+    if (initialLoaded) {
+      fetchGroups(true);  // silent background refresh on re-focus
+    }
+  }, [initialLoaded])
+);
+```
+
+**Fix in `mobile/src/lib/api.ts` — `groupsApi.getAll()`:**
+
+The `getCurrentUserId()` call at the top is an extra async round-trip. The screen already calls `supabase.auth.getUser()` separately. Combine them:
+
+```typescript
+getAll: async () => {
+  // Single auth call + groups query in parallel
+  const [authResult, groupsResult] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from('groups')
+      .select('id, name, geohash_prefix, visibility, created_at, created_by, member_count')
+      .order('created_at', { ascending: false }),
+  ]);
+
+  const userId = authResult.data?.user?.id || null;
+  const data = groupsResult.data || [];
+
+  // Only run membership queries if user is logged in
+  let membershipSet = new Set<string>();
+  let pendingSet = new Set<string>();
+  if (userId) {
+    const [membershipsRes, pendingRes] = await Promise.all([
+      supabase.from('group_members').select('group_id').eq('user_id', userId),
+      supabase.from('group_requests').select('group_id').eq('user_id', userId).eq('status', 'pending'),
+    ]);
+    (membershipsRes.data || []).forEach((m: any) => membershipSet.add(m.group_id));
+    (pendingRes.data || []).forEach((r: any) => pendingSet.add(r.group_id));
+  }
+
+  const groups: Group[] = data.map((g: any) => ({
+    id: g.id,
+    name: g.name,
+    area: g.geohash_prefix || '',
+    isPublic: g.visibility === 'public',
+    memberCount: g.member_count || 0,  // use denormalized column — much faster
+    createdBy: g.created_by,
+    isMember: membershipSet.has(g.id),
+    requestPending: pendingSet.has(g.id),
+  }));
+
+  return makeResponse(groups);
+},
+```
+
+Note: `groups.member_count` is a denormalized integer column maintained by DB triggers. Use it directly instead of `group_members(count)` — avoids a subquery per group row.
+
+---
+
+## ISSUE 2 — MAP PINS STACK ON TOP OF EACH OTHER
+
+**Root cause:** The map is not a real map — it's a `View` with a grid background and pins positioned using percentage calculations from lat/lng. Windhoek incidents (all close together geographically) produce nearly identical percentage values, so all pins land on the same pixel.
+
+The current calculation:
+```typescript
+// All Windhoek incidents have lat ≈ -22.55, lng ≈ 17.08
+// This produces nearly identical top/left percentages → all pins overlap
+const topPct = ((lat + 90) / 180) * 0.7 + 0.1;    // ≈ 0.42 for all Windhoek
+const leftPct = ((lng + 180) / 360) * 0.7 + 0.1;   // ≈ 0.43 for all Windhoek
+```
+
+**Fix — add coordinate jitter to spread overlapping pins:**
+
+When multiple incidents are within ~0.01 degrees of each other (roughly 1km), offset them slightly so they're all tappable:
+
+```typescript
+// In MapScreen.tsx — replace the topPct/leftPct calculation:
+
+// Step 1: Group incidents by approximate location (round to 2 decimal places)
+const locationGroups: Record<string, Post[]> = {};
+posts.forEach(post => {
+  if (!post.latitude || !post.longitude) return;
+  const key = `${Math.round(post.latitude * 100)},${Math.round(post.longitude * 100)}`;
+  if (!locationGroups[key]) locationGroups[key] = [];
+  locationGroups[key].push(post);
+});
+
+// Step 2: Assign offset index to each post
+const offsetMap: Record<string, { offsetIndex: number; groupSize: number }> = {};
+Object.values(locationGroups).forEach(group => {
+  group.forEach((post, i) => {
+    offsetMap[post.id] = { offsetIndex: i, groupSize: group.length };
+  });
+});
+
+// Step 3: When rendering, apply spiral offset for overlapping pins
+{posts.map((post) => {
+  const lat = post.latitude || 0;
+  const lng = post.longitude || 0;
+  const { offsetIndex, groupSize } = offsetMap[post.id] || { offsetIndex: 0, groupSize: 1 };
+
+  // Base position from real coordinates
+  let topPct = ((lat + 90) / 180) * 0.7 + 0.1;
+  let leftPct = ((lng + 180) / 360) * 0.7 + 0.1;
+
+  // Spread overlapping pins in a circle pattern (each pin 0.04 = ~4% apart)
+  if (groupSize > 1) {
+    const angle = (offsetIndex / groupSize) * 2 * Math.PI;
+    const radius = 0.04;  // 4% of the map view width/height
+    topPct  += Math.sin(angle) * radius;
+    leftPct += Math.cos(angle) * radius;
+  }
+
+  const pinColor = getSeverityColor(post.severity || 1);
+
+  return (
+    <TouchableOpacity
+      key={post.id}
+      style={[styles.markerPosition, {
+        top: `${Math.max(0.05, Math.min(0.9, topPct)) * 100}%` as any,
+        left: `${Math.max(0.05, Math.min(0.9, leftPct)) * 100}%` as any,
+        zIndex: posts.length - posts.indexOf(post),  // higher-severity pins on top
+      }]}
+      onPress={() => handleMarkerPress(post)}
+      activeOpacity={0.8}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}  // larger tap target
+    >
+      <IncidentMarker markerColor={pinColor} />
+    </TouchableOpacity>
+  );
+})}
+```
+
+**Also increase pin tap area** — the current `IncidentMarker` is a large diamond shape but `TouchableOpacity` hitbox may be small. Add `hitSlop` as shown above.
+
+**Longer term:** Install `react-native-maps` for a real interactive map with built-in clustering. The current grid-view approach will always have this overlap problem for incidents in the same city. But the jitter fix above will work immediately without a new dependency.
+
+---
+
+## ISSUE 3 — PROFILE AVATAR NOT SHOWING / LEVEL 0 DISPLAYED
+
+**What the screenshots show:**
+- Avatar shows "U" fallback instead of the actual avatar image
+- Level shows "Level 0" instead of the user's real level
+
+**Root cause — avatar:** The `userApi.getProfile()` in `api.ts` fetches `avatar_url` from Supabase, but the Vercel dev confirmed that avatar URLs are **full Vercel Blob HTTPS URLs** (e.g. `https://hebbkx1anhila5yf.public.blob.vercel-storage.com/avatars/...`). If the code is running these through Supabase Storage's `getPublicUrl()` like the feed does, it will produce a broken nested URL. Use it directly.
+
+Check in `userApi.getProfile()` — wherever it maps `avatar_url`, make sure it's used as-is:
+```typescript
+avatarUrl: profile.avatar_url || '',  // use directly — already a full HTTPS URL
+// DO NOT do: supabase.storage.from('avatars').getPublicUrl(profile.avatar_url)
+```
+
+**Root cause — Level 0:** The `profiles` table has a `level` column (integer, default 1). The profile query must include it:
+```typescript
+const { data: profile } = await supabase
+  .from('profiles')
+  .select('id, display_name, full_name, email, phone, province, avatar_url, level, trust_score, account_type, created_at')
+  .eq('id', userId)
+  .single();
+```
+
+If `level` is missing from the SELECT, it returns as `undefined` and the UI defaults to 0. Add `level` to the select explicitly.
+
+**Level badge labels** (for display in the profile UI):
+```typescript
+const USER_LEVELS: Record<number, { label: string; badge: string }> = {
+  1: { label: 'Community Member', badge: '🏘️' },
+  2: { label: 'Trusted Reporter',  badge: '⭐' },
+  3: { label: 'Community Lead',    badge: '🛡️' },
+  4: { label: 'Moderator',         badge: '⚖️' },
+  5: { label: 'Administrator',     badge: '👑' },
+};
+// Usage:
+const levelInfo = USER_LEVELS[displayUser.level] || USER_LEVELS[1];
+// Show: levelInfo.badge + levelInfo.label
+```
+
+---
+
+## ISSUE 4 — FILE DECK ACCESS GATE (from Vercel dev)
+
+The Vercel dev confirmed the exact check required. The mobile app currently queries `subscription_plans` (wrong table name) which causes the gate to always block even subscribed users.
+
+**The single correct check — run this on every Files tab tap and every File Deck screen load:**
+
+```typescript
+async function checkFileDeckAccess(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('user_subscriptions')
+    .select('status, expires_at')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .gte('expires_at', new Date().toISOString())
+    .maybeSingle();
+
+  return !error && !!data;
+}
+```
+
+**Three rules from the Vercel dev:**
+1. Check BOTH `status = 'active'` AND `expires_at > NOW()` — status alone is not enough
+2. Do NOT rely on `profiles.is_subscribed` — it can lag behind and be wrong
+3. There is also a convenience view `user_subscription_status` with a `currently_active` boolean if you prefer a simpler query
+
+**Re-check timing:**
+- On app launch
+- Every time user taps the Files tab
+- Immediately after returning from the Subscribe screen
+- When `onAuthStateChange` fires
+
+**What requires subscription vs what is free:**
+
+FREE (no subscription needed): Feed, Map, Report, Groups, Profile, Notifications, Search
+
+REQUIRES SUBSCRIPTION: File Deck dashboard, Create New File, File Detail, Device Tracking, Counseling & Support
+
+**If subscription expired mid-session:** Show a non-dismissible modal "Your subscription has expired. Renew to continue." with a "Renew Now" button → Subscribe screen. Do NOT log the user out.
+
+---
+
+## ISSUE 5 — MEDIA (PHOTOS) NOT SHOWING IN FEED / INCIDENT DETAIL
+
+The Vercel dev identified the exact bug: the web feed reads `incident_media.path` and passes it through `supabase.storage.from('incident-media').getPublicUrl(path)`. When the mobile app stores a **full Vercel Blob URL** in `path`, the Supabase Storage wrapper creates a broken double-URL like:
+
+```
+https://[project].supabase.co/storage/v1/object/public/incident-media/https://hebbkx1...
+```
+
+**The Vercel dev has already fixed the web feed** to detect both URL formats. The mobile app must match this pattern everywhere it reads `incident_media.path`:
+
+```typescript
+// Add this helper to api.ts (replace or update getStorageUrl):
+function resolveMediaUrl(path: string | null): string | null {
+  if (!path) return null;
+  // Already a full URL (Vercel Blob) — use directly
+  if (path.startsWith('https://') || path.startsWith('http://')) return path;
+  // Supabase Storage relative path — construct URL
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+  return `${supabaseUrl}/storage/v1/object/public/incident-media/${path}`;
+}
+```
+
+Replace all `getStorageUrl('incident-media', m.path)` calls with `resolveMediaUrl(m.path)`.
+
+Also apply to `avatar_url` on profiles — use it directly without wrapping in Supabase Storage.
+
+---
+
+## CHECKLIST
+
+- [ ] Groups screen: no blank flash when navigating back from a group chat
+- [ ] Groups screen: first load shows spinner, re-focus refreshes silently in background
+- [ ] Map: overlapping Windhoek pins are spread in a circle — all individually tappable
+- [ ] Map: `hitSlop` added to marker TouchableOpacity for easier tapping
+- [ ] Profile: avatar image loads (not "U" fallback) for users who have set an avatar
+- [ ] Profile: Level shows correct number (not 0) — `level` column included in SELECT
+- [ ] File Deck: subscribed users can access Files tab without being redirected
+- [ ] File Deck: check uses `user_subscriptions` with BOTH `status='active'` AND `expires_at > NOW()`
+- [ ] Feed: incident photos display correctly (Vercel Blob URLs used directly)
+- [ ] Incident detail: media gallery shows photos correctly
