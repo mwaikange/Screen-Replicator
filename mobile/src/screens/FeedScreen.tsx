@@ -115,6 +115,7 @@ function NgumuAdCard() {
 
 const PostCard = memo(function PostCard({ post, onPress, onCommentPress }: { post: Post; onPress: () => void; onCommentPress: () => void }) {
   const [liked, setLiked] = useState(false);
+  const [downvoted, setDownvoted] = useState(false);
   const [saved, setSaved] = useState(false);
   const [shared, setShared] = useState(false);
   const typeInfo = typeLabels[post.type] || typeLabels.alert;
@@ -132,9 +133,13 @@ const PostCard = memo(function PostCard({ post, onPress, onCommentPress }: { pos
   return (
     <TouchableOpacity style={styles.postCard} activeOpacity={0.9} onPress={onPress}>
       <View style={styles.postHeader}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{post.userName.charAt(0)}</Text>
-        </View>
+        {post.userAvatar ? (
+          <Image source={{ uri: post.userAvatar }} style={styles.avatarImage} />
+        ) : (
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{post.userName.charAt(0)}</Text>
+          </View>
+        )}
         <View style={styles.headerInfo}>
           <View style={styles.nameRow}>
             <Text style={styles.userName}>{post.userName}</Text>
@@ -196,6 +201,19 @@ const PostCard = memo(function PostCard({ post, onPress, onCommentPress }: { pos
             <Ionicons name="share-social-outline" size={20} color={shared ? colors.primary : colors.mutedForeground} />
             <Text style={[styles.engagementCount, shared && { color: colors.primary, fontWeight: '600' }]}>
               {post.shares + (shared ? 1 : 0)}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.engagementButton}
+            onPress={(e) => { e.stopPropagation(); setDownvoted(!downvoted); if (liked && !downvoted) setLiked(false); }}
+          >
+            <Ionicons
+              name={downvoted ? 'thumbs-down' : 'thumbs-down-outline'}
+              size={20}
+              color={downvoted ? '#f97316' : colors.mutedForeground}
+            />
+            <Text style={[styles.engagementCount, downvoted && { color: '#f97316', fontWeight: '500' }]}>
+              {(post.votes?.downvotes || 0) + (downvoted ? 1 : 0)}
             </Text>
           </TouchableOpacity>
         </View>
@@ -490,6 +508,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.muted,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   avatarText: {
     fontSize: 16,

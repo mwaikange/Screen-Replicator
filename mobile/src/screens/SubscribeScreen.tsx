@@ -299,7 +299,7 @@ export default function SubscribeScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 8 }}>
+          <TouchableOpacity onPress={() => navigation.navigate('Main', { screen: 'Profile' })} style={{ marginRight: 8 }}>
             <Ionicons name="arrow-back" size={20} color={colors.cardForeground} />
           </TouchableOpacity>
           <Image source={appLogo} style={styles.headerLogo} resizeMode="contain" />

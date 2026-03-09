@@ -26,6 +26,7 @@ import DeviceTrackingScreen from './src/screens/DeviceTrackingScreen';
 import CounselingScreen from './src/screens/CounselingScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import SearchScreen from './src/screens/SearchScreen';
+import PublicProfileScreen from './src/screens/PublicProfileScreen';
 import { colors } from './src/lib/theme';
 import { RootStackParamList, MainTabParamList } from './src/lib/types';
 
@@ -194,6 +195,11 @@ export default function App() {
             name="Search" 
             component={SearchScreen}
             options={{ animation: 'slide_from_bottom' }}
+          />
+          <Stack.Screen 
+            name="PublicProfile" 
+            component={PublicProfileScreen}
+            options={{ animation: 'slide_from_right' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

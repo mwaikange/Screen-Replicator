@@ -174,6 +174,7 @@ export type RootStackParamList = {
   Counseling: undefined;
   Notifications: undefined;
   Search: undefined;
+  PublicProfile: { userId: string };
 };
 
 export type MainTabParamList = {

@@ -19,6 +19,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { authApi } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { RootStackParamList } from '../lib/types';
 
 const ngumuLogo = require('../../assets/ngumu-eye-logo.jpg');
@@ -121,6 +122,31 @@ export default function LoginScreen() {
                   <TouchableOpacity 
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     accessibilityLabel="Forgot password"
+                    onPress={() => {
+                      if (!email.trim() || !validateEmail(email)) {
+                        Alert.alert('Enter Your Email', 'Please enter your email address first, then tap "Forgot password?"');
+                        return;
+                      }
+                      Alert.alert(
+                        'Reset Password',
+                        `Send a password reset link to ${email.trim()}?`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Send',
+                            onPress: async () => {
+                              try {
+                                const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase());
+                                if (error) throw error;
+                                Alert.alert('Check Your Email', 'We sent you a password reset link. Please check your inbox.');
+                              } catch (err: any) {
+                                Alert.alert('Error', err.message || 'Could not send reset email. Please try again.');
+                              }
+                            },
+                          },
+                        ]
+                      );
+                    }}
                   >
                     <Text style={styles.forgotLink}>Forgot password?</Text>
                   </TouchableOpacity>

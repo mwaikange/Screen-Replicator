@@ -7,6 +7,10 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Modal,
+  TextInput,
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { userApi, authApi } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { User } from '../lib/types';
 
 const appLogo = require('../../assets/logo.jpg');
@@ -26,10 +31,18 @@ const USER_LEVELS: Record<number, string> = {
   5: 'Administrator',
 };
 
+type FollowUser = { id: string; display_name: string; avatar_url: string | null; trust_score: number };
+
 export default function ProfileScreen() {
   const navigation = useNavigation<any>();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingName, setEditingName] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [followModalType, setFollowModalType] = useState<'followers' | 'following' | null>(null);
+  const [followList, setFollowList] = useState<FollowUser[]>([]);
+  const [followLoading, setFollowLoading] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -45,6 +58,54 @@ export default function ProfileScreen() {
 
     fetchUser();
   }, []);
+
+  const handleEditName = () => {
+    setNewName(user?.displayName || '');
+    setEditingName(true);
+  };
+
+  const handleSaveName = async () => {
+    if (!newName.trim()) return;
+    setSavingName(true);
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+      await supabase.from('profiles').update({ display_name: newName.trim() }).eq('id', authUser.id);
+      setEditingName(false);
+      const response = await userApi.getProfile();
+      setUser(response.data);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to update name');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const openFollowModal = async (type: 'followers' | 'following') => {
+    if (!user?.id) return;
+    setFollowModalType(type);
+    setFollowLoading(true);
+    try {
+      let ids: string[] = [];
+      if (type === 'followers') {
+        const { data } = await supabase.from('user_follows').select('follower_id').eq('following_id', user.id);
+        ids = (data || []).map((f: any) => f.follower_id);
+      } else {
+        const { data } = await supabase.from('user_follows').select('following_id').eq('follower_id', user.id);
+        ids = (data || []).map((f: any) => f.following_id);
+      }
+      if (ids.length > 0) {
+        const { data: profiles } = await supabase.from('profiles').select('id, display_name, avatar_url, trust_score').in('id', ids);
+        setFollowList(profiles || []);
+      } else {
+        setFollowList([]);
+      }
+    } catch {
+      setFollowList([]);
+    } finally {
+      setFollowLoading(false);
+    }
+  };
 
   const handlePickAvatar = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -132,7 +193,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.editButton}>
+          <TouchableOpacity style={styles.editButton} onPress={handleEditName}>
             <Ionicons name="pencil-outline" size={16} color={colors.cardForeground} />
             <Text style={styles.editButtonText}>Edit Display Name</Text>
           </TouchableOpacity>
@@ -144,15 +205,15 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.statsCard}>
-          <View style={styles.statItem}>
+          <TouchableOpacity style={styles.statItem} onPress={() => openFollowModal('followers')}>
             <Text style={styles.statNumber}>{displayUser.followers}</Text>
             <Text style={styles.statLabel}>Followers</Text>
-          </View>
+          </TouchableOpacity>
           <View style={styles.statDivider} />
-          <View style={styles.statItem}>
+          <TouchableOpacity style={styles.statItem} onPress={() => openFollowModal('following')}>
             <Text style={styles.statNumber}>{displayUser.following}</Text>
             <Text style={styles.statLabel}>Following</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.card}>
@@ -216,6 +277,79 @@ export default function ProfileScreen() {
 
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      <Modal visible={editingName} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Display Name</Text>
+              <TouchableOpacity onPress={() => setEditingName(false)}>
+                <Ionicons name="close" size={24} color={colors.cardForeground} />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.nameInput}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="Enter display name"
+              placeholderTextColor={colors.mutedForeground}
+              autoFocus
+            />
+            <TouchableOpacity
+              style={[styles.saveNameButton, (!newName.trim() || savingName) && { opacity: 0.5 }]}
+              onPress={handleSaveName}
+              disabled={!newName.trim() || savingName}
+            >
+              <Text style={styles.saveNameButtonText}>{savingName ? 'Saving...' : 'Save'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!followModalType} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{followModalType === 'followers' ? 'Followers' : 'Following'}</Text>
+              <TouchableOpacity onPress={() => setFollowModalType(null)}>
+                <Ionicons name="close" size={24} color={colors.cardForeground} />
+              </TouchableOpacity>
+            </View>
+            {followLoading ? (
+              <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 32 }} />
+            ) : followList.length === 0 ? (
+              <Text style={{ color: colors.mutedForeground, textAlign: 'center', marginVertical: 32 }}>
+                {followModalType === 'followers' ? 'No followers yet' : 'Not following anyone yet'}
+              </Text>
+            ) : (
+              <FlatList
+                data={followList}
+                keyExtractor={(item) => item.id}
+                style={{ maxHeight: 400 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.followUserRow}
+                    onPress={() => { setFollowModalType(null); navigation.navigate('PublicProfile', { userId: item.id }); }}
+                  >
+                    {item.avatar_url ? (
+                      <Image source={{ uri: item.avatar_url }} style={styles.followUserAvatar} />
+                    ) : (
+                      <View style={[styles.followUserAvatar, { backgroundColor: colors.muted, alignItems: 'center', justifyContent: 'center' }]}>
+                        <Text style={{ color: colors.cardForeground, fontWeight: '600' }}>{item.display_name?.charAt(0) || '?'}</Text>
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.followUserName}>{item.display_name || 'Anonymous'}</Text>
+                      <Text style={{ fontSize: 12, color: colors.mutedForeground }}>Trust: {item.trust_score || 0}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

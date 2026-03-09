@@ -43,8 +43,6 @@ async function getClient(req: any) {
   return token ? getAuthClient(token) : supabase;
 }
 
-const VERCEL_UPLOAD_URL = process.env.EXPO_PUBLIC_SITE_URL || "https://app.ngumus-eye.site";
-
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 },
@@ -57,29 +55,6 @@ const upload = multer({
     }
   },
 });
-
-async function proxyUploadToVercel(file: Express.Multer.File, authToken?: string): Promise<string> {
-  const formData = new FormData();
-  const blob = new Blob([file.buffer], { type: file.mimetype });
-  formData.append("file", blob, file.originalname);
-
-  const headers: Record<string, string> = {};
-  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-
-  const response = await fetch(`${VERCEL_UPLOAD_URL}/api/upload`, {
-    method: "POST",
-    headers,
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const errText = await response.text().catch(() => "Upload failed");
-    throw new Error(`Upload proxy failed: ${errText}`);
-  }
-
-  const result = await response.json() as any;
-  return result.url || result.publicUrl || "";
-}
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -682,8 +657,23 @@ export async function registerRoutes(
       const file = req.file;
       if (!file) return res.status(400).json({ error: "No file provided" });
 
-      const url = await proxyUploadToVercel(file, req.session.accessToken);
-      res.json({ url });
+      const ext = path.extname(file.originalname);
+      const fileName = `uploads/${randomUUID()}${ext}`;
+
+      const { error } = await supabase.storage
+        .from("incident-media")
+        .upload(fileName, file.buffer, { contentType: file.mimetype });
+
+      if (error) {
+        console.error("Supabase storage upload error:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      const { data: urlData } = supabase.storage
+        .from("incident-media")
+        .getPublicUrl(fileName);
+
+      res.json({ url: urlData.publicUrl });
     } catch (error: any) {
       console.error("Upload error:", error);
       res.status(500).json({ error: error.message || "Upload failed" });
