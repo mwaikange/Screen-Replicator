@@ -104,8 +104,7 @@ export default function CaseDeckScreen() {
       return true;
     } catch (error) {
       console.error('Subscription check error:', error);
-      setHasSubscription(false);
-      navigation.replace('Subscribe');
+      setHasSubscription(null);
       return false;
     }
   }, [navigation]);
@@ -195,7 +194,18 @@ export default function CaseDeckScreen() {
         </TouchableOpacity>
       </View>
 
-      {loading ? (
+      {hasSubscription === null ? (
+        <View style={styles.loadingContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color={colors.mutedForeground} />
+          <Text style={{ color: colors.mutedForeground, marginTop: 12, fontSize: 16 }}>Could not verify subscription</Text>
+          <TouchableOpacity
+            style={{ marginTop: 16, backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8 }}
+            onPress={() => { setLoading(true); checkSubscription().then((ok) => { if (ok) fetchCases(); else setLoading(false); }); }}
+          >
+            <Text style={{ color: colors.primaryForeground, fontWeight: '600' }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>

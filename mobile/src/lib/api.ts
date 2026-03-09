@@ -738,7 +738,6 @@ export const groupsApi = {
     try {
       const { data, error } = await supabase.rpc('request_join_group', {
         p_group_id: groupId,
-        p_user_id: userId,
       });
 
       if (error) throw error;
@@ -757,7 +756,6 @@ export const groupsApi = {
           role: 'member',
         });
         if (!insertErr) {
-          try { await supabase.rpc('increment_group_member_count', { p_group_id: groupId }); } catch {}
           return makeResponse({ joined: true, status: 'joined' });
         }
       } else {
@@ -852,7 +850,6 @@ export const groupsApi = {
     try {
       const { error } = await supabase.rpc('approve_group_request', {
         p_request_id: requestId,
-        p_group_id: groupId,
       });
       if (error) throw error;
     } catch {
@@ -870,7 +867,7 @@ export const groupsApi = {
   },
 
   denyRequest: async (groupId: string, requestId: string) => {
-    await supabase.from('group_requests').update({ status: 'denied' }).eq('id', requestId);
+    await supabase.from('group_requests').update({ status: 'rejected' }).eq('id', requestId);
     return makeResponse({ success: true });
   },
 

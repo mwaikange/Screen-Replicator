@@ -206,6 +206,12 @@ function GroupCard({
             <Text style={styles.creatorBadgeText}>Creator</Text>
           </View>
         )}
+        {isMember && !isCreator && (
+          <View style={styles.memberBadge}>
+            <Ionicons name="checkmark-circle" size={12} color={colors.primary} />
+            <Text style={styles.memberBadgeText}>Member</Text>
+          </View>
+        )}
       </View>
       <View style={styles.groupMeta}>
         <View style={styles.metaItem}>
@@ -349,6 +355,22 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     paddingHorizontal: 8,
     paddingVertical: 3,
+  },
+  memberBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#93c5fd',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  memberBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
   },
   creatorBadgeText: {
     fontSize: 11,

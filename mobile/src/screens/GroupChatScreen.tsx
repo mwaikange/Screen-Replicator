@@ -72,19 +72,22 @@ export default function GroupChatScreen() {
   }, [groupId]);
 
   const loadData = async () => {
-    const [groupRes, membersRes] = await Promise.all([
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id || '';
+    setCurrentUserId(userId);
+
+    const [groupRes, membersRes, pendingRes] = await Promise.all([
       groupsApi.getById(groupId),
       groupsApi.getMembers(groupId),
+      userId ? supabase.from('group_requests').select('id').eq('group_id', groupId).eq('user_id', userId).eq('status', 'pending').maybeSingle() : Promise.resolve({ data: null }),
     ]);
     setGroup(groupRes.data);
     setMembers(membersRes.data);
 
-    const { data: authData } = await supabase.auth.getUser();
-    const userId = authData?.user?.id || '';
-    setCurrentUserId(userId);
     const memberEntry = membersRes.data.find((m: GroupMember) => m.userId === userId);
     setIsMember(!!memberEntry);
     setUserRole(memberEntry?.role || null);
+    setRequestPending(!!pendingRes.data);
 
     if (memberEntry?.role === 'creator') {
       const reqRes = await groupsApi.getJoinRequests(groupId);

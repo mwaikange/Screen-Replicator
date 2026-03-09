@@ -45,8 +45,8 @@ export default function SignupScreen() {
     setLoading(true);
     try {
       await authApi.signup(email, password, displayName);
-      Alert.alert('Success', 'Account created successfully', [
-        { text: 'OK', onPress: () => navigation.replace('Main') }
+      Alert.alert('Check Your Email', 'We sent you a confirmation link. Please verify your email before signing in.', [
+        { text: 'OK', onPress: () => navigation.replace('Login') }
       ]);
     } catch (error: any) {
       Alert.alert('Signup Failed', error.message || 'Please try again');
