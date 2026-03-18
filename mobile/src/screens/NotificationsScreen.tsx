@@ -47,6 +47,12 @@ const typeIcons: Record<string, { name: keyof typeof Ionicons.glyphMap; color: s
   comment: { name: 'chatbubble-outline', color: '#3b82f6' },
   // Someone reported/reacted to your incident
   incident_report: { name: 'alert-circle-outline', color: '#f97316' },
+  // Community trust badge — someone shielded your post
+  trust_badge: { name: 'shield-checkmark', color: '#22c55e' },
+  // Admin verified your post and gave trust score points
+  admin_verified: { name: 'star', color: '#f59e0b' },
+  // Admin deleted your post and deducted trust score
+  post_deleted: { name: 'trash-outline', color: '#ef4444' },
   // Case status update
   case_update: { name: 'briefcase-outline', color: '#8b5cf6' },
   // System / admin message
@@ -230,6 +236,25 @@ export default function NotificationsScreen() {
 
       case 'subscription':
         navigation.navigate('Subscribe');
+        break;
+
+      case 'trust_badge':
+        // entity_id = incident id — go to the post that got badged
+        if (notification.entity_id) {
+          navigation.navigate('IncidentDetails', { postId: notification.entity_id });
+        }
+        break;
+
+      case 'admin_verified':
+        // entity_id = incident id — go to the verified post
+        if (notification.entity_id) {
+          navigation.navigate('IncidentDetails', { postId: notification.entity_id });
+        }
+        break;
+
+      case 'post_deleted':
+        // Post is gone — just go to feed
+        navigation.navigate('Main', { screen: 'Feed' });
         break;
 
       case 'system':

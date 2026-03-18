@@ -102,13 +102,18 @@ export async function sendCommentNotifications(
     if (notifyIds.size === 0) return;
 
     await supabase.from('user_notifications').insert(
-      Array.from(notifyIds).map(uid => ({
-        user_id: uid,
-        type: 'comment',
-        title: `New comment on "${incidentTitle}"`,
-        message: `${commenterName} commented on "${incidentTitle}"`,
-        entity_id: incidentId,
-      }))
+      Array.from(notifyIds).map(uid => {
+        const isCreator = uid === incidentCreatedBy;
+        return {
+          user_id: uid,
+          type: 'comment',
+          title: isCreator ? 'New comment on your post' : 'New comment on a post you follow',
+          message: isCreator
+            ? `${commenterName} commented on your post`
+            : `${commenterName} commented on a post you are following`,
+          entity_id: incidentId,
+        };
+      })
     );
   } catch (e) {
     console.error('[commentNotify]', e);

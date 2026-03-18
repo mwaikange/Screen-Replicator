@@ -47,11 +47,26 @@ export default function ProfileScreen() {
   const [unreadCount, setUnreadCount] = useState(0);
   // FIX: cache-bust avatar after upload
   const [avatarTimestamp, setAvatarTimestamp] = useState(Date.now());
+  const [communityTrust, setCommunityTrust] = useState(0);
 
   const fetchUser = useCallback(async () => {
     try {
       const response = await userApi.getProfile();
       setUser(response.data);
+      // Fetch Community Trust = number of confirms on this user's posts
+      if (response.data?.id) {
+        const { data: incidents } = await supabase
+          .from('incidents').select('id').eq('created_by', response.data.id);
+        if (incidents && incidents.length > 0) {
+          const ids = incidents.map((i: any) => i.id);
+          const { count } = await supabase
+            .from('incident_reactions')
+            .select('id', { count: 'exact', head: true })
+            .eq('reaction_type', 'confirm')
+            .in('incident_id', ids);
+          setCommunityTrust(count || 0);
+        }
+      }
     } catch (error) {
       console.error('Failed to fetch user:', error);
     } finally {
@@ -228,10 +243,21 @@ export default function ProfileScreen() {
           </TouchableOpacity>
 
           <View style={styles.trustScoreContainer}>
-            <View style={styles.trustScoreRow}>
-              <Ionicons name="shield-checkmark-outline" size={16} color={trustColor} />
-              <Text style={styles.trustScoreText}>Trust Score: </Text>
-              <Text style={[styles.trustScoreText, { fontWeight: '700', color: trustColor }]}>{displayUser.trustScore}</Text>
+            <View style={styles.trustBadgeRow}>
+              <View style={styles.trustBadgeBox}>
+                <Ionicons name="star" size={15} color="#f59e0b" />
+                <View>
+                  <Text style={styles.trustBadgeLabel}>Admin Trust</Text>
+                  <Text style={[styles.trustBadgeValue, { color: trustColor }]}>{displayUser.trustScore}</Text>
+                </View>
+              </View>
+              <View style={[styles.trustBadgeBox, { backgroundColor: '#22c55e10', borderColor: '#22c55e30' }]}>
+                <Ionicons name="shield-checkmark" size={15} color="#22c55e" />
+                <View>
+                  <Text style={[styles.trustBadgeLabel, { color: '#166534' }]}>Community Trust</Text>
+                  <Text style={[styles.trustBadgeValue, { color: '#22c55e' }]}>{communityTrust}</Text>
+                </View>
+              </View>
             </View>
           </View>
         </View>
@@ -415,6 +441,10 @@ const styles = StyleSheet.create({
   editButtonText: { fontSize: 14, color: colors.cardForeground },
   trustScoreContainer: { marginTop: spacing.md },
   trustScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  trustBadgeRow: { flexDirection: 'row', gap: 10 },
+  trustBadgeBox: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f59e0b10', borderWidth: 1, borderColor: '#f59e0b30', borderRadius: 10, padding: 10 },
+  trustBadgeLabel: { fontSize: 11, color: '#92400e', fontWeight: '500' },
+  trustBadgeValue: { fontSize: 18, fontWeight: '800', color: '#92400e' },
   trustScoreText: { fontSize: 14, color: colors.mutedForeground },
   trustBarBg: { height: 6, backgroundColor: colors.muted, borderRadius: 3, overflow: 'hidden' },
   trustBarFill: { height: 6, borderRadius: 3 },
