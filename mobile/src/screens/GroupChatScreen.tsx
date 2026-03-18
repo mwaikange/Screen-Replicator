@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,8 +22,6 @@ import { colors, spacing } from '../lib/theme';
 import { groupsApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { Group, GroupMessage, GroupMember, GroupJoinRequest } from '../lib/types';
-
-const appLogo = require('../../assets/logo.jpg');
 
 function formatTime(dateString: string) {
   const now = new Date();
@@ -44,23 +43,23 @@ export default function GroupChatScreen() {
   const [group, setGroup] = useState<Group | null>(null);
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
+  const [isCreator, setIsCreator] = useState(false);
   const [isMember, setIsMember] = useState(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [messageText, setMessageText] = useState('');
   const [showMembers, setShowMembers] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
-
   const [joinRequests, setJoinRequests] = useState<GroupJoinRequest[]>([]);
   const [editName, setEditName] = useState('');
   const [editArea, setEditArea] = useState('');
   const [editIsPublic, setEditIsPublic] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [requestPending, setRequestPending] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
+  const isSendingRef = useRef(false);
 
   const loadMessages = useCallback(async () => {
     try {
@@ -76,28 +75,33 @@ export default function GroupChatScreen() {
     const userId = authData?.user?.id || '';
     setCurrentUserId(userId);
 
-    const [groupRes, membersRes, pendingRes] = await Promise.all([
+    const [groupRes, membersRes] = await Promise.all([
       groupsApi.getById(groupId),
       groupsApi.getMembers(groupId),
-      userId ? supabase.from('group_requests').select('id').eq('group_id', groupId).eq('user_id', userId).eq('status', 'pending').maybeSingle() : Promise.resolve({ data: null }),
     ]);
-    setGroup(groupRes.data);
+
+    const groupData = groupRes.data;
+    setGroup(groupData);
     setMembers(membersRes.data);
 
+    // FIX: check creator via BOTH role field AND group.createdBy
     const memberEntry = membersRes.data.find((m: GroupMember) => m.userId === userId);
-    setIsMember(!!memberEntry);
-    setUserRole(memberEntry?.role || null);
-    setRequestPending(!!pendingRes.data);
+    const creatorStatus = memberEntry?.role === 'creator' || groupData?.createdBy === userId;
+    const memberStatus = !!memberEntry || creatorStatus;
 
-    if (memberEntry?.role === 'creator') {
+    setIsCreator(creatorStatus);
+    setIsMember(memberStatus);
+
+    // Load join requests for creator (any group type — public or private can get requests)
+    if (creatorStatus) {
       const reqRes = await groupsApi.getJoinRequests(groupId);
       setJoinRequests(reqRes.data);
     }
 
-    if (groupRes.data) {
-      setEditName(groupRes.data.name);
-      setEditArea(groupRes.data.area);
-      setEditIsPublic(groupRes.data.isPublic);
+    if (groupData) {
+      setEditName(groupData.name);
+      setEditArea(groupData.area);
+      setEditIsPublic(groupData.isPublic);
     }
 
     await loadMessages();
@@ -107,20 +111,14 @@ export default function GroupChatScreen() {
     loadData();
   }, [groupId]);
 
+  // Realtime subscription + 3s polling fallback
   useEffect(() => {
     const channel = supabase
       .channel(`group_messages_${groupId}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'group_messages',
-          filter: `group_id=eq.${groupId}`,
-        },
-        () => {
-          loadMessages();
-        }
+        { event: '*', schema: 'public', table: 'group_messages', filter: `group_id=eq.${groupId}` },
+        () => { loadMessages(); }
       )
       .subscribe();
 
@@ -134,38 +132,33 @@ export default function GroupChatScreen() {
 
   const handleSend = async () => {
     if (!messageText.trim() && !imagePreview) return;
-    await groupsApi.sendMessage(groupId, messageText.trim() || (imagePreview ? '📷 Photo' : ''), imagePreview);
+    if (isSendingRef.current) return; // prevent double-send
+    isSendingRef.current = true;
+    const textToSend = messageText.trim();
+    const imageToSend = imagePreview;
     setMessageText('');
     setImagePreview(null);
-    await loadMessages();
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    try {
+      await groupsApi.sendMessage(groupId, textToSend || '', imageToSend);
+      await loadMessages();
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    } finally {
+      isSendingRef.current = false;
+    }
   };
 
   const handleDeleteMessage = (item: GroupMessage) => {
     if (item.userId !== currentUserId) return;
-    Alert.alert(
-      'Delete Message',
-      'Are you sure you want to delete this message?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await supabase
-                .from('group_messages')
-                .delete()
-                .eq('id', item.id)
-                .eq('user_id', currentUserId);
-              await loadMessages();
-            } catch (e) {
-              console.error('Failed to delete message:', e);
-            }
-          },
+    Alert.alert('Delete Message', 'Are you sure you want to delete this message?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          await supabase.from('group_messages').delete().eq('id', item.id).eq('user_id', currentUserId);
+          await loadMessages();
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const handlePickImage = async () => {
@@ -175,23 +168,10 @@ export default function GroupChatScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.8,
+      mediaTypes: ['images'], allowsEditing: true, quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
       setImagePreview(result.assets[0].uri);
-    }
-  };
-
-  const handleJoin = async () => {
-    const res = await groupsApi.join(groupId);
-    if (res.data.status === 'joined') {
-      Alert.alert('Joined', 'You have joined the group!');
-      loadData();
-    } else if (res.data.status === 'requested') {
-      setRequestPending(true);
-      Alert.alert('Requested', 'Your join request has been sent. The group creator will review it.');
     }
   };
 
@@ -211,10 +191,17 @@ export default function GroupChatScreen() {
     setJoinRequests(reqRes.data);
   };
 
-  const handleLeave = async () => {
-    await groupsApi.leave(groupId);
-    setShowMembers(false);
-    loadData();
+  const handleLeave = () => {
+    Alert.alert('Leave Group', 'Are you sure you want to leave this group?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Leave', style: 'destructive',
+        onPress: async () => {
+          await groupsApi.leave(groupId);
+          navigation.goBack();
+        },
+      },
+    ]);
   };
 
   const handleRemoveMember = async (userId: string) => {
@@ -226,11 +213,7 @@ export default function GroupChatScreen() {
   };
 
   const handleSaveSettings = async () => {
-    await groupsApi.update(groupId, {
-      name: editName,
-      area: editArea,
-      isPublic: editIsPublic,
-    });
+    await groupsApi.update(groupId, { name: editName, area: editArea, isPublic: editIsPublic });
     setShowSettings(false);
     loadData();
   };
@@ -250,14 +233,21 @@ export default function GroupChatScreen() {
       >
         <View style={[styles.messageRow, isOwn ? styles.messageRowOwn : styles.messageRowOther]}>
           {!isOwn && (
-            <View style={styles.messageAvatar}>
-              <Text style={styles.messageAvatarText}>{item.userName.charAt(0)}</Text>
-            </View>
+            item.userAvatar ? (
+              <Image source={{ uri: item.userAvatar }} style={styles.messageAvatar} />
+            ) : (
+              <View style={styles.messageAvatar}>
+                <Text style={styles.messageAvatarText}>{item.userName.charAt(0).toUpperCase()}</Text>
+              </View>
+            )
           )}
-          <View style={[styles.messageBubbleContainer, isOwn ? styles.messageBubbleContainerOwn : styles.messageBubbleContainerOther]}>
+          <View style={[
+            styles.messageBubbleContainer,
+            isOwn ? styles.messageBubbleContainerOwn : styles.messageBubbleContainerOther,
+          ]}>
             <View style={[styles.messageHeaderRow, isOwn ? styles.messageHeaderOwn : null]}>
-              <Text style={[styles.messageName, isOwn ? styles.messageNameOwn : null]}>{item.userName}</Text>
-              <Text style={[styles.messageTime, isOwn ? styles.messageTimeOwn : null]}>{formatTime(item.createdAt)}</Text>
+              <Text style={styles.messageName}>{item.userName}</Text>
+              <Text style={styles.messageTime}>{formatTime(item.createdAt)}</Text>
             </View>
             <View style={[styles.messageBubble, isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther]}>
               {item.imageUrl && (
@@ -269,9 +259,13 @@ export default function GroupChatScreen() {
             </View>
           </View>
           {isOwn && (
-            <View style={styles.messageAvatar}>
-              <Text style={styles.messageAvatarText}>{item.userName.charAt(0)}</Text>
-            </View>
+            item.userAvatar ? (
+              <Image source={{ uri: item.userAvatar }} style={styles.messageAvatar} />
+            ) : (
+              <View style={styles.messageAvatar}>
+                <Text style={styles.messageAvatarText}>{item.userName.charAt(0).toUpperCase()}</Text>
+              </View>
+            )
           )}
         </View>
       </TouchableOpacity>
@@ -293,6 +287,7 @@ export default function GroupChatScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* ─── HEADER: group name + member count + people icon + settings (creator only) ─── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color={colors.cardForeground} />
@@ -306,96 +301,91 @@ export default function GroupChatScreen() {
               color={colors.mutedForeground}
             />
             <Text style={styles.headerMetaText}>{group.memberCount} members</Text>
-            <Text style={styles.headerMetaText}>-</Text>
-            <Text style={styles.headerMetaText}>Area: {group.area}</Text>
+            {group.area ? (
+              <>
+                <Text style={styles.headerMetaText}> · </Text>
+                <Text style={styles.headerMetaText}>Area: {group.area}</Text>
+              </>
+            ) : null}
           </View>
         </View>
-        <TouchableOpacity onPress={() => setShowMembers(true)} style={styles.headerButton}>
+        {/* People icon — always visible, opens members list */}
+        <TouchableOpacity onPress={async () => {
+          setShowMembers(true);
+          // Re-fetch members fresh when modal opens
+          try {
+            const res = await groupsApi.getMembers(groupId);
+            if (res.data && res.data.length > 0) setMembers(res.data);
+          } catch {}
+        }} style={styles.headerButton}>
           <Ionicons name="people-outline" size={22} color={colors.cardForeground} />
         </TouchableOpacity>
-        {userRole === 'creator' && (
+        {/* Settings icon — creator only */}
+        {isCreator && (
           <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.headerButton}>
             <Ionicons name="settings-outline" size={22} color={colors.cardForeground} />
           </TouchableOpacity>
         )}
       </View>
 
-      {!isMember ? (
-        <View style={styles.joinContainer}>
-          <View style={styles.joinCard}>
-            <Ionicons name="people-outline" size={48} color={colors.mutedForeground} />
-            <Text style={styles.joinTitle}>{group.name}</Text>
-            <Text style={styles.joinSubtitle}>
-              {group.isPublic ? 'Public' : 'Private'} group - {group.memberCount} members
-            </Text>
-            <Text style={styles.joinSubtitle}>Area: {group.area}</Text>
+      {/* ─── CHAT: always shown — no join/request buttons inside chat screen ─── */}
+      <KeyboardAvoidingView
+        style={styles.chatContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          style={styles.messagesList}
+          contentContainerStyle={styles.messagesContent}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          ListEmptyComponent={
+            <View style={styles.emptyMessages}>
+              <Text style={styles.emptyMessagesText}>No messages yet. Start the conversation!</Text>
+            </View>
+          }
+        />
+
+        {/* Input bar */}
+        <View style={styles.inputBar}>
+          {imagePreview && (
+            <View style={styles.imagePreviewContainer}>
+              <Image source={{ uri: imagePreview }} style={styles.imagePreview} resizeMode="cover" />
+              <TouchableOpacity style={styles.removeImageButton} onPress={() => setImagePreview(null)}>
+                <Ionicons name="close-circle" size={22} color={colors.destructive} />
+              </TouchableOpacity>
+            </View>
+          )}
+          <View style={styles.inputRow}>
+            <TouchableOpacity onPress={handlePickImage} style={styles.attachButton}>
+              <Ionicons name="image-outline" size={22} color={colors.primary} />
+            </TouchableOpacity>
+            <TextInput
+              style={styles.messageInput}
+              placeholder="Type a message..."
+              placeholderTextColor={colors.mutedForeground}
+              value={messageText}
+              onChangeText={setMessageText}
+              multiline={false}
+            />
             <TouchableOpacity
-              style={[styles.joinButton, !group.isPublic && styles.joinButtonOutline, requestPending && styles.joinButtonDisabled]}
-              onPress={handleJoin}
-              disabled={requestPending}
+              style={[styles.sendButton, ((!messageText.trim() && !imagePreview) || isSending) && styles.sendButtonDisabled]}
+              onPress={handleSend}
+              disabled={(!messageText.trim() && !imagePreview) || isSending}
             >
-              <Text style={[styles.joinButtonText, !group.isPublic && styles.joinButtonTextOutline]}>
-                {requestPending ? 'Request Pending' : group.isPublic ? 'Join Group' : 'Request to Join'}
-              </Text>
+              {isSending
+                ? <ActivityIndicator size="small" color={colors.primaryForeground} />
+                : <Ionicons name="send" size={18} color={colors.primaryForeground} />
+              }
             </TouchableOpacity>
           </View>
         </View>
-      ) : (
-        <KeyboardAvoidingView
-          style={styles.chatContainer}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={0}
-        >
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
-            style={styles.messagesList}
-            contentContainerStyle={styles.messagesContent}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-            ListEmptyComponent={
-              <View style={styles.emptyMessages}>
-                <Text style={styles.emptyMessagesText}>No messages yet. Start the conversation!</Text>
-              </View>
-            }
-          />
-          <View style={styles.inputBar}>
-            {imagePreview && (
-              <View style={styles.imagePreviewContainer}>
-                <Image source={{ uri: imagePreview }} style={styles.imagePreview} resizeMode="cover" />
-                <TouchableOpacity
-                  style={styles.removeImageButton}
-                  onPress={() => setImagePreview(null)}
-                >
-                  <Ionicons name="close-circle" size={22} color={colors.destructive} />
-                </TouchableOpacity>
-              </View>
-            )}
-            <View style={styles.inputRow}>
-              <TouchableOpacity onPress={handlePickImage} style={styles.attachButton}>
-                <Ionicons name="image-outline" size={22} color={colors.primary} />
-              </TouchableOpacity>
-              <TextInput
-                style={styles.messageInput}
-                placeholder="Type a message..."
-                placeholderTextColor={colors.mutedForeground}
-                value={messageText}
-                onChangeText={setMessageText}
-                multiline={false}
-              />
-              <TouchableOpacity
-                style={[styles.sendButton, (!messageText.trim() && !imagePreview) && styles.sendButtonDisabled]}
-                onPress={handleSend}
-                disabled={!messageText.trim() && !imagePreview}
-              >
-                <Ionicons name="send" size={18} color={colors.primaryForeground} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      )}
+      </KeyboardAvoidingView>
 
+      {/* ─── MEMBERS MODAL ─── */}
       <Modal visible={showMembers} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -407,25 +397,47 @@ export default function GroupChatScreen() {
             </View>
             <ScrollView style={styles.modalBody}>
               {members.map((member) => (
-                <View key={member.id} style={styles.memberRow}>
-                  <View style={styles.memberAvatar}>
-                    <Text style={styles.memberAvatarText}>{member.userName.charAt(0)}</Text>
-                  </View>
+                <TouchableOpacity
+                  key={member.id}
+                  style={styles.memberRow}
+                  onPress={() => {
+                    setShowMembers(false);
+                    setTimeout(() => navigation.navigate('PublicProfile', { userId: member.userId }), 150);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  {member.userAvatar ? (
+                    <Image
+                      source={{ uri: member.userAvatar }}
+                      style={styles.memberAvatar}
+                      onError={() => {}}
+                    />
+                  ) : (
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberAvatarText}>{member.userName.charAt(0).toUpperCase()}</Text>
+                    </View>
+                  )}
                   <View style={styles.memberInfoCol}>
                     <Text style={styles.memberName}>{member.userName}</Text>
-                    <Text style={styles.memberRole}>{member.role}</Text>
+                    <Text style={styles.memberRole}>
+                      {member.role === 'owner' || member.role === 'creator' ? 'Creator' : 'Member'}
+                    </Text>
                   </View>
-                  {userRole === 'creator' && member.role !== 'creator' && (
-                    <TouchableOpacity onPress={() => handleRemoveMember(member.userId)} style={styles.removeButton}>
+                  {isCreator && member.userId !== currentUserId && member.role !== 'owner' && member.role !== 'creator' && (
+                    <TouchableOpacity
+                      onPress={(e) => { e.stopPropagation(); handleRemoveMember(member.userId); }}
+                      style={styles.removeButton}
+                    >
                       <Ionicons name="person-remove-outline" size={18} color={colors.destructive} />
                     </TouchableOpacity>
                   )}
-                </View>
+                </TouchableOpacity>
               ))}
             </ScrollView>
-            {isMember && userRole !== 'creator' && (
+            {/* Leave button — members only (not creator) */}
+            {isMember && !isCreator && (
               <TouchableOpacity style={styles.leaveButton} onPress={handleLeave}>
-                <Ionicons name="log-out-outline" size={18} color={colors.cardForeground} />
+                <Ionicons name="log-out-outline" size={18} color={colors.destructive} />
                 <Text style={styles.leaveButtonText}>Leave Group</Text>
               </TouchableOpacity>
             )}
@@ -433,6 +445,7 @@ export default function GroupChatScreen() {
         </View>
       </Modal>
 
+      {/* ─── SETTINGS MODAL (creator only) ─── */}
       <Modal visible={showSettings} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -445,19 +458,11 @@ export default function GroupChatScreen() {
             <ScrollView style={styles.modalBody}>
               <View style={styles.settingsField}>
                 <Text style={styles.settingsLabel}>Group Name</Text>
-                <TextInput
-                  style={styles.settingsInput}
-                  value={editName}
-                  onChangeText={setEditName}
-                />
+                <TextInput style={styles.settingsInput} value={editName} onChangeText={setEditName} />
               </View>
               <View style={styles.settingsField}>
                 <Text style={styles.settingsLabel}>Area</Text>
-                <TextInput
-                  style={styles.settingsInput}
-                  value={editArea}
-                  onChangeText={setEditArea}
-                />
+                <TextInput style={styles.settingsInput} value={editArea} onChangeText={setEditArea} />
               </View>
               <View style={styles.settingsToggleRow}>
                 <Text style={styles.settingsLabel}>Public Group</Text>
@@ -473,18 +478,16 @@ export default function GroupChatScreen() {
                 <Text style={styles.saveButtonText}>Save Changes</Text>
               </TouchableOpacity>
 
-              {!group.isPublic && (
-                <TouchableOpacity
-                  style={styles.requestsButton}
-                  onPress={() => {
-                    setShowSettings(false);
-                    setShowRequests(true);
-                  }}
-                >
-                  <Ionicons name="person-add-outline" size={16} color={colors.cardForeground} />
-                  <Text style={styles.requestsButtonText}>View Join Requests ({joinRequests.length})</Text>
-                </TouchableOpacity>
-              )}
+              {/* View join requests — always shown for creator (public and private groups get requests) */}
+              <TouchableOpacity
+                style={styles.requestsButton}
+                onPress={() => { setShowSettings(false); setShowRequests(true); }}
+              >
+                <Ionicons name="person-add-outline" size={16} color={colors.cardForeground} />
+                <Text style={styles.requestsButtonText}>
+                  View Join Requests ({joinRequests.length})
+                </Text>
+              </TouchableOpacity>
 
               <View style={styles.deleteSection}>
                 {confirmDelete ? (
@@ -521,6 +524,7 @@ export default function GroupChatScreen() {
         </View>
       </Modal>
 
+      {/* ─── JOIN REQUESTS MODAL (creator only) ─── */}
       <Modal visible={showRequests} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -569,10 +573,7 @@ export default function GroupChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -583,188 +584,39 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     gap: 8,
   },
-  backButton: {
-    padding: 4,
-  },
-  headerInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.cardForeground,
-  },
-  headerMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  headerMetaText: {
-    fontSize: 11,
-    color: colors.mutedForeground,
-  },
-  headerButton: {
-    padding: 6,
-  },
-  joinContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  joinCard: {
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    width: '100%',
-    maxWidth: 340,
-  },
-  joinTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.cardForeground,
-    marginTop: 16,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  joinSubtitle: {
-    fontSize: 14,
-    color: colors.mutedForeground,
-    marginBottom: 4,
-  },
-  joinButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 6,
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    marginTop: 16,
-    width: '100%',
-    alignItems: 'center',
-  },
-  joinButtonOutline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  joinButtonText: {
-    color: colors.primaryForeground,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  joinButtonTextOutline: {
-    color: colors.cardForeground,
-  },
-  joinButtonDisabled: {
-    opacity: 0.6,
-  },
-  chatContainer: {
-    flex: 1,
-  },
-  messagesList: {
-    flex: 1,
-  },
-  messagesContent: {
-    padding: spacing.md,
-    paddingBottom: 8,
-  },
-  emptyMessages: {
-    paddingVertical: 48,
-    alignItems: 'center',
-  },
-  emptyMessagesText: {
-    fontSize: 14,
-    color: colors.mutedForeground,
-  },
-  messageRow: {
-    flexDirection: 'row',
-    marginBottom: 16,
-    gap: 8,
-    alignItems: 'flex-end',
-  },
-  messageRowOwn: {
-    justifyContent: 'flex-end',
-  },
-  messageRowOther: {
-    justifyContent: 'flex-start',
-  },
+  backButton: { padding: 4 },
+  headerInfo: { flex: 1, minWidth: 0 },
+  headerTitle: { fontSize: 16, fontWeight: '700', color: colors.cardForeground },
+  headerMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  headerMetaText: { fontSize: 11, color: colors.mutedForeground },
+  headerButton: { padding: 6 },
+  chatContainer: { flex: 1 },
+  messagesList: { flex: 1 },
+  messagesContent: { padding: spacing.md, paddingBottom: 8 },
+  emptyMessages: { paddingVertical: 48, alignItems: 'center' },
+  emptyMessagesText: { fontSize: 14, color: colors.mutedForeground },
+  messageRow: { flexDirection: 'row', marginBottom: 16, gap: 8, alignItems: 'flex-end' },
+  messageRowOwn: { justifyContent: 'flex-end' },
+  messageRowOther: { justifyContent: 'flex-start' },
   messageAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: colors.muted, alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
-  messageAvatarText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.mutedForeground,
-  },
-  messageBubbleContainer: {
-    maxWidth: '75%',
-  },
-  messageBubbleContainerOwn: {
-    alignItems: 'flex-end',
-  },
-  messageBubbleContainerOther: {
-    alignItems: 'flex-start',
-  },
-  messageHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 2,
-  },
-  messageHeaderOwn: {
-    flexDirection: 'row-reverse',
-  },
-  messageName: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.cardForeground,
-  },
-  messageNameOwn: {
-    color: colors.cardForeground,
-  },
-  messageTime: {
-    fontSize: 11,
-    color: colors.mutedForeground,
-  },
-  messageTimeOwn: {
-    color: colors.mutedForeground,
-  },
-  messageBubble: {
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  messageBubbleOwn: {
-    backgroundColor: colors.primary,
-    borderBottomRightRadius: 4,
-  },
-  messageBubbleOther: {
-    backgroundColor: colors.muted,
-    borderBottomLeftRadius: 4,
-  },
-  messageText: {
-    fontSize: 14,
-    color: colors.cardForeground,
-    lineHeight: 20,
-  },
-  messageTextOwn: {
-    color: colors.primaryForeground,
-  },
-  messageImage: {
-    width: 200,
-    height: 150,
-    borderRadius: 8,
-    marginVertical: 4,
-  },
+  messageAvatarText: { fontSize: 13, fontWeight: '600', color: colors.mutedForeground },
+  messageBubbleContainer: { maxWidth: '75%' },
+  messageBubbleContainerOwn: { alignItems: 'flex-end' },
+  messageBubbleContainerOther: { alignItems: 'flex-start' },
+  messageHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  messageHeaderOwn: { flexDirection: 'row-reverse' },
+  messageName: { fontSize: 12, fontWeight: '600', color: colors.cardForeground },
+  messageTime: { fontSize: 11, color: colors.mutedForeground },
+  messageBubble: { borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
+  messageBubbleOwn: { backgroundColor: colors.primary, borderBottomRightRadius: 4 },
+  messageBubbleOther: { backgroundColor: colors.muted, borderBottomLeftRadius: 4 },
+  messageText: { fontSize: 14, color: colors.cardForeground, lineHeight: 20 },
+  messageTextOwn: { color: colors.primaryForeground },
+  messageImage: { width: 200, height: 150, borderRadius: 8, marginVertical: 4 },
   inputBar: {
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
@@ -772,29 +624,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  attachButton: {
-    padding: 4,
-  },
-  imagePreviewContainer: {
-    position: 'relative',
-    marginBottom: 8,
-    alignSelf: 'flex-start',
-  },
-  imagePreview: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-  },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  attachButton: { padding: 4 },
+  imagePreviewContainer: { position: 'relative', marginBottom: 8, alignSelf: 'flex-start' },
+  imagePreview: { width: 80, height: 80, borderRadius: 8 },
+  removeImageButton: { position: 'absolute', top: -6, right: -6 },
   messageInput: {
     flex: 1,
     backgroundColor: colors.background,
@@ -807,16 +641,10 @@ const styles = StyleSheet.create({
     color: colors.cardForeground,
   },
   sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center',
   },
-  sendButtonDisabled: {
-    opacity: 0.5,
-  },
+  sendButtonDisabled: { opacity: 0.5 },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -840,49 +668,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.cardForeground,
-  },
-  modalBody: {
-    padding: 20,
-  },
-  memberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.cardForeground },
+  modalBody: { padding: 20 },
+  memberRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   memberAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: colors.muted, alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
-  memberAvatarText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.mutedForeground,
-  },
-  memberInfoCol: {
-    flex: 1,
-  },
-  memberName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.cardForeground,
-  },
-  memberRole: {
-    fontSize: 12,
-    color: colors.mutedForeground,
-    textTransform: 'capitalize',
-  },
-  removeButton: {
-    padding: 6,
-  },
+  memberAvatarText: { fontSize: 14, fontWeight: '600', color: colors.mutedForeground },
+  memberInfoCol: { flex: 1 },
+  memberName: { fontSize: 14, fontWeight: '500', color: colors.cardForeground },
+  memberRole: { fontSize: 12, color: colors.mutedForeground, textTransform: 'capitalize' },
+  removeButton: { padding: 6 },
   leaveButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -892,20 +690,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  leaveButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.cardForeground,
-  },
-  settingsField: {
-    marginBottom: 16,
-  },
-  settingsLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.cardForeground,
-    marginBottom: 6,
-  },
+  leaveButtonText: { fontSize: 14, fontWeight: '600', color: colors.destructive },
+  settingsField: { marginBottom: 16 },
+  settingsLabel: { fontSize: 14, fontWeight: '600', color: colors.cardForeground, marginBottom: 6 },
   settingsInput: {
     backgroundColor: colors.background,
     borderRadius: 6,
@@ -923,25 +710,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   toggle: {
-    width: 48,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.muted,
-    justifyContent: 'center',
-    paddingHorizontal: 3,
+    width: 48, height: 28, borderRadius: 14,
+    backgroundColor: colors.muted, justifyContent: 'center', paddingHorizontal: 3,
   },
-  toggleActive: {
-    backgroundColor: colors.primary,
-  },
-  toggleThumb: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.card,
-  },
-  toggleThumbActive: {
-    alignSelf: 'flex-end',
-  },
+  toggleActive: { backgroundColor: colors.primary },
+  toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.card },
+  toggleThumbActive: { alignSelf: 'flex-end' },
   saveButton: {
     backgroundColor: colors.primary,
     borderRadius: 6,
@@ -949,11 +723,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  saveButtonText: {
-    color: colors.primaryForeground,
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  saveButtonText: { color: colors.primaryForeground, fontSize: 14, fontWeight: '600' },
   requestsButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -965,16 +735,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 16,
   },
-  requestsButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.cardForeground,
-  },
-  deleteSection: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 16,
-  },
+  requestsButtonText: { fontSize: 14, fontWeight: '600', color: colors.cardForeground },
+  deleteSection: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 },
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -985,21 +747,9 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingVertical: 12,
   },
-  deleteButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.destructive,
-  },
-  deleteWarning: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.destructive,
-    marginBottom: 12,
-  },
-  deleteActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  deleteButtonText: { fontSize: 14, fontWeight: '600', color: colors.destructive },
+  deleteWarning: { fontSize: 14, fontWeight: '500', color: colors.destructive, marginBottom: 12 },
+  deleteActions: { flexDirection: 'row', gap: 8 },
   cancelDeleteButton: {
     flex: 1,
     borderWidth: 1,
@@ -1008,11 +758,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
   },
-  cancelDeleteText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.cardForeground,
-  },
+  cancelDeleteText: { fontSize: 14, fontWeight: '600', color: colors.cardForeground },
   confirmDeleteButton: {
     flex: 1,
     flexDirection: 'row',
@@ -1023,41 +769,18 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingVertical: 10,
   },
-  confirmDeleteText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.destructiveForeground,
-  },
+  confirmDeleteText: { fontSize: 14, fontWeight: '600', color: colors.destructiveForeground },
   emptyRequestsText: {
-    fontSize: 14,
-    color: colors.mutedForeground,
-    textAlign: 'center',
-    paddingVertical: 16,
+    fontSize: 14, color: colors.mutedForeground, textAlign: 'center', paddingVertical: 16,
   },
-  requestRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-  },
-  requestActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  requestRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  requestActions: { flexDirection: 'row', gap: 8 },
   approveButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center',
   },
   denyButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: colors.muted, alignItems: 'center', justifyContent: 'center',
   },
 });

@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
+import NotificationBell from '../components/NotificationBell';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { postsApi } from '../lib/api';
 import { ModalPicker, SelectorField } from '../components/ModalPicker';
@@ -43,10 +44,7 @@ const Header = memo(function Header() {
         <Image source={appLogo} style={styles.headerLogo} resizeMode="contain" />
         <Text style={styles.headerTitle}>Report Incident</Text>
       </View>
-      <TouchableOpacity style={styles.notificationButton}>
-        <Ionicons name="notifications-outline" size={20} color={colors.mutedForeground} />
-        <View style={styles.notificationBadge} />
-      </TouchableOpacity>
+      <NotificationBell />
     </View>
   );
 });
@@ -139,7 +137,7 @@ export default function ReportScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'] as any,
       allowsMultipleSelection: true,
       quality: 0.8,
     });

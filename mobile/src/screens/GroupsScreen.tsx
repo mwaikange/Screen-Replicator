@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import NotificationBell from '../components/NotificationBell';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { groupsApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
@@ -27,11 +28,10 @@ export default function GroupsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [initialLoaded, setInitialLoaded] = useState(false);
+  const [reportedGroups, setReportedGroups] = useState<Set<string>>(new Set());
 
   const fetchGroups = async (silent = false) => {
-    if (!silent) {
-      setLoading(true);
-    }
+    if (!silent) setLoading(true);
     try {
       const { data: authData } = await supabase.auth.getUser();
       setCurrentUserId(authData?.user?.id || null);
@@ -42,9 +42,7 @@ export default function GroupsScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
-      if (!initialLoaded) {
-        setInitialLoaded(true);
-      }
+      if (!initialLoaded) setInitialLoaded(true);
     }
   };
 
@@ -52,13 +50,39 @@ export default function GroupsScreen() {
     fetchGroups(false);
   }, []);
 
+  // FIX: silent refresh on re-focus — no blank flash
   useFocusEffect(
     useCallback(() => {
-      if (initialLoaded) {
-        fetchGroups(true);
-      }
+      if (initialLoaded) fetchGroups(true);
     }, [initialLoaded])
   );
+
+  const handleReport = async (group: Group) => {
+    Alert.alert(
+      'Report this group?',
+      'Are you sure you want to report this group? This action cannot be undone and will be reviewed by moderators.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Report Group',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await groupsApi.reportGroup(group.id);
+              if (res.data?.alreadyReported) {
+                Alert.alert('Already Reported', 'You have already reported this group.');
+                return;
+              }
+              setReportedGroups(prev => new Set([...prev, group.id]));
+              Alert.alert('Reported', 'Your report has been submitted.');
+            } catch {
+              Alert.alert('Error', 'Failed to submit report.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -66,16 +90,24 @@ export default function GroupsScreen() {
   };
 
   const handleJoin = async (group: Group) => {
-    const res = await groupsApi.join(group.id);
-    if (res.data.status === 'joined') {
-      navigation.navigate('GroupChat', { groupId: group.id });
-    } else if (res.data.status === 'requested') {
-      Alert.alert('Requested', 'Your join request has been sent.');
-    } else if (res.data.status === 'already_member') {
-      navigation.navigate('GroupChat', { groupId: group.id });
+    try {
+      const res = await groupsApi.join(group.id);
+      if (res.data.status === 'joined' || res.data.status === 'already_member') {
+        // Public group joined → go straight into chat
+        navigation.navigate('GroupChat', { groupId: group.id });
+      } else if (res.data.status === 'requested') {
+        // Private group → stay on this screen, show confirmation
+        Alert.alert(
+          'Request Sent',
+          'Your join request has been sent to the group creator. You will be notified when it is approved.'
+        );
+        fetchGroups(true);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to process your request. Please try again.');
     }
-    fetchGroups();
   };
+
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -84,17 +116,12 @@ export default function GroupsScreen() {
           <Image source={appLogo} style={styles.headerLogo} resizeMode="contain" />
           <Text style={styles.headerTitle}>Community Groups</Text>
         </View>
-        <TouchableOpacity style={styles.notificationButton}>
-          <Ionicons name="notifications-outline" size={20} color={colors.mutedForeground} />
-          <View style={styles.notificationBadge} />
-        </TouchableOpacity>
+        <NotificationBell />
       </View>
 
       <ScrollView
         style={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.titleSection}>
           <View style={styles.titleLeft}>
@@ -124,6 +151,8 @@ export default function GroupsScreen() {
               currentUserId={currentUserId}
               onOpen={() => navigation.navigate('GroupChat', { groupId: group.id })}
               onJoin={() => handleJoin(group)}
+              onReport={() => handleReport(group)}
+              hasReported={reportedGroups.has(group.id)}
             />
           ))
         ) : (
@@ -143,16 +172,27 @@ function GroupCard({
   currentUserId,
   onOpen,
   onJoin,
+  onReport,
+  hasReported,
 }: {
   group: Group;
   currentUserId: string | null;
   onOpen: () => void;
   onJoin: () => void;
+  onReport: () => void;
+  hasReported: boolean;
 }) {
-  const isCreator = currentUserId && group.createdBy === currentUserId;
-  const isMember = group.isMember;
+  // FIX: creator check uses BOTH createdBy field AND isMember flag
+  const isCreator = !!(currentUserId && group.createdBy === currentUserId);
+  // FIX: creator is always also a member — so Open Group shows for creator too
+  const isMember = group.isMember || isCreator;
   const isPending = group.requestPending;
 
+  // Button logic — matches web app exactly:
+  // - Member or Creator   → "Open Group"     (blue, filled)
+  // - Request Pending     → "Request Pending" (grey, disabled)
+  // - Public non-member   → "Join Group"      (blue, filled)
+  // - Private non-member  → "Request to Join" (white, outlined with lock icon)
   const getButtonConfig = () => {
     if (isMember) {
       return {
@@ -160,6 +200,7 @@ function GroupCard({
         icon: 'chatbubble-outline' as const,
         style: styles.actionButtonPrimary,
         textStyle: styles.actionButtonTextPrimary,
+        iconColor: colors.primaryForeground,
         action: onOpen,
         disabled: false,
       };
@@ -170,6 +211,7 @@ function GroupCard({
         icon: 'time-outline' as const,
         style: styles.actionButtonDisabled,
         textStyle: styles.actionButtonTextDisabled,
+        iconColor: colors.mutedForeground,
         action: () => {},
         disabled: true,
       };
@@ -180,15 +222,18 @@ function GroupCard({
         icon: 'people-outline' as const,
         style: styles.actionButtonPrimary,
         textStyle: styles.actionButtonTextPrimary,
+        iconColor: colors.primaryForeground,
         action: onJoin,
         disabled: false,
       };
     }
+    // Private group — outline style with lock icon (matches web)
     return {
       label: 'Request to Join',
       icon: 'lock-closed-outline' as const,
-      style: styles.actionButtonPrimary,
-      textStyle: styles.actionButtonTextPrimary,
+      style: styles.actionButtonOutline,
+      textStyle: styles.actionButtonTextOutline,
+      iconColor: colors.cardForeground,
       action: onJoin,
       disabled: false,
     };
@@ -213,6 +258,7 @@ function GroupCard({
           </View>
         )}
       </View>
+
       <View style={styles.groupMeta}>
         <View style={styles.metaItem}>
           <Ionicons name="location-outline" size={16} color={colors.mutedForeground} />
@@ -227,16 +273,28 @@ function GroupCard({
           <Text style={styles.badgeText}>{group.isPublic ? 'Public' : 'Private'}</Text>
         </View>
       </View>
-      <View style={styles.memberInfo}>
-        <Ionicons name="people-outline" size={16} color={colors.mutedForeground} />
-        <Text style={styles.memberText}>{group.memberCount} members</Text>
+
+      <View style={styles.memberInfoRow}>
+        <View style={styles.memberInfo}>
+          <Ionicons name="people-outline" size={16} color={colors.mutedForeground} />
+          <Text style={styles.memberText}>{group.memberCount} members</Text>
+        </View>
+        {isMember && (
+          <TouchableOpacity style={styles.reportButton} onPress={onReport} disabled={hasReported}>
+            <Ionicons
+              name={hasReported ? 'flag' : 'flag-outline'}
+              size={14}
+              color={hasReported ? colors.destructive : colors.mutedForeground}
+            />
+            <Text style={[styles.reportButtonText, hasReported && { color: colors.destructive }]}>
+              {hasReported ? 'Reported' : 'Report'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
-      <TouchableOpacity
-        style={btn.style}
-        onPress={btn.action}
-        disabled={btn.disabled}
-      >
-        <Ionicons name={btn.icon} size={16} color={btn.disabled ? colors.mutedForeground : colors.primaryForeground} />
+
+      <TouchableOpacity style={btn.style} onPress={btn.action} disabled={btn.disabled}>
+        <Ionicons name={btn.icon} size={16} color={btn.iconColor} />
         <Text style={btn.textStyle}>{btn.label}</Text>
       </TouchableOpacity>
     </View>
@@ -272,19 +330,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: colors.cardForeground,
-  },
-  notificationButton: {
-    position: 'relative',
-    padding: 8,
-  },
-  notificationBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.destructive,
   },
   content: {
     flex: 1,
@@ -356,6 +401,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
+  creatorBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#ea580c',
+  },
   memberBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -371,11 +421,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: colors.primary,
-  },
-  creatorBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#ea580c',
   },
   groupMeta: {
     flexDirection: 'row',
@@ -405,16 +450,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.cardForeground,
   },
+  memberInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
   memberInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: spacing.md,
   },
   memberText: {
     fontSize: 14,
     color: colors.mutedForeground,
   },
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  reportButtonText: {
+    fontSize: 13,
+    color: colors.mutedForeground,
+  },
+  // Blue filled button (Open Group / Join Group)
   actionButtonPrimary: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -429,6 +489,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  // White outlined button (Request to Join — private groups)
+  actionButtonOutline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    paddingVertical: 12,
+  },
+  actionButtonTextOutline: {
+    color: colors.cardForeground,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Grey disabled button (Request Pending)
   actionButtonDisabled: {
     flexDirection: 'row',
     alignItems: 'center',

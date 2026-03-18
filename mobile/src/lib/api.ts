@@ -7,9 +7,10 @@ function makeResponse<T>(data: T) {
   return { data };
 }
 
-function getStorageUrl(bucket: string, filePath: string): string {
+// FIX 1: resolveMediaUrl handles both full Vercel Blob URLs and relative Supabase paths
+function resolveMediaUrl(bucket: string, filePath: string): string {
   if (!filePath) return '';
-  if (filePath.startsWith('http')) return filePath;
+  if (filePath.startsWith('https://') || filePath.startsWith('http://')) return filePath;
   if (filePath.startsWith('data:')) return filePath;
   return `${supabaseUrl}/storage/v1/object/public/${bucket}/${filePath}`;
 }
@@ -26,36 +27,43 @@ async function getAuthToken(): Promise<string | null> {
 
 async function uploadMedia(uri: string): Promise<string | null> {
   try {
-    const token = await getAuthToken();
-    if (!token) return null;
-
     const filename = uri.split('/').pop() || 'upload.jpg';
-    const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1]}` : 'image/jpeg';
+    const ext = filename.split('.').pop()?.toLowerCase() || 'jpg';
+    const mimeType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+    const safeName = `upload_${Date.now()}.${ext}`;
 
+    // React Native FormData — do NOT set Content-Type manually
+    // fetch will set it automatically with the correct multipart boundary
     const formData = new FormData();
     formData.append('file', {
       uri,
-      name: filename,
-      type,
+      name: safeName,
+      type: mimeType,
     } as any);
 
-    const uploadUrl = siteUrl || process.env.EXPO_PUBLIC_SITE_URL || '';
+    const uploadUrl = 'https://app.ngumus-eye.site';
+    console.log('[upload] Sending to:', `${uploadUrl}/api/upload`);
+
     const response = await fetch(`${uploadUrl}/api/upload`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
+      // No Content-Type header — React Native sets it automatically with boundary
+      // No Authorization header — endpoint is public
       body: formData,
     });
 
+    console.log('[upload] Status:', response.status);
+
     if (response.ok) {
       const result = await response.json();
-      return result.url || result.publicUrl || null;
+      console.log('[upload] Success:', result.url);
+      return result.url || null;
+    } else {
+      const errText = await response.text();
+      console.error('[upload] Server error:', response.status, errText);
+      return null;
     }
-    return null;
   } catch (error) {
-    console.error('Upload failed:', error);
+    console.error('[upload] Network error:', error);
     return null;
   }
 }
@@ -69,7 +77,7 @@ export const authApi = {
 
     const [profileRes, subscriptionRes, followersRes, followingRes] = await Promise.all([
       supabase.from('profiles')
-        .select('id, display_name, full_name, phone, email, avatar_url, trust_score, level, bio, created_at, town')
+        .select('id, display_name, full_name, phone, avatar_url, trust_score, level, created_at, town')
         .eq('id', userId)
         .single(),
       supabase.from('user_subscriptions')
@@ -109,7 +117,6 @@ export const authApi = {
       town: profile?.town || '',
     };
 
-    console.log('Login success, token:', data.session.access_token.substring(0, 20) + '...');
     return makeResponse({ ...user, token: data.session.access_token });
   },
 
@@ -125,6 +132,14 @@ export const authApi = {
     if (!data.user) throw new Error('Signup failed: no user returned');
 
     return makeResponse({ token: data.session?.access_token || '' });
+  },
+
+  forgotPassword: async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'ngumuseye://reset-password',
+    });
+    if (error) throw new Error(error.message);
+    return makeResponse({ success: true });
   },
 
   signOut: async () => {
@@ -157,22 +172,19 @@ export const postsApi = {
       throw new Error('Failed to load feed: ' + error.message);
     }
 
-    console.log('Feed data count:', data?.length);
-    if (data && data.length > 0) {
-      console.log('First post:', JSON.stringify({ id: data[0].id, title: data[0].title, created_by: data[0].created_by }));
-    }
-
     const userId = await getCurrentUserId();
 
     const posts: Post[] = (data || []).map((item: any) => {
       const profile = Array.isArray(item.profiles) ? item.profiles[0] : item.profiles;
       const incidentType = Array.isArray(item.incident_types) ? item.incident_types[0] : item.incident_types;
       const media = item.incident_media || [];
-      const images = media.map((m: any) => getStorageUrl('incident-media', m.path)).filter(Boolean);
+      // FIX 3: Use resolveMediaUrl instead of getStorageUrl
+      const images = media.map((m: any) => resolveMediaUrl('incident-media', m.path)).filter(Boolean);
       return {
         id: item.id,
         userId: item.created_by,
         userName: profile?.display_name || 'Anonymous',
+        // FIX 4: avatar_url is a full Vercel Blob URL — use directly
         userAvatar: profile?.avatar_url || '',
         userTown: item.town || '',
         type: incidentType?.code || incidentType?.label || 'alert',
@@ -254,7 +266,8 @@ export const postsApi = {
     const profile = Array.isArray((data as any).profiles) ? (data as any).profiles[0] : (data as any).profiles;
     const incidentType = Array.isArray((data as any).incident_types) ? (data as any).incident_types[0] : (data as any).incident_types;
     const media = (data as any).incident_media || [];
-    const images = media.map((m: any) => getStorageUrl('incident-media', m.path)).filter(Boolean);
+    // FIX 5: resolveMediaUrl for incident detail images
+    const images = media.map((m: any) => resolveMediaUrl('incident-media', m.path)).filter(Boolean);
 
     const { data: reactionsData } = await supabase
       .from('incident_reactions')
@@ -429,7 +442,117 @@ export const postsApi = {
     return postsApi.getById(postId);
   },
 
-  getIncidentTypes: async () => {
+  // React to a post — handles mutual exclusivity, toggle off, and notification
+  react: async (postId: string, reactionType: 'upvote' | 'downvote' | 'love' | 'confirm') => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    const REACTION_MESSAGES: Record<string, string> = {
+      upvote:   'Your post received an upvote',
+      downvote: 'Your post received a downvote',
+      love:     'Your post received some love',
+      confirm:  'Your post received a confirmation',
+    };
+
+    // Fetch all existing reactions for this user+incident
+    const { data: existing } = await supabase
+      .from('incident_reactions')
+      .select('reaction_type')
+      .eq('incident_id', postId)
+      .eq('user_id', userId);
+
+    const existingTypes = new Set((existing || []).map((r: any) => r.reaction_type as string));
+
+    if (existingTypes.has(reactionType)) {
+      // Toggle off — delete it
+      await supabase.from('incident_reactions').delete()
+        .eq('incident_id', postId).eq('user_id', userId).eq('reaction_type', reactionType);
+      return makeResponse({ action: 'removed', reactionType });
+    }
+
+    // Delete opposite if upvote/downvote
+    if (reactionType === 'upvote' && existingTypes.has('downvote')) {
+      await supabase.from('incident_reactions').delete()
+        .eq('incident_id', postId).eq('user_id', userId).eq('reaction_type', 'downvote');
+    }
+    if (reactionType === 'downvote' && existingTypes.has('upvote')) {
+      await supabase.from('incident_reactions').delete()
+        .eq('incident_id', postId).eq('user_id', userId).eq('reaction_type', 'upvote');
+    }
+
+    // Insert new reaction
+    await supabase.from('incident_reactions').insert({
+      incident_id: postId,
+      user_id: userId,
+      reaction_type: reactionType,
+    });
+
+    // Get incident owner to notify
+    const { data: incident } = await supabase
+      .from('incidents')
+      .select('created_by')
+      .eq('id', postId)
+      .maybeSingle();
+
+    if (incident?.created_by && incident.created_by !== userId) {
+      const { error: notifErr } = await supabase.from('user_notifications').insert({
+        user_id: incident.created_by,
+        type: 'reaction',
+        title: 'Your post got a reaction',
+        message: REACTION_MESSAGES[reactionType] ?? 'Someone reacted to your post',
+        entity_id: postId,
+      });
+      console.log('[react] notification insert:', notifErr ? 'ERROR: ' + notifErr.message : 'OK', 'owner:', incident.created_by);
+    } else {
+      console.log('[react] skipping notification - own post or no owner. userId:', userId, 'owner:', incident?.created_by);
+    }
+
+    return makeResponse({ action: 'added', reactionType });
+  },
+
+  // FIX 6: report function added
+  report: async (postId: string) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    const { data: existing } = await supabase
+      .from('incident_reports')
+      .select('id')
+      .eq('incident_id', postId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existing) {
+      return makeResponse({ alreadyReported: true });
+    }
+
+    await supabase.from('incident_reports').insert({
+      incident_id: postId,
+      user_id: userId,
+    });
+
+    return makeResponse({ alreadyReported: false });
+  },
+
+  getByUser: async (userId: string) => {
+    const { data, error } = await supabase
+      .from('incidents')
+      .select(`
+        id, type_id, title, description, town, lat, lng,
+        status, verification_level, created_at, created_by,
+        incident_types(id, code, label, severity),
+        profiles:created_by(id, display_name, avatar_url, trust_score),
+        incident_media(id, path, mime)
+      `)
+      .eq('created_by', userId)
+      .order('created_at', { ascending: false })
+      .range(0, 49);
+
+    if (error) throw new Error(error.message);
+    return makeResponse(data || []);
+  },
+
+    getIncidentTypes: async () => {
     const { data, error } = await supabase
       .from('incident_types')
       .select('id, code, label, severity')
@@ -641,6 +764,9 @@ export const groupsApi = {
   },
 
   getMessages: async (groupId: string) => {
+    // FIX 7: Only load last 24 hours of messages
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
     const { data, error } = await supabase
       .from('group_messages')
       .select(`
@@ -648,7 +774,9 @@ export const groupsApi = {
         profiles!group_messages_user_id_fkey(display_name, avatar_url)
       `)
       .eq('group_id', groupId)
-      .order('created_at', { ascending: true });
+      .gt('created_at', since)
+      .order('created_at', { ascending: true })
+      .limit(100);
 
     if (error) return makeResponse([]);
 
@@ -710,16 +838,19 @@ export const groupsApi = {
     const { data, error } = await supabase
       .from('group_members')
       .select(`
-        id, group_id, user_id, role, joined_at,
-        profiles!group_members_user_id_fkey(display_name, avatar_url)
+        group_id, user_id, role, joined_at,
+        profiles:user_id(display_name, avatar_url)
       `)
       .eq('group_id', groupId)
       .order('joined_at', { ascending: true });
 
-    if (error) return makeResponse([]);
+    if (error) {
+      console.error('[getMembers] error:', error);
+      return makeResponse([]);
+    }
 
     const members: GroupMember[] = (data || []).map((m: any) => ({
-      id: m.id,
+      id: `${m.group_id}_${m.user_id}`,
       groupId: m.group_id,
       userId: m.user_id,
       userName: m.profiles?.display_name || 'Anonymous',
@@ -731,11 +862,27 @@ export const groupsApi = {
     return makeResponse(members);
   },
 
+  // FIX 8: checkMembership helper for member pill
+  checkMembership: async (groupId: string): Promise<{ isMember: boolean; role: string | null }> => {
+    const userId = await getCurrentUserId();
+    if (!userId) return { isMember: false, role: null };
+
+    const { data } = await supabase
+      .from('group_members')
+      .select('role')
+      .eq('group_id', groupId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    return { isMember: !!data, role: data?.role || null };
+  },
+
   join: async (groupId: string) => {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error('Not authenticated');
 
     try {
+      // FIX 9: request_join_group only takes p_group_id — no p_user_id
       const { data, error } = await supabase.rpc('request_join_group', {
         p_group_id: groupId,
       });
@@ -816,7 +963,15 @@ export const groupsApi = {
   },
 
   removeMember: async (groupId: string, userId: string) => {
-    await supabase.from('group_members').delete().eq('group_id', groupId).eq('user_id', userId);
+    // FIX 10: use remove_group_member RPC with correct params
+    try {
+      await supabase.rpc('remove_group_member', {
+        p_group_id: groupId,
+        p_user_id_to_remove: userId,
+      });
+    } catch {
+      await supabase.from('group_members').delete().eq('group_id', groupId).eq('user_id', userId);
+    }
     return makeResponse({ success: true });
   },
 
@@ -848,6 +1003,7 @@ export const groupsApi = {
 
   approveRequest: async (groupId: string, requestId: string) => {
     try {
+      // FIX 11: approve_group_request only takes p_request_id — no p_group_id
       const { error } = await supabase.rpc('approve_group_request', {
         p_request_id: requestId,
       });
@@ -866,8 +1022,29 @@ export const groupsApi = {
     return makeResponse({ success: true });
   },
 
+  // FIX 12: status must be 'rejected' not 'denied'
   denyRequest: async (groupId: string, requestId: string) => {
     await supabase.from('group_requests').update({ status: 'rejected' }).eq('id', requestId);
+    return makeResponse({ success: true });
+  },
+
+  // Report group — members only, one report per user
+  reportGroup: async (groupId: string) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    // Check if already reported
+    const { data: existing } = await supabase
+      .from('group_reports')
+      .select('id')
+      .eq('group_id', groupId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existing) return makeResponse({ alreadyReported: true });
+
+    await supabase.from('group_reports').insert({ group_id: groupId, user_id: userId });
+    await supabase.rpc('increment_group_reports', { p_group_id: groupId });
     return makeResponse({ success: true });
   },
 
@@ -952,7 +1129,7 @@ export const userApi = {
 
     const [profileRes, subscriptionRes, followersRes, followingRes] = await Promise.all([
       supabase.from('profiles')
-        .select('id, display_name, full_name, phone, email, avatar_url, trust_score, level, bio, created_at, town')
+        .select('id, display_name, full_name, phone, avatar_url, trust_score, level, created_at, town')
         .eq('id', userId)
         .single(),
       supabase.from('user_subscriptions')
@@ -980,6 +1157,7 @@ export const userApi = {
       email: authUser?.user?.email || '',
       displayName: profile?.display_name || authUser?.user?.user_metadata?.display_name || '',
       phone: profile?.phone || '',
+      // FIX 13: avatar_url is already a full URL — use directly
       avatarUrl: profile?.avatar_url || '',
       level: profile?.level ?? 1,
       trustScore: profile?.trust_score || 0,
@@ -992,8 +1170,135 @@ export const userApi = {
       town: profile?.town || '',
     };
 
-    console.log('Profile fetched from API:', JSON.stringify({ id: user.id, name: user.displayName, email: user.email }));
     return makeResponse(user);
+  },
+
+  // FIX 14: getPublicProfile for viewing other users
+  getPublicProfile: async (targetUserId: string) => {
+    const currentUserId = await getCurrentUserId();
+
+    const [profileRes, followersRes, followingRes, isFollowingRes] = await Promise.all([
+      supabase.from('profiles')
+        .select('id, display_name, full_name, avatar_url, trust_score, level, town')
+        .eq('id', targetUserId)
+        .maybeSingle(),
+      supabase.from('user_follows')
+        .select('id', { count: 'exact', head: true })
+        .eq('following_id', targetUserId),
+      supabase.from('user_follows')
+        .select('id', { count: 'exact', head: true })
+        .eq('follower_id', targetUserId),
+      currentUserId ? supabase.from('user_follows')
+        .select('id')
+        .eq('follower_id', currentUserId)
+        .eq('following_id', targetUserId)
+        .maybeSingle() : Promise.resolve({ data: null }),
+    ]);
+
+    const profile = profileRes.data;
+    if (!profile) {
+      console.error('[getPublicProfile] No profile found for userId:', targetUserId, 'error:', profileRes.error);
+      return makeResponse(null);
+    }
+
+    return makeResponse({
+      id: profile.id,
+      displayName: profile.display_name || profile.full_name || 'Anonymous',
+      avatarUrl: profile.avatar_url || '',
+      trustScore: profile.trust_score || 0,
+      level: profile.level ?? 1,
+      town: profile.town || '',
+      bio: '',
+      followers: followersRes.count || 0,
+      following: followingRes.count || 0,
+      isFollowing: !!(isFollowingRes as any).data,
+      isOwnProfile: currentUserId === targetUserId,
+    });
+  },
+
+  // FIX 15: follow a user
+  follow: async (targetUserId: string) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    await supabase.from('user_follows').insert({
+      follower_id: userId,
+      following_id: targetUserId,
+    });
+
+    // Notify via user_notifications (correct table)
+    await supabase.from('user_notifications').insert({
+      user_id: targetUserId,
+      type: 'follow',
+      title: 'New Follower',
+      message: 'Someone started following you',
+      entity_id: userId,
+    });
+
+    return makeResponse({ success: true });
+  },
+
+  // FIX 16: unfollow a user
+  unfollow: async (targetUserId: string) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    await supabase.from('user_follows')
+      .delete()
+      .eq('follower_id', userId)
+      .eq('following_id', targetUserId);
+
+    return makeResponse({ success: true });
+  },
+
+  // FIX 17: get followers list
+  getFollowers: async (targetUserId: string) => {
+    const { data: follows } = await supabase
+      .from('user_follows')
+      .select('follower_id')
+      .eq('following_id', targetUserId);
+
+    if (!follows || follows.length === 0) return makeResponse([]);
+
+    const ids = follows.map((f: any) => f.follower_id);
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, display_name, avatar_url, trust_score')
+      .in('id', ids);
+
+    return makeResponse(profiles || []);
+  },
+
+  // FIX 18: get following list
+  getFollowing: async (targetUserId: string) => {
+    const { data: follows } = await supabase
+      .from('user_follows')
+      .select('following_id')
+      .eq('follower_id', targetUserId);
+
+    if (!follows || follows.length === 0) return makeResponse([]);
+
+    const ids = follows.map((f: any) => f.following_id);
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, display_name, avatar_url, trust_score')
+      .in('id', ids);
+
+    return makeResponse(profiles || []);
+  },
+
+  // FIX 19: update display name
+  updateDisplayName: async (displayName: string) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ display_name: displayName })
+      .eq('id', userId);
+
+    if (error) throw new Error(error.message);
+    return makeResponse({ success: true });
   },
 
   updateAvatar: async (avatarUri: string) => {
@@ -1036,7 +1341,7 @@ export const casesApi = {
       title: c.title || '',
       description: c.description || '',
       status: c.status || 'open',
-      caseType: c.case_type || 'general',
+      caseType: c.category || 'other',
       priority: c.priority || 'medium',
       evidence: c.evidence || [],
       documents: c.documents || [],
@@ -1063,7 +1368,7 @@ export const casesApi = {
       title: data.title || '',
       description: data.description || '',
       status: data.status || 'open',
-      caseType: data.case_type || 'general',
+      caseType: data.category || 'other',
       priority: data.priority || 'medium',
       evidence: data.evidence || [],
       documents: data.documents || [],
@@ -1073,6 +1378,22 @@ export const casesApi = {
     };
 
     return makeResponse(caseItem);
+  },
+
+  // FIX 20: subscription check uses correct table and both conditions
+  checkAccess: async (): Promise<boolean> => {
+    const userId = await getCurrentUserId();
+    if (!userId) return false;
+
+    const { data, error } = await supabase
+      .from('user_subscriptions')
+      .select('status, expires_at')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .gte('expires_at', new Date().toISOString())
+      .maybeSingle();
+
+    return !error && !!data;
   },
 
   create: async (caseData: any) => {
@@ -1104,7 +1425,7 @@ export const casesApi = {
         title: caseData.title || 'Untitled Case',
         description: caseData.description || '',
         status: 'open',
-        case_type: caseData.caseType || 'general',
+        category: caseData.caseType || 'other',
         priority: caseData.priority || 'medium',
         evidence,
         documents: [],
@@ -1120,7 +1441,7 @@ export const casesApi = {
       title: data.title,
       description: data.description,
       status: data.status,
-      caseType: data.case_type,
+      caseType: data.category,
       priority: data.priority,
       evidence: data.evidence || [],
       documents: data.documents || [],
@@ -1240,7 +1561,7 @@ export const supportApi = {
       type: r.request_type || 'counseling',
       status: r.status || 'pending',
       description: r.description || '',
-      contactMethod: r.contact_method || 'phone',
+      contactMethod: r.contact_method || 'phone', doc1: r.doc_1 || null, doc2: r.doc_2 || null, doc3: r.doc_3 || null,
       createdAt: r.created_at,
     }));
 
@@ -1257,7 +1578,7 @@ export const supportApi = {
         user_id: userId,
         request_type: requestData.type || 'counseling',
         description: requestData.description || '',
-        contact_method: requestData.contactMethod || 'phone',
+        contact_method: requestData.contactMethod || 'phone', doc_1: requestData.doc1 || null, doc_2: requestData.doc2 || null, doc_3: requestData.doc3 || null,
         status: 'pending',
       })
       .select('*')
@@ -1271,7 +1592,7 @@ export const supportApi = {
       type: data.request_type,
       status: data.status,
       description: data.description,
-      contactMethod: data.contact_method,
+      contactMethod: data.contact_method, doc1: data.doc_1 || null, doc2: data.doc_2 || null, doc3: data.doc_3 || null,
       createdAt: data.created_at,
     } as SupportRequest);
   },

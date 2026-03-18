@@ -1,16 +1,8 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  TouchableOpacity,
-  FlatList,
-  Pressable,
-} from 'react-native';
+import { Modal, View, Text, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../lib/theme';
 
-type PickerOption = {
+type Option = {
   value: string;
   label: string;
   color?: string;
@@ -19,22 +11,27 @@ type PickerOption = {
 type ModalPickerProps = {
   visible: boolean;
   onClose: () => void;
-  onSelect: (value: string) => void;
-  options: PickerOption[];
   title: string;
-  selectedValue?: string;
+  options: Option[];
+  selectedValue: string;
+  onSelect: (value: string) => void;
 };
 
-export function ModalPicker({ visible, onClose, onSelect, options, title, selectedValue }: ModalPickerProps) {
+export function ModalPicker({ visible, onClose, title, options, selectedValue, onSelect }: ModalPickerProps) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
+        <View style={styles.sheet}>
           <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>{title}</Text>
+          <View style={styles.header}>
+            <Text style={styles.title}>{title}</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={22} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
           <FlatList
             data={options}
-            keyExtractor={(item) => item.value}
+            keyExtractor={item => item.value}
             renderItem={({ item }) => {
               const isSelected = item.value === selectedValue;
               return (
@@ -45,24 +42,22 @@ export function ModalPicker({ visible, onClose, onSelect, options, title, select
                     onClose();
                   }}
                 >
-                  <View style={styles.optionLeft}>
-                    {item.color && (
-                      <View style={[styles.colorDot, { backgroundColor: item.color }]} />
-                    )}
-                    <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
-                      {item.label}
-                    </Text>
-                  </View>
+                  {item.color && (
+                    <View style={[styles.colorDot, { backgroundColor: item.color }]} />
+                  )}
+                  <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                    {item.label}
+                  </Text>
                   {isSelected && (
-                    <Ionicons name="checkmark" size={20} color={colors.primary} />
+                    <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkmark} />
                   )}
                 </TouchableOpacity>
               );
             }}
-            style={styles.optionList}
+            style={styles.list}
           />
-        </Pressable>
-      </Pressable>
+        </View>
+      </TouchableOpacity>
     </Modal>
   );
 }
@@ -74,16 +69,14 @@ type SelectorFieldProps = {
   onPress: () => void;
 };
 
-export function SelectorField({ label, value, placeholder, onPress }: SelectorFieldProps) {
+export function SelectorField({ value, placeholder, onPress }: SelectorFieldProps) {
   return (
-    <View>
-      <TouchableOpacity style={styles.selectorField} onPress={onPress}>
-        <Text style={value ? styles.selectorValue : styles.selectorPlaceholder}>
-          {value || placeholder}
-        </Text>
-        <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
-      </TouchableOpacity>
-    </View>
+    <TouchableOpacity style={styles.selectorField} onPress={onPress} activeOpacity={0.7}>
+      <Text style={[styles.selectorText, !value && styles.selectorPlaceholder]}>
+        {value || placeholder}
+      </Text>
+      <Ionicons name="chevron-down" size={18} color={colors.mutedForeground} />
+    </TouchableOpacity>
   );
 }
 
@@ -103,71 +96,76 @@ const styles = StyleSheet.create({
   handle: {
     width: 40,
     height: 4,
-    borderRadius: 2,
     backgroundColor: colors.border,
+    borderRadius: 2,
     alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: 10,
+    marginBottom: 4,
   },
-  sheetTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.cardForeground,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  optionList: {
-    paddingHorizontal: spacing.md,
+  title: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.cardForeground,
+  },
+  list: {
+    paddingVertical: 8,
   },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
     paddingVertical: 14,
-    borderBottomWidth: 1,
+    borderBottomWidth: 0.5,
     borderBottomColor: colors.border,
   },
   optionSelected: {
     backgroundColor: colors.primary + '10',
   },
-  optionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
   colorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 10,
   },
-  optionLabel: {
+  optionText: {
+    flex: 1,
     fontSize: 15,
     color: colors.cardForeground,
   },
-  optionLabelSelected: {
+  optionTextSelected: {
     color: colors.primary,
     fontWeight: '600',
+  },
+  checkmark: {
+    marginLeft: 8,
   },
   selectorField: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.background,
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 6,
-    padding: 12,
-    minHeight: 44,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
+    minHeight: 48,
   },
-  selectorValue: {
+  selectorText: {
     fontSize: 14,
     color: colors.cardForeground,
+    flex: 1,
   },
   selectorPlaceholder: {
-    fontSize: 14,
     color: colors.mutedForeground,
   },
 });

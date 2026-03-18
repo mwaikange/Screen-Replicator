@@ -163,8 +163,9 @@ export type SupportRequest = {
 export type RootStackParamList = {
   Login: undefined;
   Signup: undefined;
+  ForgotPassword: undefined;
   Main: undefined;
-  IncidentDetails: { postId: string };
+  IncidentDetails: { postId: string; initialTab?: 'timeline' | 'media' | 'comments' };
   Subscribe: undefined;
   GroupChat: { groupId: string };
   CreateGroup: undefined;
