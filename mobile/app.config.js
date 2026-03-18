@@ -33,6 +33,11 @@ export default {
         backgroundColor: "#1d9bf0",
       },
       package: "com.ngumuseye.app",
+      config: {
+        googleMaps: {
+          apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+        },
+      },
       permissions: [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
