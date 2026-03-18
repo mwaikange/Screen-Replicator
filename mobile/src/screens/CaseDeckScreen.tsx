@@ -43,7 +43,7 @@ function CaseCard({ caseItem, onPress }: { caseItem: Case; onPress: () => void }
   const priorityColor = priorityColors[caseItem.priority] || priorityColors.medium;
 
   return (
-    <TouchableOpacity style={styles.caseCard} onPress={onPress} activeOpacity={0.7} data-testid={`card-case-${caseItem.id}`}>
+    <TouchableOpacity style={styles.caseCard} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.caseHeader}>
         <View style={styles.caseHeaderLeft}>
           <View style={[styles.priorityDot, { backgroundColor: priorityColor }]} />
@@ -82,29 +82,40 @@ export default function CaseDeckScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
-  const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
+
+  // FIX: three distinct states:
+  //   null  = still checking (show spinner)
+  //   true  = confirmed active subscription (show cases)
+  //   false = confirmed NO subscription (show subscribe prompt)
+  //   'error' = network/auth failure (show retry — NEVER redirect on error)
+  const [subscriptionState, setSubscriptionState] = useState<boolean | null | 'error'>(null);
 
   const checkSubscription = useCallback(async (): Promise<boolean> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { navigation.replace('Subscribe'); return false; }
-      const { data: subscription } = await supabase
-        .from('user_subscriptions')
-        .select('id, status, expires_at')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .gte('expires_at', new Date().toISOString())
-        .maybeSingle();
-      if (!subscription) {
-        setHasSubscription(false);
+      if (!user) {
+        // Not logged in at all — go to login, not subscribe
+        navigation.replace('Login');
+        return false;
+      }
+
+      // FIX: use casesApi.checkAccess() which has the correct query
+      // (status=active AND expires_at > now) — same logic ProfileScreen uses
+      const hasAccess = await casesApi.checkAccess();
+
+      if (hasAccess) {
+        setSubscriptionState(true);
+        return true;
+      } else {
+        // FIX: only redirect when we CONFIRM no subscription — not on error
+        setSubscriptionState(false);
         navigation.replace('Subscribe');
         return false;
       }
-      setHasSubscription(true);
-      return true;
     } catch (error) {
+      // FIX: network error or Supabase error → show retry, NEVER redirect
       console.error('Subscription check error:', error);
-      setHasSubscription(null);
+      setSubscriptionState('error');
       return false;
     }
   }, [navigation]);
@@ -122,12 +133,18 @@ export default function CaseDeckScreen() {
   }, []);
 
   useEffect(() => {
-    checkSubscription().then((ok) => { if (ok) fetchCases(); else setLoading(false); });
+    checkSubscription().then((ok) => {
+      if (ok) fetchCases();
+      else setLoading(false);
+    });
   }, [checkSubscription, fetchCases]);
 
+  // FIX: re-check on focus (e.g. user just came back from SubscribeScreen after paying)
   useFocusEffect(
     useCallback(() => {
-      checkSubscription().then((ok) => { if (ok) fetchCases(); });
+      checkSubscription().then((ok) => {
+        if (ok) fetchCases();
+      });
     }, [checkSubscription, fetchCases])
   );
 
@@ -142,6 +159,87 @@ export default function CaseDeckScreen() {
     { key: 'closed', label: 'Closed' },
   ];
 
+  const renderContent = () => {
+    // Still checking subscription
+    if (subscriptionState === null) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      );
+    }
+
+    // Network/auth error — show retry (do NOT redirect)
+    if (subscriptionState === 'error') {
+      return (
+        <View style={styles.loadingContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color={colors.mutedForeground} />
+          <Text style={styles.errorText}>Could not verify subscription</Text>
+          <Text style={styles.errorSubText}>Please check your connection and try again</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              setSubscriptionState(null);
+              setLoading(true);
+              checkSubscription().then((ok) => {
+                if (ok) fetchCases();
+                else setLoading(false);
+              });
+            }}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // Loading cases
+    if (loading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      );
+    }
+
+    // Has subscription — show cases list
+    return (
+      <FlatList
+        data={filteredCases}
+        renderItem={({ item }) => (
+          <CaseCard
+            caseItem={item}
+            onPress={() => navigation.navigate('CaseDetail', { caseId: item.id })}
+          />
+        )}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); fetchCases(); }}
+            tintColor={colors.primary}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="folder-open-outline" size={48} color={colors.mutedForeground} />
+            <Text style={styles.emptyTitle}>No Cases Yet</Text>
+            <Text style={styles.emptyText}>Open a new case to get started</Text>
+            <TouchableOpacity
+              style={styles.emptyButton}
+              onPress={() => navigation.navigate('OpenNewCase')}
+            >
+              <Text style={styles.emptyButtonText}>Open New Case</Text>
+            </TouchableOpacity>
+          </View>
+        }
+        ListFooterComponent={<View style={styles.bottomSpacing} />}
+      />
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -152,7 +250,6 @@ export default function CaseDeckScreen() {
         <TouchableOpacity
           style={styles.addButton}
           onPress={() => navigation.navigate('OpenNewCase')}
-          data-testid="button-new-case"
         >
           <Ionicons name="add" size={24} color={colors.primaryForeground} />
         </TouchableOpacity>
@@ -165,7 +262,6 @@ export default function CaseDeckScreen() {
               key={tab.key}
               style={[styles.filterTab, activeFilter === tab.key && styles.filterTabActive]}
               onPress={() => setActiveFilter(tab.key)}
-              data-testid={`button-filter-${tab.key}`}
             >
               <Text style={[styles.filterTabText, activeFilter === tab.key && styles.filterTabTextActive]}>
                 {tab.label}
@@ -179,7 +275,6 @@ export default function CaseDeckScreen() {
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => navigation.navigate('DeviceTracking')}
-          data-testid="button-device-tracking"
         >
           <Ionicons name="phone-portrait-outline" size={18} color={colors.primary} />
           <Text style={styles.actionButtonText}>Device Tracking</Text>
@@ -187,63 +282,13 @@ export default function CaseDeckScreen() {
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => navigation.navigate('Counseling')}
-          data-testid="button-counseling"
         >
           <Ionicons name="heart-outline" size={18} color={colors.primary} />
           <Text style={styles.actionButtonText}>Counseling</Text>
         </TouchableOpacity>
       </View>
 
-      {hasSubscription === null ? (
-        <View style={styles.loadingContainer}>
-          <Ionicons name="alert-circle-outline" size={48} color={colors.mutedForeground} />
-          <Text style={{ color: colors.mutedForeground, marginTop: 12, fontSize: 16 }}>Could not verify subscription</Text>
-          <TouchableOpacity
-            style={{ marginTop: 16, backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8 }}
-            onPress={() => { setLoading(true); checkSubscription().then((ok) => { if (ok) fetchCases(); else setLoading(false); }); }}
-          >
-            <Text style={{ color: colors.primaryForeground, fontWeight: '600' }}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      ) : loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : (
-        <FlatList
-          data={filteredCases}
-          renderItem={({ item }) => (
-            <CaseCard
-              caseItem={item}
-              onPress={() => navigation.navigate('CaseDetail', { caseId: item.id })}
-            />
-          )}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => { setRefreshing(true); fetchCases(); }}
-              tintColor={colors.primary}
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="folder-open-outline" size={48} color={colors.mutedForeground} />
-              <Text style={styles.emptyTitle}>No Cases Yet</Text>
-              <Text style={styles.emptyText}>Open a new case to get started</Text>
-              <TouchableOpacity
-                style={styles.emptyButton}
-                onPress={() => navigation.navigate('OpenNewCase')}
-              >
-                <Text style={styles.emptyButtonText}>Open New Case</Text>
-              </TouchableOpacity>
-            </View>
-          }
-          ListFooterComponent={<View style={styles.bottomSpacing} />}
-        />
-      )}
+      {renderContent()}
     </SafeAreaView>
   );
 }
@@ -341,6 +386,31 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.cardForeground,
+    marginTop: 12,
+  },
+  errorSubText: {
+    fontSize: 13,
+    color: colors.mutedForeground,
+    marginTop: 4,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+  retryButton: {
+    marginTop: 16,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: colors.primaryForeground,
+    fontSize: 14,
+    fontWeight: '600',
   },
   listContent: {
     paddingHorizontal: spacing.md,

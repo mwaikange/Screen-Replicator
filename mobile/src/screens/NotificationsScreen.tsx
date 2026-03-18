@@ -20,7 +20,7 @@ const appLogo = require('../../assets/logo.jpg');
 type Notification = {
   id: string;
   user_id: string;
-  type: 'follow' | 'group_request' | 'subscription' | 'system';
+  type: string;
   title: string;
   message: string;
   entity_id: string | null;
@@ -28,12 +28,34 @@ type Notification = {
   created_at: string;
 };
 
+// FIX: all notification types registered with icons and colors
 const typeIcons: Record<string, { name: keyof typeof Ionicons.glyphMap; color: string }> = {
-  follow: { name: 'person-add-outline', color: colors.primary },
+  // Someone followed you (both type values used)
+  follow:       { name: 'person-add-outline', color: colors.primary },
+  new_follower: { name: 'person-add-outline', color: colors.primary },
+  // Someone requested to join your group
   group_request: { name: 'people-outline', color: '#9333ea' },
-  subscription: { name: 'card-outline', color: colors.success },
-  system: { name: 'information-circle-outline', color: colors.warning },
+  // Your group join request was approved
+  group_approved: { name: 'checkmark-circle-outline', color: '#22c55e' },
+  // Your group join request was denied
+  group_denied: { name: 'close-circle-outline', color: '#ef4444' },
+  // Subscription / payment
+  subscription: { name: 'card-outline', color: '#22c55e' },
+  // Reaction to your post
+  reaction: { name: 'heart-outline', color: '#ef4444' },
+  // Someone commented on your incident
+  comment: { name: 'chatbubble-outline', color: '#3b82f6' },
+  // Someone reported/reacted to your incident
+  incident_report: { name: 'alert-circle-outline', color: '#f97316' },
+  // Case status update
+  case_update: { name: 'briefcase-outline', color: '#8b5cf6' },
+  // System / admin message
+  system: { name: 'information-circle-outline', color: '#6b7280' },
 };
+
+function getTypeInfo(type: string) {
+  return typeIcons[type] || typeIcons.system;
+}
 
 function formatTimeAgo(dateString: string): string {
   const now = new Date();
@@ -70,6 +92,7 @@ export default function NotificationsScreen() {
         .order('created_at', { ascending: false })
         .limit(50);
 
+      console.log('[Notifications] user:', id, 'count:', data?.length, 'error:', error?.message);
       if (error) throw error;
       setNotifications(data || []);
     } catch (error) {
@@ -107,15 +130,11 @@ export default function NotificationsScreen() {
           table: 'user_notifications',
           filter: `user_id=eq.${userId}`,
         },
-        () => {
-          loadNotifications();
-        }
+        () => { loadNotifications(); }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [userId, loadNotifications]);
 
   const onRefresh = useCallback(async () => {
@@ -156,6 +175,7 @@ export default function NotificationsScreen() {
     }
   }, [userId]);
 
+  // FIX: all types navigate to the right screen
   const handleNotificationPress = useCallback((notification: Notification) => {
     if (!notification.read_at) {
       markAsRead(notification.id);
@@ -163,23 +183,64 @@ export default function NotificationsScreen() {
 
     switch (notification.type) {
       case 'follow':
+      case 'new_follower':
+        // entity_id = the user who followed you → go to their public profile
         if (notification.entity_id) {
-          navigation.navigate('Main', { screen: 'Profile' });
+          navigation.navigate('PublicProfile', { userId: notification.entity_id });
         }
         break;
+
       case 'group_request':
-        navigation.navigate('Main', { screen: 'Groups' });
+        // entity_id = group_id → go to that group's chat so creator can see requests
+        if (notification.entity_id) {
+          navigation.navigate('GroupChat', { groupId: notification.entity_id });
+        } else {
+          navigation.navigate('Main', { screen: 'Groups' });
+        }
         break;
+
+      case 'group_approved':
+      case 'group_denied':
+        // entity_id = group_id
+        if (notification.entity_id) {
+          navigation.navigate('GroupChat', { groupId: notification.entity_id });
+        } else {
+          navigation.navigate('Main', { screen: 'Groups' });
+        }
+        break;
+
+      case 'reaction':
+      case 'comment':
+      case 'incident_report':
+        if (notification.entity_id) {
+          navigation.navigate('IncidentDetails', { postId: notification.entity_id });
+        } else {
+          navigation.navigate('Main', { screen: 'Feed' });
+        }
+        break;
+
+      case 'case_update':
+        // entity_id = case id
+        if (notification.entity_id) {
+          navigation.navigate('CaseDetail', { caseId: notification.entity_id });
+        } else {
+          navigation.navigate('Main', { screen: 'CaseDeck' });
+        }
+        break;
+
       case 'subscription':
         navigation.navigate('Subscribe');
         break;
+
       case 'system':
+      default:
+        // no navigation for generic system messages
         break;
     }
   }, [navigation, markAsRead]);
 
   const renderNotification = useCallback(({ item }: { item: Notification }) => {
-    const iconInfo = typeIcons[item.type] || typeIcons.system;
+    const iconInfo = getTypeInfo(item.type);
     const isUnread = !item.read_at;
 
     return (
@@ -188,7 +249,7 @@ export default function NotificationsScreen() {
         onPress={() => handleNotificationPress(item)}
         activeOpacity={0.7}
       >
-        <View style={[styles.iconContainer, { backgroundColor: iconInfo.color + '15' }]}>
+        <View style={[styles.iconContainer, { backgroundColor: iconInfo.color + '20' }]}>
           <Ionicons name={iconInfo.name} size={20} color={iconInfo.color} />
         </View>
         <View style={styles.notificationContent}>
@@ -224,7 +285,9 @@ export default function NotificationsScreen() {
 
       {unreadCount > 0 && (
         <View style={styles.unreadBanner}>
-          <Text style={styles.unreadBannerText}>{unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}</Text>
+          <Text style={styles.unreadBannerText}>
+            {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
+          </Text>
         </View>
       )}
 
@@ -239,11 +302,7 @@ export default function NotificationsScreen() {
           keyExtractor={item => item.id}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
-            />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
@@ -261,130 +320,29 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    height: 56,
-    backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: 8,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerLogo: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.cardForeground,
-  },
-  markAllButton: {
-    padding: 8,
-  },
-  markAllText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.primary,
-  },
-  unreadBanner: {
-    backgroundColor: colors.primary + '10',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  unreadBannerText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.primary,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  notificationItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-    backgroundColor: colors.card,
-    gap: 12,
-  },
-  notificationUnread: {
-    backgroundColor: colors.primary + '08',
-  },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  notificationContent: {
-    flex: 1,
-  },
-  notificationTitle: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.cardForeground,
-    marginBottom: 2,
-  },
-  notificationTitleUnread: {
-    fontWeight: '700',
-  },
-  notificationMessage: {
-    fontSize: 13,
-    color: colors.mutedForeground,
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-  notificationTime: {
-    fontSize: 12,
-    color: colors.mutedForeground,
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.primary,
-    marginTop: 6,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  emptyContainer: {
-    paddingVertical: 60,
-    alignItems: 'center',
-    gap: 12,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.cardForeground,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: colors.mutedForeground,
-  },
-  bottomSpacing: {
-    height: 40,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, height: 56, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 8 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  backButton: { padding: 4 },
+  headerLogo: { width: 36, height: 36, borderRadius: 8 },
+  headerTitle: { fontSize: 18, fontWeight: '600', color: colors.cardForeground },
+  markAllButton: { padding: 8 },
+  markAllText: { fontSize: 13, fontWeight: '500', color: colors.primary },
+  unreadBanner: { backgroundColor: colors.primary + '10', paddingHorizontal: spacing.md, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+  unreadBannerText: { fontSize: 13, fontWeight: '500', color: colors.primary },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  notificationItem: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: spacing.md, paddingVertical: 14, backgroundColor: colors.card, gap: 12 },
+  notificationUnread: { backgroundColor: colors.primary + '08' },
+  iconContainer: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  notificationContent: { flex: 1 },
+  notificationTitle: { fontSize: 14, fontWeight: '500', color: colors.cardForeground, marginBottom: 2 },
+  notificationTitleUnread: { fontWeight: '700' },
+  notificationMessage: { fontSize: 13, color: colors.mutedForeground, lineHeight: 18, marginBottom: 4 },
+  notificationTime: { fontSize: 12, color: colors.mutedForeground },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginTop: 6 },
+  separator: { height: 1, backgroundColor: colors.border },
+  emptyContainer: { paddingVertical: 60, alignItems: 'center', gap: 12 },
+  emptyTitle: { fontSize: 16, fontWeight: '600', color: colors.cardForeground },
+  emptyText: { fontSize: 14, color: colors.mutedForeground },
+  bottomSpacing: { height: 40 },
 });

@@ -19,7 +19,6 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { authApi } from '../lib/api';
-import { supabase } from '../lib/supabase';
 import { RootStackParamList } from '../lib/types';
 
 const ngumuLogo = require('../../assets/ngumu-eye-logo.jpg');
@@ -61,7 +60,7 @@ export default function LoginScreen() {
 
     setErrors({});
     setLoading(true);
-    
+
     try {
       await authApi.login(email.trim().toLowerCase(), password);
       navigation.replace('Main');
@@ -74,12 +73,12 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView 
+          <ScrollView
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
@@ -119,34 +118,11 @@ export default function LoginScreen() {
               <View style={styles.inputGroup}>
                 <View style={styles.labelRow}>
                   <Text style={styles.label}>Password</Text>
-                  <TouchableOpacity 
+                  {/* FIX: navigates to ForgotPasswordScreen — no more inline supabase call */}
+                  <TouchableOpacity
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     accessibilityLabel="Forgot password"
-                    onPress={() => {
-                      if (!email.trim() || !validateEmail(email)) {
-                        Alert.alert('Enter Your Email', 'Please enter your email address first, then tap "Forgot password?"');
-                        return;
-                      }
-                      Alert.alert(
-                        'Reset Password',
-                        `Send a password reset link to ${email.trim()}?`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Send',
-                            onPress: async () => {
-                              try {
-                                const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase());
-                                if (error) throw error;
-                                Alert.alert('Check Your Email', 'We sent you a password reset link. Please check your inbox.');
-                              } catch (err: any) {
-                                Alert.alert('Error', err.message || 'Could not send reset email. Please try again.');
-                              }
-                            },
-                          },
-                        ]
-                      );
-                    }}
+                    onPress={() => navigation.navigate('ForgotPassword')}
                   >
                     <Text style={styles.forgotLink}>Forgot password?</Text>
                   </TouchableOpacity>
@@ -168,23 +144,23 @@ export default function LoginScreen() {
                     onSubmitEditing={handleLogin}
                     accessibilityLabel="Password input"
                   />
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.eyeButton}
                     onPress={() => setShowPassword(!showPassword)}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                   >
-                    <Ionicons 
-                      name={showPassword ? 'eye-off-outline' : 'eye-outline'} 
-                      size={22} 
-                      color={colors.mutedForeground} 
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={22}
+                      color={colors.mutedForeground}
                     />
                   </TouchableOpacity>
                 </View>
                 {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
               </View>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.button, loading && styles.buttonDisabled]}
                 onPress={handleLogin}
                 disabled={loading}
@@ -198,7 +174,7 @@ export default function LoginScreen() {
 
               <View style={styles.signupRow}>
                 <Text style={styles.signupText}>Don't have an account? </Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={() => navigation.navigate('Signup')}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   accessibilityLabel="Sign up"

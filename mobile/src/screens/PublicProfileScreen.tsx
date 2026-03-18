@@ -1,150 +1,93 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  ActivityIndicator,
-  Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Image, ActivityIndicator, Alert, Modal, FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { colors, spacing } from '../lib/theme';
-import { supabase } from '../lib/supabase';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
+import { colors, spacing, fontSize } from '../lib/theme';
+import { userApi, postsApi } from '../lib/api';
 import { RootStackParamList } from '../lib/types';
 
-const USER_LEVELS: Record<number, string> = {
-  1: 'Community Member',
-  2: 'Trusted Reporter',
-  3: 'Community Lead',
-  4: 'Moderator',
-  5: 'Administrator',
+type PublicProfile = {
+  id: string; displayName: string; avatarUrl: string;
+  trustScore: number; level: number; town: string; bio: string;
+  followers: number; following: number; isFollowing: boolean; isOwnProfile: boolean;
 };
 
-type PublicProfileRouteProp = RouteProp<RootStackParamList, 'PublicProfile'>;
+type FollowUser = { id: string; display_name: string; avatar_url: string | null; trust_score: number };
 
-type PublicUser = {
-  id: string;
-  displayName: string;
-  avatarUrl: string;
-  level: number;
-  trustScore: number;
-  town: string;
-  bio: string;
-  followers: number;
-  following: number;
-  isFollowing: boolean;
-};
-
-async function getCurrentUserId(): Promise<string | null> {
-  const { data } = await supabase.auth.getUser();
-  return data?.user?.id || null;
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export default function PublicProfileScreen() {
   const navigation = useNavigation<any>();
-  const route = useRoute<PublicProfileRouteProp>();
+  const route = useRoute<RouteProp<RootStackParamList, 'PublicProfile'>>();
   const { userId } = route.params;
 
-  const [profile, setProfile] = useState<PublicUser | null>(null);
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [followLoading, setFollowLoading] = useState(false);
+  const [followModalType, setFollowModalType] = useState<'followers' | 'following' | null>(null);
+  const [followList, setFollowList] = useState<FollowUser[]>([]);
+  const [followListLoading, setFollowListLoading] = useState(false);
 
-  useEffect(() => {
-    fetchProfile();
-  }, [userId]);
-
-  const fetchProfile = async () => {
+  const loadProfile = useCallback(async () => {
+    console.log('[PublicProfile] loading userId:', userId);
+    if (!userId) {
+      console.error('[PublicProfile] userId is undefined — navigation param missing!');
+      setLoading(false);
+      return;
+    }
     try {
-      setLoading(true);
-      const currentUserId = await getCurrentUserId();
-
-      const [profileRes, followersRes, followingRes, isFollowingRes] = await Promise.all([
-        supabase.from('profiles')
-          .select('id, display_name, avatar_url, trust_score, level, bio, town')
-          .eq('id', userId)
-          .single(),
-        supabase.from('user_follows')
-          .select('id', { count: 'exact' })
-          .eq('following_id', userId),
-        supabase.from('user_follows')
-          .select('id', { count: 'exact' })
-          .eq('follower_id', userId),
-        currentUserId
-          ? supabase.from('user_follows')
-              .select('id')
-              .eq('follower_id', currentUserId)
-              .eq('following_id', userId)
-              .maybeSingle()
-          : Promise.resolve({ data: null }),
+      const [profileRes, postsRes] = await Promise.all([
+        userApi.getPublicProfile(userId),
+        postsApi.getByUser(userId),
       ]);
-
-      if (profileRes.error || !profileRes.data) {
-        Alert.alert('Error', 'User not found');
-        navigation.goBack();
-        return;
-      }
-
-      const p = profileRes.data;
-      setProfile({
-        id: p.id,
-        displayName: p.display_name || 'Anonymous',
-        avatarUrl: p.avatar_url || '',
-        level: p.level ?? 1,
-        trustScore: p.trust_score || 0,
-        town: p.town || '',
-        bio: p.bio || '',
-        followers: followersRes.count || 0,
-        following: followingRes.count || 0,
-        isFollowing: !!isFollowingRes.data,
-      });
-    } catch (error) {
-      console.error('Failed to fetch public profile:', error);
-      Alert.alert('Error', 'Failed to load profile');
+      console.log('[PublicProfile] profileRes.data:', profileRes.data);
+      if (profileRes.data) setProfile(profileRes.data);
+      if (postsRes.data) setPosts(postsRes.data);
+    } catch (e) {
+      console.error('[PublicProfile] Failed to load:', e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
-  const handleFollow = async () => {
+  useFocusEffect(useCallback(() => { loadProfile(); }, [loadProfile]));
+
+  const handleFollowToggle = useCallback(async () => {
     if (!profile) return;
-    const currentUserId = await getCurrentUserId();
-    if (!currentUserId) {
-      Alert.alert('Error', 'You must be logged in to follow users');
-      return;
-    }
-    if (currentUserId === userId) return;
-
     setFollowLoading(true);
     try {
       if (profile.isFollowing) {
-        await supabase.from('user_follows')
-          .delete()
-          .eq('follower_id', currentUserId)
-          .eq('following_id', userId);
-        setProfile(prev => prev ? {
-          ...prev,
-          isFollowing: false,
-          followers: Math.max(0, prev.followers - 1),
-        } : null);
+        await userApi.unfollow(userId);
+        setProfile(p => p ? { ...p, isFollowing: false, followers: p.followers - 1 } : p);
       } else {
-        await supabase.from('user_follows')
-          .insert({ follower_id: currentUserId, following_id: userId });
-        setProfile(prev => prev ? {
-          ...prev,
-          isFollowing: true,
-          followers: prev.followers + 1,
-        } : null);
+        await userApi.follow(userId);
+        setProfile(p => p ? { ...p, isFollowing: true, followers: p.followers + 1 } : p);
       }
-    } catch (error) {
-      console.error('Follow/unfollow failed:', error);
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to update follow');
     } finally {
       setFollowLoading(false);
     }
-  };
+  }, [profile, userId]);
+
+  const openFollowModal = useCallback(async (type: 'followers' | 'following') => {
+    setFollowModalType(type);
+    setFollowListLoading(true);
+    try {
+      const res = type === 'followers'
+        ? await userApi.getFollowers(userId)
+        : await userApi.getFollowing(userId);
+      setFollowList(res.data || []);
+    } catch { setFollowList([]); }
+    finally { setFollowListLoading(false); }
+  }, [userId]);
 
   if (loading) {
     return (
@@ -154,278 +97,279 @@ export default function PublicProfileScreen() {
             <Ionicons name="arrow-back" size={24} color={colors.cardForeground} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Profile</Text>
-          <View style={{ width: 40 }} />
+          <View style={{ width: 32 }} />
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
+        <View style={styles.centered}><ActivityIndicator size="large" color={colors.primary} /></View>
       </SafeAreaView>
     );
   }
 
-  if (!profile) return null;
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={colors.cardForeground} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Profile</Text>
+          <View style={{ width: 32 }} />
+        </View>
+        <View style={styles.centered}><Text style={styles.emptyText}>User not found</Text></View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={colors.cardForeground} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{profile.displayName}</Text>
-        <View style={{ width: 40 }} />
+        <Text style={styles.headerTitle} numberOfLines={1}>{profile.displayName}</Text>
+        <View style={{ width: 32 }} />
       </View>
 
-      <ScrollView style={styles.content}>
-        <View style={styles.card}>
-          <View style={styles.profileHeader}>
-            <View style={styles.avatarContainer}>
-              {profile.avatarUrl ? (
-                <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
-              ) : (
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
-                    {profile.displayName.charAt(0) || 'U'}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <View style={styles.profileInfo}>
-              <View style={styles.nameRow}>
-                <Text style={styles.displayName}>{profile.displayName}</Text>
-                <View style={styles.levelBadge}>
-                  <Text style={styles.levelText}>Lv.{profile.level} {USER_LEVELS[profile.level] || 'Member'}</Text>
-                </View>
-              </View>
-              {profile.town ? (
-                <View style={styles.locationRow}>
-                  <Ionicons name="location-outline" size={14} color={colors.mutedForeground} />
-                  <Text style={styles.locationText}>{profile.town}</Text>
-                </View>
-              ) : null}
-            </View>
-          </View>
-
-          {profile.bio ? (
-            <Text style={styles.bio}>{profile.bio}</Text>
-          ) : null}
-
-          <TouchableOpacity
-            style={[styles.followButton, profile.isFollowing && styles.followingButton]}
-            onPress={handleFollow}
-            disabled={followLoading}
-          >
-            {followLoading ? (
-              <ActivityIndicator size="small" color={profile.isFollowing ? colors.cardForeground : colors.primaryForeground} />
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Profile Card */}
+        <View style={styles.profileCard}>
+          {/* Avatar */}
+          <View style={styles.avatarContainer}>
+            {profile.avatarUrl ? (
+              <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
             ) : (
-              <>
-                <Ionicons
-                  name={profile.isFollowing ? 'checkmark' : 'person-add-outline'}
-                  size={16}
-                  color={profile.isFollowing ? colors.cardForeground : colors.primaryForeground}
-                />
-                <Text style={[styles.followButtonText, profile.isFollowing && styles.followingButtonText]}>
-                  {profile.isFollowing ? 'Following' : 'Follow'}
-                </Text>
-              </>
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Text style={styles.avatarText}>{profile.displayName?.charAt(0)?.toUpperCase() || 'U'}</Text>
+              </View>
             )}
-          </TouchableOpacity>
-
-          <View style={styles.trustScore}>
-            <Ionicons name="shield-checkmark-outline" size={16} color={colors.mutedForeground} />
-            <Text style={styles.trustScoreText}>Trust Score: {profile.trustScore}</Text>
           </View>
+
+          {/* Name + Level */}
+          <Text style={styles.displayName}>{profile.displayName}</Text>
+          <View style={styles.badgeRow}>
+            <View style={styles.levelBadge}>
+              <Ionicons name="shield-outline" size={12} color={colors.primary} />
+              <Text style={styles.levelText}>Level {profile.level}</Text>
+            </View>
+            {profile.town ? (
+              <View style={styles.townBadge}>
+                <Ionicons name="location-outline" size={12} color={colors.mutedForeground} />
+                <Text style={styles.townText}>{profile.town}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Trust Score */}
+          <View style={styles.trustRow}>
+            <Ionicons name="star-outline" size={14} color={colors.warning} />
+            <Text style={styles.trustText}>Trust Score: {profile.trustScore}</Text>
+          </View>
+
+          {/* Bio */}
+          {profile.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
+
+          {/* Stats Row */}
+          <View style={styles.statsRow}>
+            <TouchableOpacity style={styles.statItem} onPress={() => openFollowModal('followers')}>
+              <Text style={styles.statNumber}>{profile.followers}</Text>
+              <Text style={styles.statLabel}>Followers</Text>
+            </TouchableOpacity>
+            <View style={styles.statDivider} />
+            <TouchableOpacity style={styles.statItem} onPress={() => openFollowModal('following')}>
+              <Text style={styles.statNumber}>{profile.following}</Text>
+              <Text style={styles.statLabel}>Following</Text>
+            </TouchableOpacity>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{posts.length}</Text>
+              <Text style={styles.statLabel}>Posts</Text>
+            </View>
+          </View>
+
+          {/* Follow Button */}
+          {!profile.isOwnProfile && (
+            <TouchableOpacity
+              style={[styles.followButton, profile.isFollowing && styles.followingButton]}
+              onPress={handleFollowToggle}
+              disabled={followLoading}
+            >
+              {followLoading ? (
+                <ActivityIndicator size="small" color={profile.isFollowing ? colors.cardForeground : colors.primaryForeground} />
+              ) : (
+                <>
+                  <Ionicons
+                    name={profile.isFollowing ? 'person-remove-outline' : 'person-add-outline'}
+                    size={16}
+                    color={profile.isFollowing ? colors.cardForeground : colors.primaryForeground}
+                  />
+                  <Text style={[styles.followButtonText, profile.isFollowing && styles.followingButtonText]}>
+                    {profile.isFollowing ? 'Unfollow' : 'Follow'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
-        <View style={styles.statsCard}>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{profile.followers}</Text>
-            <Text style={styles.statLabel}>Followers</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{profile.following}</Text>
-            <Text style={styles.statLabel}>Following</Text>
-          </View>
+        {/* Posts Section */}
+        <View style={styles.postsSection}>
+          <Text style={styles.postsSectionTitle}>{posts.length} Active Posts</Text>
+          {posts.length === 0 ? (
+            <View style={styles.emptyPosts}>
+              <Ionicons name="document-outline" size={40} color={colors.mutedForeground} />
+              <Text style={styles.emptyText}>No posts yet</Text>
+            </View>
+          ) : (
+            posts.map((post) => {
+              const media = post.incident_media?.[0];
+              const mediaUrl = media?.path?.startsWith('http') ? media.path : null;
+              const incidentType = Array.isArray(post.incident_types) ? post.incident_types[0] : post.incident_types;
+              return (
+                <TouchableOpacity
+                  key={post.id}
+                  style={styles.postCard}
+                  onPress={() => navigation.navigate('IncidentDetails', { postId: post.id })}
+                >
+                  {mediaUrl && (
+                    <Image source={{ uri: mediaUrl }} style={styles.postImage} />
+                  )}
+                  <View style={styles.postContent}>
+                    <View style={styles.postTypeBadge}>
+                      <Text style={styles.postTypeText}>{incidentType?.label || post.type || 'Incident'}</Text>
+                    </View>
+                    <Text style={styles.postTitle} numberOfLines={2}>{post.title}</Text>
+                    <View style={styles.postMeta}>
+                      <Ionicons name="location-outline" size={12} color={colors.mutedForeground} />
+                      <Text style={styles.postMetaText}>{post.town || 'Unknown location'}</Text>
+                      <Text style={styles.postMetaDot}>·</Text>
+                      <Text style={styles.postMetaText}>{formatDate(post.created_at)}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
         </View>
 
-        <View style={styles.bottomSpacing} />
+        <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Followers/Following Modal */}
+      <Modal visible={!!followModalType} transparent animationType="slide" onRequestClose={() => setFollowModalType(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{followModalType === 'followers' ? 'Followers' : 'Following'}</Text>
+              <TouchableOpacity onPress={() => setFollowModalType(null)}>
+                <Ionicons name="close" size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            {followListLoading ? (
+              <View style={styles.centered}><ActivityIndicator color={colors.primary} /></View>
+            ) : followList.length === 0 ? (
+              <View style={styles.centered}>
+                <Text style={styles.emptyText}>{followModalType === 'followers' ? 'No followers yet' : 'Not following anyone'}</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={followList}
+                keyExtractor={item => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.followUserRow}
+                    onPress={() => {
+                      setFollowModalType(null);
+                      navigation.push('PublicProfile', { userId: item.id });
+                    }}
+                  >
+                    {item.avatar_url ? (
+                      <Image source={{ uri: item.avatar_url }} style={styles.followUserAvatar} />
+                    ) : (
+                      <View style={[styles.followUserAvatar, styles.avatarFallback]}>
+                        <Text style={styles.avatarText}>{item.display_name?.charAt(0)?.toUpperCase() || 'U'}</Text>
+                      </View>
+                    )}
+                    <View style={styles.followUserInfo}>
+                      <Text style={styles.followUserName}>{item.display_name || 'Anonymous'}</Text>
+                      <Text style={styles.followUserTrust}>Trust Score: {item.trust_score || 0}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    height: 56,
-    backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.md, height: 56, backgroundColor: colors.card,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+  backButton: { padding: 4 },
+  headerTitle: { fontSize: 17, fontWeight: '600', color: colors.cardForeground, flex: 1, textAlign: 'center' },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  profileCard: {
+    backgroundColor: colors.card, padding: spacing.lg,
+    alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.cardForeground,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  content: {
-    flex: 1,
-    padding: spacing.md,
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 20,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  profileHeader: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  avatarContainer: {
-    position: 'relative',
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
-  avatarText: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: colors.mutedForeground,
-  },
-  profileInfo: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-    flexWrap: 'wrap',
-  },
-  displayName: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.cardForeground,
-  },
-  levelBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  levelText: {
-    fontSize: 12,
-    color: colors.mutedForeground,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-  },
-  locationText: {
-    fontSize: 14,
-    color: colors.mutedForeground,
-  },
-  bio: {
-    fontSize: 14,
-    color: colors.cardForeground,
-    marginTop: spacing.md,
-    lineHeight: 20,
-  },
+  avatarContainer: { marginBottom: spacing.md },
+  avatar: { width: 88, height: 88, borderRadius: 44 },
+  avatarFallback: { backgroundColor: colors.primary + '20', alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 32, fontWeight: 'bold', color: colors.primary },
+  displayName: { fontSize: fontSize.xl, fontWeight: '700', color: colors.cardForeground, marginBottom: 8 },
+  badgeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  levelBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  levelText: { fontSize: fontSize.xs, fontWeight: '600', color: colors.primary },
+  townBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.muted, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  townText: { fontSize: fontSize.xs, color: colors.mutedForeground },
+  trustRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  trustText: { fontSize: fontSize.sm, color: colors.mutedForeground },
+  bio: { fontSize: fontSize.sm, color: colors.mutedForeground, textAlign: 'center', marginBottom: 12, lineHeight: 20 },
+  statsRow: { flexDirection: 'row', alignItems: 'center', width: '100%', paddingVertical: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 8 },
+  statItem: { flex: 1, alignItems: 'center' },
+  statNumber: { fontSize: fontSize.xl, fontWeight: '700', color: colors.cardForeground },
+  statLabel: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 2 },
+  statDivider: { width: 1, height: 32, backgroundColor: colors.border },
   followButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.primary,
-    borderRadius: 6,
-    paddingVertical: 12,
-    marginTop: spacing.md,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: colors.primary, paddingHorizontal: 32, paddingVertical: 12,
+    borderRadius: 24, marginTop: spacing.md, minWidth: 140, justifyContent: 'center',
   },
-  followingButton: {
-    backgroundColor: colors.muted,
-    borderWidth: 1,
-    borderColor: colors.border,
+  followingButton: { backgroundColor: colors.muted, borderWidth: 1, borderColor: colors.border },
+  followButtonText: { fontSize: fontSize.base, fontWeight: '600', color: colors.primaryForeground },
+  followingButtonText: { color: colors.cardForeground },
+  postsSection: { padding: spacing.md },
+  postsSectionTitle: { fontSize: fontSize.lg, fontWeight: '700', color: colors.cardForeground, marginBottom: spacing.md },
+  emptyPosts: { alignItems: 'center', paddingVertical: 40 },
+  emptyText: { fontSize: fontSize.sm, color: colors.mutedForeground, marginTop: 8 },
+  postCard: {
+    backgroundColor: colors.card, borderRadius: 10, marginBottom: 12,
+    overflow: 'hidden', borderWidth: 1, borderColor: colors.border,
   },
-  followButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.primaryForeground,
-  },
-  followingButtonText: {
-    color: colors.cardForeground,
-  },
-  trustScore: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: spacing.md,
-  },
-  trustScoreText: {
-    fontSize: 14,
-    color: colors.mutedForeground,
-  },
-  statsCard: {
-    flexDirection: 'row',
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.cardForeground,
-  },
-  statLabel: {
-    fontSize: 14,
-    color: colors.mutedForeground,
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: colors.border,
-    marginVertical: 4,
-  },
-  bottomSpacing: {
-    height: 80,
-  },
+  postImage: { width: '100%', height: 160 },
+  postContent: { padding: spacing.md },
+  postTypeBadge: { backgroundColor: colors.primary + '15', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginBottom: 6 },
+  postTypeText: { fontSize: fontSize.xs, color: colors.primary, fontWeight: '600' },
+  postTitle: { fontSize: fontSize.base, fontWeight: '600', color: colors.cardForeground, marginBottom: 6 },
+  postMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  postMetaText: { fontSize: fontSize.xs, color: colors.mutedForeground },
+  postMetaDot: { fontSize: fontSize.xs, color: colors.mutedForeground },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalSheet: { backgroundColor: colors.card, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '70%', paddingBottom: 32 },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginTop: 10 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  modalTitle: { fontSize: fontSize.lg, fontWeight: '700', color: colors.cardForeground },
+  followUserRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: colors.border },
+  followUserAvatar: { width: 44, height: 44, borderRadius: 22, marginRight: 12 },
+  followUserInfo: { flex: 1 },
+  followUserName: { fontSize: fontSize.base, fontWeight: '500', color: colors.cardForeground },
+  followUserTrust: { fontSize: fontSize.xs, color: colors.mutedForeground, marginTop: 2 },
 });
