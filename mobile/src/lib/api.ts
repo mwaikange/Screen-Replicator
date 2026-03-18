@@ -1573,8 +1573,12 @@ export const supportApi = {
       type: r.request_type || 'counseling',
       status: r.status || 'pending',
       description: r.description || '',
-      contactMethod: r.contact_method || 'phone', doc1: r.doc_1 || null, doc2: r.doc_2 || null, doc3: r.doc_3 || null,
+      priority: r.priority || 'medium',
+      contactMethod: r.contact_method || 'phone',
+      notes: r.notes || null,
+      assignedTo: r.assigned_to || null,
       createdAt: r.created_at,
+      updatedAt: r.updated_at || r.created_at,
     }));
 
     return makeResponse(requests);

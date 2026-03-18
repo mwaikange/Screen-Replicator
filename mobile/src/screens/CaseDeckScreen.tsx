@@ -13,21 +13,45 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
-import { casesApi, userApi } from '../lib/api';
-import { Case } from '../lib/types';
+import { casesApi, supportApi } from '../lib/api';
+import { Case, SupportRequest } from '../lib/types';
 import { supabase } from '../lib/supabase';
 
 const appLogo = require('../../assets/logo.jpg');
 
 const statusColors: Record<string, { bg: string; text: string; label: string }> = {
-  open:     { bg: '#fef3c7', text: '#92400e',  label: 'Open' },
-  pending:  { bg: '#eff6ff', text: '#1d4ed8',  label: 'Pending' },
-  active:   { bg: '#ede9fe', text: '#6b21a8',  label: 'Active' },
-  resolved: { bg: '#dcfce7', text: '#166534',  label: 'Resolved' },
-  rejected: { bg: '#fee2e2', text: '#991b1b',  label: 'Rejected' },
-  in_progress: { bg: '#ede9fe', text: '#6b21a8', label: 'In Progress' },
-  closed: { bg: '#dcfce7', text: '#166534', label: 'Closed' },
-  archived: { bg: '#f3f4f6', text: '#6b7280', label: 'Archived' },
+  // OPEN group
+  open:          { bg: '#fef3c7', text: '#92400e', label: 'Open' },
+  assigned:      { bg: '#fef9c3', text: '#854d0e', label: 'Assigned' },
+  // PENDING group
+  in_progress:   { bg: '#eff6ff', text: '#1d4ed8', label: 'In Progress' },
+  under_review:  { bg: '#e0f2fe', text: '#075985', label: 'Under Review' },
+  // RESOLVED group
+  resolved:      { bg: '#dcfce7', text: '#166534', label: 'Resolved' },
+  closed:        { bg: '#f0fdf4', text: '#14532d', label: 'Closed' },
+  // ESCALATED
+  escalated:     { bg: '#fce7f3', text: '#9d174d', label: 'Escalated' },
+  // fallback
+  pending:       { bg: '#eff6ff', text: '#1d4ed8', label: 'Pending' },
+  rejected:      { bg: '#fee2e2', text: '#991b1b', label: 'Rejected' },
+};
+
+// Map DB status → pill filter key
+function getFilterKey(status: string): string {
+  if (['open', 'assigned'].includes(status)) return 'open';
+  if (['in_progress', 'under_review', 'pending'].includes(status)) return 'pending';
+  if (['resolved', 'closed'].includes(status)) return 'resolved';
+  if (status === 'escalated') return 'escalated';
+  return 'open';
+}
+
+// Counselling type labels
+const counsellingTypeLabels: Record<string, string> = {
+  counseling:   'Counselling',
+  legal:        'Legal',
+  medical:      'Medical',
+  emergency:    'Emergency',
+  support:      'Support',
 };
 
 const priorityColors: Record<string, string> = {
@@ -86,6 +110,8 @@ export default function CaseDeckScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
+  const [activeType, setActiveType]     = useState<'reports' | 'counselling'>('reports');
+  const [counselling, setCounselling]   = useState<SupportRequest[]>([]);
 
   // FIX: three distinct states:
   //   null  = still checking (show spinner)
@@ -126,10 +152,14 @@ export default function CaseDeckScreen() {
 
   const fetchCases = useCallback(async () => {
     try {
-      const response = await casesApi.getAll();
-      setCases(response.data);
+      const [casesRes, counselRes] = await Promise.all([
+        casesApi.getAll(),
+        supportApi.getAll(),
+      ]);
+      setCases(casesRes.data);
+      setCounselling(counselRes.data);
     } catch (error) {
-      console.error('Failed to fetch cases:', error);
+      console.error('Failed to fetch:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -152,16 +182,18 @@ export default function CaseDeckScreen() {
     }, [checkSubscription, fetchCases])
   );
 
-  const filteredCases = activeFilter === 'all'
-    ? cases
-    : cases.filter(c => c.status === activeFilter);
+  const currentItems = activeType === 'reports' ? cases : counselling;
+
+  const filteredItems = activeFilter === 'all'
+    ? currentItems
+    : currentItems.filter(item => getFilterKey(item.status) === activeFilter);
 
   const filterTabs = [
-    { key: 'all',      label: 'All' },
-    { key: 'pending',  label: 'Pending' },
-    { key: 'active',   label: 'Active' },
-    { key: 'resolved', label: 'Resolved' },
-    { key: 'rejected', label: 'Rejected' },
+    { key: 'all',       label: 'All' },
+    { key: 'open',      label: 'Open' },
+    { key: 'pending',   label: 'Pending' },
+    { key: 'resolved',  label: 'Resolved' },
+    { key: 'escalated', label: 'Escalated' },
   ];
 
   const renderContent = () => {
@@ -210,13 +242,40 @@ export default function CaseDeckScreen() {
     // Has subscription — show cases list
     return (
       <FlatList
-        data={filteredCases}
-        renderItem={({ item }) => (
-          <CaseCard
-            caseItem={item}
-            onPress={() => navigation.navigate('CaseDetail', { caseId: item.id })}
-          />
-        )}
+        data={filteredItems as any[]}
+        renderItem={({ item }) => {
+          if (activeType === 'counselling') {
+            const sc = statusColors[item.status] || statusColors.pending;
+            const typeLabel = counsellingTypeLabels[item.type] || item.type;
+            return (
+              <TouchableOpacity style={styles.caseCard} activeOpacity={0.7} onPress={() => navigation.navigate('CaseDetail', { caseId: item.id, itemType: 'counselling' })}>
+                <View style={styles.caseHeader}>
+                  <View style={styles.caseHeaderLeft}>
+                    <Ionicons name="heart-outline" size={14} color="#9333ea" />
+                    <Text style={[styles.caseType, { color: '#9333ea' }]}>{typeLabel}</Text>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
+                    <Text style={[styles.statusText, { color: sc.text }]}>{sc.label}</Text>
+                  </View>
+                </View>
+                <Text style={styles.caseTitle} numberOfLines={1}>{typeLabel} Request</Text>
+                <Text style={styles.caseDescription} numberOfLines={2}>{item.description}</Text>
+                <View style={styles.caseFooter}>
+                  <View style={styles.caseFooterLeft}>
+                    <Ionicons name="calendar-outline" size={14} color={colors.mutedForeground} />
+                    <Text style={styles.caseDate}>{formatDate(item.createdAt)}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          }
+          return (
+            <CaseCard
+              caseItem={item}
+              onPress={() => navigation.navigate('CaseDetail', { caseId: item.id })}
+            />
+          );
+        }}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
@@ -230,13 +289,13 @@ export default function CaseDeckScreen() {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="folder-open-outline" size={48} color={colors.mutedForeground} />
-            <Text style={styles.emptyTitle}>No Cases Yet</Text>
-            <Text style={styles.emptyText}>Open a new case to get started</Text>
+            <Text style={styles.emptyTitle}>No Files Yet</Text>
+            <Text style={styles.emptyText}>Open a new file to get started</Text>
             <TouchableOpacity
               style={styles.emptyButton}
               onPress={() => navigation.navigate('OpenNewCase')}
             >
-              <Text style={styles.emptyButtonText}>Open New Case</Text>
+              <Text style={styles.emptyButtonText}>Open New File</Text>
             </TouchableOpacity>
           </View>
         }
@@ -257,6 +316,28 @@ export default function CaseDeckScreen() {
           onPress={() => navigation.navigate('OpenNewCase')}
         >
           <Ionicons name="add" size={24} color={colors.primaryForeground} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Type toggle — Reports / Counselling */}
+      <View style={styles.typeToggleRow}>
+        <TouchableOpacity
+          style={[styles.typeToggleBtn, activeType === 'reports' && styles.typeToggleBtnActive]}
+          onPress={() => { setActiveType('reports'); setActiveFilter('all'); }}
+        >
+          <Ionicons name="folder-outline" size={14} color={activeType === 'reports' ? '#fff' : colors.mutedForeground} />
+          <Text style={[styles.typeToggleText, activeType === 'reports' && styles.typeToggleTextActive]}>
+            Reports ({cases.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.typeToggleBtn, activeType === 'counselling' && styles.typeToggleBtnActive, { backgroundColor: activeType === 'counselling' ? '#9333ea' : undefined }]}
+          onPress={() => { setActiveType('counselling'); setActiveFilter('all'); }}
+        >
+          <Ionicons name="heart-outline" size={14} color={activeType === 'counselling' ? '#fff' : colors.mutedForeground} />
+          <Text style={[styles.typeToggleText, activeType === 'counselling' && styles.typeToggleTextActive]}>
+            Counselling ({counselling.length})
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -336,9 +417,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  filterContainer: {
+  typeToggleRow: {
+    flexDirection: 'row',
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingTop: 10,
+    gap: 10,
+  },
+  typeToggleBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 9, borderRadius: 10,
+    borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.card,
+  },
+  typeToggleBtnActive: {
+    backgroundColor: colors.primary, borderColor: colors.primary,
+  },
+  typeToggleText: { fontSize: 13, fontWeight: '600', color: colors.mutedForeground },
+  typeToggleTextActive: { color: '#fff' },
+  filterContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 10,
   },
   filterRow: {
     flexDirection: 'row',
@@ -349,16 +446,16 @@ const styles = StyleSheet.create({
   filterTab: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
     borderRadius: 20,
   },
   filterTabActive: {
     backgroundColor: colors.cardForeground,
   },
   filterTabText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 10,
+    fontWeight: '600',
     color: colors.mutedForeground,
   },
   filterTabTextActive: {

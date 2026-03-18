@@ -15,8 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
-import { casesApi } from '../lib/api';
-import { Case, RootStackParamList } from '../lib/types';
+import { casesApi, supportApi } from '../lib/api';
+import { Case, SupportRequest, RootStackParamList } from '../lib/types';
 
 const statusColors: Record<string, { bg: string; text: string; label: string }> = {
   open:     { bg: '#fef3c7', text: '#92400e', label: 'Open' },
@@ -49,9 +49,11 @@ function formatDate(dateString: string): string {
 export default function CaseDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RootStackParamList, 'CaseDetail'>>();
-  const { caseId } = route.params;
+  const { caseId, itemType = 'report' } = route.params;
+  const isCounselling = itemType === 'counselling';
 
   const [caseData, setCaseData] = useState<Case | null>(null);
+  const [counselData, setCounselData] = useState<SupportRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'details' | 'evidence' | 'documents'>('details');
   const [closingNote, setClosingNote] = useState('');
@@ -59,14 +61,20 @@ export default function CaseDetailScreen() {
 
   const fetchCase = useCallback(async () => {
     try {
-      const response = await casesApi.getById(caseId);
-      setCaseData(response.data);
+      if (isCounselling) {
+        const { data } = await supportApi.getAll();
+        const found = (data || []).find((r: SupportRequest) => r.id === caseId);
+        setCounselData(found || null);
+      } else {
+        const response = await casesApi.getById(caseId);
+        setCaseData(response.data);
+      }
     } catch (error) {
-      console.error('Failed to fetch case:', error);
+      console.error('Failed to fetch:', error);
     } finally {
       setLoading(false);
     }
-  }, [caseId]);
+  }, [caseId, isCounselling]);
 
   useEffect(() => {
     fetchCase();
@@ -137,6 +145,99 @@ export default function CaseDetailScreen() {
     );
   }
 
+  // Counselling view
+  if (isCounselling) {
+    if (!counselData) {
+      return (
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color={colors.cardForeground} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Counselling Details</Text>
+            <View style={styles.headerRight} />
+          </View>
+          <View style={styles.loadingContainer}>
+            <Text style={styles.errorText}>Request not found</Text>
+          </View>
+        </SafeAreaView>
+      );
+    }
+    const sc = statusColors[counselData.status] || statusColors.pending;
+    const counsellingTypeLabels: Record<string, string> = {
+      counseling: 'Counselling', legal: 'Legal', medical: 'Medical', emergency: 'Emergency', support: 'Support',
+    };
+    const typeLabel = counsellingTypeLabels[counselData.type] || counselData.type;
+    const counselWhatsApp = () => {
+      const msg = `Counselling Request ID: ${caseId}\nType: ${typeLabel}\nStatus: ${sc.label}\n\nI need assistance with this request.`;
+      Linking.openURL(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`);
+    };
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={colors.cardForeground} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Counselling Details</Text>
+          <TouchableOpacity onPress={counselWhatsApp} style={styles.supportButton}>
+            <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Title card */}
+          <View style={styles.card}>
+            <View style={styles.badgeRow}>
+              <View style={[styles.statusBadge, { backgroundColor: '#f3e8ff' }]}>
+                <Text style={[styles.statusText, { color: '#7e22ce' }]}>Counselling</Text>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
+                <Text style={[styles.statusText, { color: sc.text }]}>{sc.label}</Text>
+              </View>
+            </View>
+            <Text style={styles.caseTitle}>{typeLabel} Request</Text>
+            <View style={styles.metaRow}>
+              <View style={styles.metaItem}>
+                <Ionicons name="calendar-outline" size={14} color={colors.mutedForeground} />
+                <Text style={styles.metaText}>{formatDate(counselData.createdAt)}</Text>
+              </View>
+              {counselData.assignedTo && (
+                <View style={styles.metaItem}>
+                  <Ionicons name="person-outline" size={14} color={colors.mutedForeground} />
+                  <Text style={styles.metaText}>{counselData.assignedTo}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Description */}
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Description</Text>
+            <Text style={styles.descriptionText}>{counselData.description || 'No description provided.'}</Text>
+          </View>
+
+          {/* Notes from assigned counsellor */}
+          {!!counselData.notes && (
+            <View style={styles.card}>
+              <View style={styles.notesHeader}>
+                <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+                <Text style={[styles.sectionTitle, { color: colors.primary, marginBottom: 0 }]}>Counsellor Notes</Text>
+              </View>
+              <Text style={styles.notesText}>{counselData.notes}</Text>
+            </View>
+          )}
+
+          {/* WhatsApp */}
+          <TouchableOpacity style={styles.whatsappBtn} onPress={counselWhatsApp} activeOpacity={0.8}>
+            <Ionicons name="logo-whatsapp" size={20} color="#fff" />
+            <Text style={styles.whatsappBtnText}>Submit Query via WhatsApp</Text>
+          </TouchableOpacity>
+
+          <View style={styles.bottomSpacing} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   if (!caseData) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -160,7 +261,7 @@ export default function CaseDetailScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} data-testid="button-back">
           <Ionicons name="arrow-back" size={24} color={colors.cardForeground} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>File Details</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>{isCounselling ? 'Counselling Details' : 'File Details'}</Text>
         <TouchableOpacity onPress={handleContactSupport} style={styles.supportButton} data-testid="button-contact-support">
           <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.primary} />
         </TouchableOpacity>
