@@ -20,7 +20,11 @@ import { supabase } from '../lib/supabase';
 const appLogo = require('../../assets/logo.jpg');
 
 const statusColors: Record<string, { bg: string; text: string; label: string }> = {
-  open: { bg: '#fef3c7', text: '#92400e', label: 'Open' },
+  open:     { bg: '#fef3c7', text: '#92400e',  label: 'Open' },
+  pending:  { bg: '#eff6ff', text: '#1d4ed8',  label: 'Pending' },
+  active:   { bg: '#ede9fe', text: '#6b21a8',  label: 'Active' },
+  resolved: { bg: '#dcfce7', text: '#166534',  label: 'Resolved' },
+  rejected: { bg: '#fee2e2', text: '#991b1b',  label: 'Rejected' },
   in_progress: { bg: '#ede9fe', text: '#6b21a8', label: 'In Progress' },
   closed: { bg: '#dcfce7', text: '#166534', label: 'Closed' },
   archived: { bg: '#f3f4f6', text: '#6b7280', label: 'Archived' },
@@ -153,10 +157,11 @@ export default function CaseDeckScreen() {
     : cases.filter(c => c.status === activeFilter);
 
   const filterTabs = [
-    { key: 'all', label: 'All' },
-    { key: 'open', label: 'Open' },
-    { key: 'in_progress', label: 'Active' },
-    { key: 'closed', label: 'Closed' },
+    { key: 'all',      label: 'All' },
+    { key: 'pending',  label: 'Pending' },
+    { key: 'active',   label: 'Active' },
+    { key: 'resolved', label: 'Resolved' },
+    { key: 'rejected', label: 'Rejected' },
   ];
 
   const renderContent = () => {

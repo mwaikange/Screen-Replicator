@@ -1355,7 +1355,8 @@ export const casesApi = {
       priority: c.priority || 'medium',
       evidence: c.evidence || [],
       documents: c.documents || [],
-      assignedTo: c.assigned_to || null,
+      assignedTo: c.assigned_to_name || c.assigned_to || null,
+      resolutionNotes: c.resolution_notes || null,
       createdAt: c.created_at,
       updatedAt: c.updated_at || c.created_at,
     }));
@@ -1382,7 +1383,8 @@ export const casesApi = {
       priority: data.priority || 'medium',
       evidence: data.evidence || [],
       documents: data.documents || [],
-      assignedTo: data.assigned_to || null,
+      assignedTo: data.assigned_to_name || data.assigned_to || null,
+      resolutionNotes: data.resolution_notes || null,
       createdAt: data.created_at,
       updatedAt: data.updated_at || data.created_at,
     };

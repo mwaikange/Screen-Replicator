@@ -118,6 +118,7 @@ export type Case = {
   evidence: CaseEvidence[];
   documents: CaseDocument[];
   assignedTo: string | null;
+  resolutionNotes?: string | null;
   createdAt: string;
   updatedAt: string;
 };
