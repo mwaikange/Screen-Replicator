@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
+import { supabase } from '../lib/supabase';
 import { userApi, postsApi } from '../lib/api';
 import { RootStackParamList } from '../lib/types';
 
@@ -34,6 +35,7 @@ export default function PublicProfileScreen() {
   const [followModalType, setFollowModalType] = useState<'followers' | 'following' | null>(null);
   const [followList, setFollowList] = useState<FollowUser[]>([]);
   const [followListLoading, setFollowListLoading] = useState(false);
+  const [communityTrust, setCommunityTrust] = useState(0);
 
   const loadProfile = useCallback(async () => {
     console.log('[PublicProfile] loading userId:', userId);
@@ -50,6 +52,18 @@ export default function PublicProfileScreen() {
       console.log('[PublicProfile] profileRes.data:', profileRes.data);
       if (profileRes.data) setProfile(profileRes.data);
       if (postsRes.data) setPosts(postsRes.data);
+      // Fetch Community Trust = confirms on this user's posts
+      const { data: incidents } = await supabase
+        .from('incidents').select('id').eq('created_by', userId);
+      if (incidents && incidents.length > 0) {
+        const ids = incidents.map((i: any) => i.id);
+        const { count } = await supabase
+          .from('incident_reactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('reaction_type', 'confirm')
+          .in('incident_id', ids);
+        setCommunityTrust(count || 0);
+      }
     } catch (e) {
       console.error('[PublicProfile] Failed to load:', e);
     } finally {
@@ -144,13 +158,9 @@ export default function PublicProfileScreen() {
             )}
           </View>
 
-          {/* Name + Level */}
+          {/* Name + Badges */}
           <Text style={styles.displayName}>{profile.displayName}</Text>
           <View style={styles.badgeRow}>
-            <View style={styles.levelBadge}>
-              <Ionicons name="shield-outline" size={12} color={colors.primary} />
-              <Text style={styles.levelText}>Level {profile.level}</Text>
-            </View>
             {profile.town ? (
               <View style={styles.townBadge}>
                 <Ionicons name="location-outline" size={12} color={colors.mutedForeground} />
@@ -159,10 +169,18 @@ export default function PublicProfileScreen() {
             ) : null}
           </View>
 
-          {/* Trust Score */}
-          <View style={styles.trustRow}>
-            <Ionicons name="star-outline" size={14} color={colors.warning} />
-            <Text style={styles.trustText}>Trust Score: {profile.trustScore}</Text>
+          {/* Trust Score + Community Trust — always shown together */}
+          <View style={styles.trustScoreRow}>
+            <View style={styles.trustBadge}>
+              <Ionicons name="star" size={14} color="#f59e0b" />
+              <Text style={styles.trustBadgeLabel}>Admin Trust</Text>
+              <Text style={styles.trustBadgeValue}>{profile.trustScore}</Text>
+            </View>
+            <View style={[styles.trustBadge, { backgroundColor: '#22c55e15', borderColor: '#22c55e40' }]}>
+              <Ionicons name="shield-checkmark" size={14} color="#22c55e" />
+              <Text style={[styles.trustBadgeLabel, { color: '#22c55e' }]}>Community Trust</Text>
+              <Text style={[styles.trustBadgeValue, { color: '#22c55e' }]}>{communityTrust}</Text>
+            </View>
           </View>
 
           {/* Bio */}
@@ -328,6 +346,10 @@ const styles = StyleSheet.create({
   badgeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   levelBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   levelText: { fontSize: fontSize.xs, fontWeight: '600', color: colors.primary },
+  trustScoreRow: { flexDirection: 'row', gap: 10, marginTop: 10, marginBottom: 4 },
+  trustBadge: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#f59e0b15', borderWidth: 1, borderColor: '#f59e0b40', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10 },
+  trustBadgeLabel: { fontSize: 11, fontWeight: '500', color: '#92400e', flex: 1 },
+  trustBadgeValue: { fontSize: 14, fontWeight: '800', color: '#92400e' },
   townBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.muted, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   townText: { fontSize: fontSize.xs, color: colors.mutedForeground },
   trustRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },

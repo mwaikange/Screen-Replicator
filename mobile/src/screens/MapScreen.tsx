@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import {
   View,
   Text,
@@ -126,7 +126,7 @@ function clusterIncidents(incidents: MapIncident[]): Cluster[] {
 }
 
 // ─── Google Maps style teardrop pin ──────────────────────────────────────────
-function PinMarker({ severityColor, count }: { severityColor: string; count: number }) {
+const PinMarker = memo(function PinMarker({ severityColor, count }: { severityColor: string; count: number }) {
   return (
     <View style={pin.container}>
       {/* Outer teardrop shape */}
@@ -147,7 +147,8 @@ function PinMarker({ severityColor, count }: { severityColor: string; count: num
       <View style={pin.shadowEllipse} />
     </View>
   );
-}
+
+});
 
 const PIN_RED = '#D32F2F';
 const PIN_DARK = '#B71C1C';
@@ -224,6 +225,7 @@ export default function MapScreen() {
   const [selectedClusterCount, setSelectedClusterCount] = useState(1);
   const [viewRadius, setViewRadius]             = useState<number | null>(null);
   const [showRadiusPicker, setShowRadiusPicker] = useState(false);
+  const [markersReady, setMarkersReady]         = useState(false);
 
   // Load map incidents directly from Supabase (same logic as /api/map-incidents)
   useEffect(() => {
@@ -265,6 +267,8 @@ export default function MapScreen() {
 
         console.log('[MapScreen] Loaded incidents:', incidents.length);
         setPosts(incidents);
+        // Flip tracksViewChanges off after a short delay so pins render then stop tracking
+        setTimeout(() => setMarkersReady(true), 500);
       } catch (e) {
         console.error('[MapScreen] Error:', e);
       } finally {
@@ -318,6 +322,9 @@ export default function MapScreen() {
     }
   }, [userLocation]);
 
+  // Memoize clusters — prevents recompute on every render
+  const clusters = useCallback(() => clusterIncidents(visiblePosts), [visiblePosts])();
+
   const currentRadiusLabel = viewRadius === null
     ? 'All incidents'
     : RADIUS_OPTIONS.find(o => o.value === viewRadius)?.label ?? `${viewRadius} m`;
@@ -367,7 +374,7 @@ export default function MapScreen() {
           )}
 
           {/* Incident markers — clustered */}
-          {clusterIncidents(visiblePosts).map((cluster, idx) => (
+          {clusters.map((cluster, idx) => (
             <Marker
               key={idx}
               coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
@@ -379,7 +386,7 @@ export default function MapScreen() {
                 setSelectedPost(top);
                 setSelectedClusterCount(cluster.incidents.length);
               }}
-              tracksViewChanges={true}
+              tracksViewChanges={!markersReady}
               anchor={{ x: 0.5, y: 1 }}
             >
               <PinMarker

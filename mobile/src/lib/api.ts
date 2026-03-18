@@ -495,11 +495,21 @@ export const postsApi = {
       .maybeSingle();
 
     if (incident?.created_by && incident.created_by !== userId) {
+      // Get reactor's display name for the notification message
+      const { data: reactorProfile } = await supabase
+        .from('profiles').select('display_name').eq('id', userId).maybeSingle();
+      const reactorName = reactorProfile?.display_name ?? 'Someone';
+
+      const isConfirm = reactionType === 'confirm';
       const { error: notifErr } = await supabase.from('user_notifications').insert({
         user_id: incident.created_by,
-        type: 'reaction',
-        title: 'Your post got a reaction',
-        message: REACTION_MESSAGES[reactionType] ?? 'Someone reacted to your post',
+        type: isConfirm ? 'trust_badge' : 'reaction',
+        title: isConfirm
+          ? '🥳 Congrats!! Community Trust Badge'
+          : 'Your post got a reaction',
+        message: isConfirm
+          ? `🥳 Congrats!! ${reactorName} has given your post a Trust Badge!`
+          : REACTION_MESSAGES[reactionType] ?? 'Someone reacted to your post',
         entity_id: postId,
       });
       console.log('[react] notification insert:', notifErr ? 'ERROR: ' + notifErr.message : 'OK', 'owner:', incident.created_by);

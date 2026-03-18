@@ -17,6 +17,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../lib/theme';
 import { postsApi, postImages } from '../lib/api';
+import { supabase } from '../lib/supabase';
+import { sendCommentNotifications } from './FeedScreen';
 import { Post, Comment, TimelineEvent } from '../lib/types';
 
 const typeLabels: Record<string, { label: string; bgColor: string }> = {
@@ -66,9 +68,21 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'timeline' | 'media' | 'comments'>(initialTab || 'timeline');
   const [commentText, setCommentText] = useState('');
-  const [liked, setLiked] = useState(false);
-  const [following, setFollowing] = useState(false);
-  const [shared, setShared] = useState(false);
+  const [reactions, setReactions]       = useState<Set<string>>(new Set());
+  const [reactionCounts, setReactionCounts] = useState({ upvote: 0, downvote: 0, love: 0, confirm: 0 });
+  const [following, setFollowing]         = useState(false);
+  const [shared, setShared]               = useState(false);
+  const [currentUserId, setCurrentUserId] = useState('');
+  const [showCreatorModal, setShowCreatorModal] = useState(false);
+  const [creatorProfile, setCreatorProfile] = useState<{
+    id: string;
+    display_name: string;
+    avatar_url: string | null;
+    trust_score: number;
+    followers: number;
+    isFollowing: boolean;
+  } | null>(null);
+  const [creatorFollowLoading, setCreatorFollowLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -85,16 +99,127 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+    // Load current user + their reactions + follow state
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setCurrentUserId(user.id);
 
-  const handleVote = async (vote: 'up' | 'down') => {
-    await postsApi.vote(postId, vote);
-    const res = await postsApi.getById(postId);
-    setPost(res.data);
+      const { data: myR } = await supabase
+        .from('incident_reactions').select('reaction_type')
+        .eq('incident_id', postId).eq('user_id', user.id);
+      if (myR) setReactions(new Set(myR.map((r: any) => r.reaction_type)));
+
+      const { data: allR } = await supabase
+        .from('incident_reactions').select('reaction_type').eq('incident_id', postId);
+      if (allR) {
+        const counts = { upvote: 0, downvote: 0, love: 0, confirm: 0 };
+        allR.forEach((r: any) => { if (r.reaction_type in counts) (counts as any)[r.reaction_type]++; });
+        setReactionCounts(counts);
+      }
+
+      const { data: follow } = await supabase
+        .from('incident_followers').select('user_id')
+        .eq('incident_id', postId).eq('user_id', user.id).maybeSingle();
+      setFollowing(!!follow);
+    })();
+  }, [loadData, postId]);
+
+  const handleReact = async (type: 'upvote' | 'downvote' | 'love' | 'confirm') => {
+    // Cannot react to own post
+    if (post?.userId && post.userId === currentUserId) return;
+    const prev = new Set(reactions);
+    const next = new Set(prev);
+    if (next.has(type)) {
+      next.delete(type);
+    } else {
+      if (type === 'upvote')   next.delete('downvote');
+      if (type === 'downvote') next.delete('upvote');
+      next.add(type);
+    }
+    // Optimistic UI
+    setReactions(next);
+    setReactionCounts(c => {
+      const n = { ...c };
+      if (prev.has(type)) { n[type as keyof typeof n] = Math.max(0, n[type as keyof typeof n] - 1); }
+      else {
+        if (type === 'upvote'   && prev.has('downvote')) n.downvote = Math.max(0, n.downvote - 1);
+        if (type === 'downvote' && prev.has('upvote'))   n.upvote   = Math.max(0, n.upvote - 1);
+        n[type as keyof typeof n]++;
+      }
+      return n;
+    });
+    try {
+      await postsApi.react(postId, type);
+    } catch {
+      setReactions(prev); // revert on failure
+    }
   };
 
-  const handleLike = () => {
-    setLiked(!liked);
+  const handleFollow = async () => {
+    const next = !following;
+    setFollowing(next);
+    try {
+      if (next) {
+        await supabase.from('incident_followers').insert({ incident_id: postId, user_id: currentUserId });
+      } else {
+        await supabase.from('incident_followers').delete()
+          .eq('incident_id', postId).eq('user_id', currentUserId);
+      }
+    } catch { setFollowing(!next); }
+  };
+
+  const openCreatorModal = async () => {
+    if (!post?.userId) return;
+    setShowCreatorModal(true);
+    try {
+      // Fetch creator profile + follower count + whether current user follows them
+      const [profileRes, followCountRes, isFollowingRes] = await Promise.all([
+        supabase.from('profiles').select('id, display_name, avatar_url, trust_score').eq('id', post.userId).maybeSingle(),
+        supabase.from('user_follows').select('id', { count: 'exact', head: true }).eq('following_id', post.userId),
+        supabase.from('user_follows').select('follower_id').eq('follower_id', currentUserId).eq('following_id', post.userId).maybeSingle(),
+      ]);
+      setCreatorProfile({
+        id: post.userId,
+        display_name: profileRes.data?.display_name ?? post.userName,
+        avatar_url: profileRes.data?.avatar_url ?? null,
+        trust_score: profileRes.data?.trust_score ?? 0,
+        followers: followCountRes.count ?? 0,
+        isFollowing: !!isFollowingRes.data,
+      });
+    } catch (e) {
+      console.error('[creatorModal]', e);
+    }
+  };
+
+  const handleCreatorFollow = async () => {
+    if (!creatorProfile || creatorFollowLoading) return;
+    setCreatorFollowLoading(true);
+    const next = !creatorProfile.isFollowing;
+    setCreatorProfile(p => p ? { ...p, isFollowing: next, followers: next ? p.followers + 1 : p.followers - 1 } : p);
+    try {
+      if (next) {
+        await supabase.from('user_follows').insert({ follower_id: currentUserId, following_id: creatorProfile.id });
+        // Notify creator
+        if (creatorProfile.id !== currentUserId) {
+          await supabase.from('user_notifications').insert({
+            user_id: creatorProfile.id,
+            type: 'new_follower',
+            title: 'New Follower',
+            message: 'Someone started following you',
+            entity_id: currentUserId,
+          });
+        }
+      } else {
+        await supabase.from('user_follows').delete()
+          .eq('follower_id', currentUserId).eq('following_id', creatorProfile.id);
+      }
+    } catch {
+      // revert
+      setCreatorProfile(p => p ? { ...p, isFollowing: !next, followers: next ? p.followers - 1 : p.followers + 1 } : p);
+    } finally {
+      setCreatorFollowLoading(false);
+    }
   };
 
   const handleShare = async () => {
@@ -107,7 +232,7 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
   };
 
   const handleSubmitComment = async () => {
-    if (!commentText.trim()) return;
+    if (!commentText.trim() || !currentUserId) return;
     await postsApi.addComment(postId, commentText.trim());
     setCommentText('');
     const [postRes, commentsRes, timelineRes] = await Promise.all([
@@ -118,6 +243,22 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
     setPost(postRes.data);
     setComments(commentsRes.data);
     setTimeline(timelineRes.data);
+    // Notify post owner + followers
+    // Get commenter's real display name from profiles table
+    const { data: commenterProfile } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('id', currentUserId)
+      .maybeSingle();
+    const commenterName = commenterProfile?.display_name ?? 'Someone';
+
+    // Always send — sendCommentNotifications handles exclusions internally
+    if (postRes.data?.userId) {
+      await sendCommentNotifications(
+        postId, postRes.data.title, postRes.data.userId,
+        currentUserId, commenterName
+      );
+    }
     Alert.alert('Comment posted');
   };
 
@@ -225,69 +366,57 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
                   <Text style={styles.detailValue}>{post.userTown}</Text>
                 </View>
               </View>
-              <View style={styles.detailItem}>
+              <TouchableOpacity
+                style={styles.detailItem}
+                onPress={() => post.userId && navigation.navigate('PublicProfile', { userId: post.userId })}
+                activeOpacity={0.7}
+              >
                 <Ionicons name="person-outline" size={16} color={colors.mutedForeground} />
                 <View>
                   <Text style={styles.detailLabel}>Reporter</Text>
-                  <Text style={styles.detailValue}>{post.userName}</Text>
+                  <Text style={[styles.detailValue, { color: colors.primary }]}>{post.userName}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.votesRow}>
               <View style={styles.voteButtons}>
                 <TouchableOpacity
-                  style={[
-                    styles.voteButton,
-                    post.votes?.userVote === 'up' && styles.voteButtonActiveUp,
-                  ]}
-                  onPress={() => handleVote('up')}
+                  style={[styles.voteButton, reactions.has('upvote') && styles.voteButtonActiveUp]}
+                  onPress={() => handleReact('upvote')}
                 >
                   <Ionicons
                     name="thumbs-up-outline"
                     size={16}
-                    color={post.votes?.userVote === 'up' ? colors.primary : colors.mutedForeground}
+                    color={reactions.has('upvote') ? '#22c55e' : colors.mutedForeground}
                   />
-                  <Text
-                    style={[
-                      styles.voteCount,
-                      post.votes?.userVote === 'up' && styles.voteCountActiveUp,
-                    ]}
-                  >
-                    {post.votes?.upvotes || 0}
+                  <Text style={[styles.voteCount, reactions.has('upvote') && styles.voteCountActiveUp]}>
+                    {reactionCounts.upvote}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[
-                    styles.voteButton,
-                    post.votes?.userVote === 'down' && styles.voteButtonActiveDown,
-                  ]}
-                  onPress={() => handleVote('down')}
+                  style={[styles.voteButton, reactions.has('downvote') && styles.voteButtonActiveDown]}
+                  onPress={() => handleReact('downvote')}
                 >
                   <Ionicons
                     name="thumbs-down-outline"
                     size={16}
-                    color={post.votes?.userVote === 'down' ? '#ef4444' : colors.mutedForeground}
+                    color={reactions.has('downvote') ? '#ef4444' : colors.mutedForeground}
                   />
-                  <Text
-                    style={[
-                      styles.voteCount,
-                      post.votes?.userVote === 'down' && styles.voteCountActiveDown,
-                    ]}
-                  >
-                    {post.votes?.downvotes || 0}
+                  <Text style={[styles.voteCount, reactions.has('downvote') && styles.voteCountActiveDown]}>
+                    {reactionCounts.downvote}
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={styles.likeButton} onPress={handleLike}>
+              <TouchableOpacity style={styles.likeButton} onPress={() => handleReact('love')}>
                 <Ionicons
-                  name={liked ? 'heart' : 'heart-outline'}
+                  name={reactions.has('love') ? 'heart' : 'heart-outline'}
                   size={16}
-                  color={liked ? '#ef4444' : colors.mutedForeground}
+                  color={reactions.has('love') ? '#ef4444' : colors.mutedForeground}
                 />
-                <Text style={[styles.likeCount, liked && { color: '#ef4444' }]}>
-                  {post.likes + (liked ? 1 : 0)}
+                <Text style={[styles.likeCount, reactions.has('love') && { color: '#ef4444' }]}>
+                  {reactionCounts.love}
                 </Text>
               </TouchableOpacity>
 
@@ -299,20 +428,23 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.actionButtons}>
+            <View style={[styles.actionButtons, { gap: 10 }]}>
               <TouchableOpacity
-                style={[styles.actionButton, following && styles.actionButtonActive]}
-                onPress={() => {
-                  setFollowing(!following);
-                  Alert.alert(following ? 'Unfollowed' : 'Following', following ? 'You unfollowed this incident' : 'You are now following this incident');
-                }}
+                style={[styles.followBtn, following && styles.followBtnActive]}
+                onPress={handleFollow}
               >
-                <Text style={[styles.actionButtonText, following && styles.actionButtonTextActive]}>
+                <Ionicons
+                  name={following ? 'notifications' : 'notifications-outline'}
+                  size={18}
+                  color={following ? '#fff' : colors.primary}
+                />
+                <Text style={[styles.followBtnText, following && styles.followBtnTextActive]}>
                   {following ? 'Following' : 'Follow'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
-                <Text style={styles.actionButtonText}>Share</Text>
+              <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
+                <Ionicons name="share-social-outline" size={18} color={colors.cardForeground} />
+                <Text style={styles.shareBtnText}>Share</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -457,12 +589,19 @@ function CommentsTab({
       ) : (
         comments.map((comment) => (
           <View key={comment.id} style={styles.commentItem}>
-            <View style={styles.commentAvatar}>
-              <Text style={styles.commentAvatarText}>{comment.userName.charAt(0)}</Text>
-            </View>
+            <TouchableOpacity
+              onPress={() => comment.userId && navigation.navigate('PublicProfile', { userId: comment.userId })}
+              activeOpacity={0.8}
+            >
+              <View style={styles.commentAvatar}>
+                <Text style={styles.commentAvatarText}>{comment.userName.charAt(0)}</Text>
+              </View>
+            </TouchableOpacity>
             <View style={styles.commentBody}>
               <View style={styles.commentHeader}>
-                <Text style={styles.commentAuthor}>{comment.userName}</Text>
+                <TouchableOpacity onPress={() => comment.userId && navigation.navigate('PublicProfile', { userId: comment.userId })}>
+                  <Text style={[styles.commentAuthor, { color: colors.primary }]}>{comment.userName}</Text>
+                </TouchableOpacity>
                 <Text style={styles.commentTime}>{formatTimeAgo(comment.createdAt)}</Text>
               </View>
               <Text style={styles.commentContent}>{comment.text}</Text>
@@ -636,26 +775,54 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
   },
-  actionButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-    borderWidth: 1,
+  followBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
     borderColor: colors.border,
+    backgroundColor: colors.card,
   },
-  actionButtonActive: {
+  followBtnActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  actionButtonText: {
+  followBtnText: {
     fontSize: 14,
+    fontWeight: '600',
     color: colors.cardForeground,
   },
-  actionButtonTextActive: {
-    color: colors.primaryForeground,
+  followBtnTextActive: {
+    color: '#fff',
   },
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  shareBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.cardForeground,
+  },
+  // keep old names to avoid breaking anything else
+  actionButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.border },
+  actionButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  actionButtonText: { fontSize: 14, color: colors.cardForeground },
+  actionButtonTextActive: { color: colors.primaryForeground },
   tabBar: {
     flexDirection: 'row',
     backgroundColor: colors.card,
@@ -871,4 +1038,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.cardForeground,
   },
+  // Creator modal
+  modalBackdrop:        { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  creatorSheet:         { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 40 },
+  sheetHandle:          { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 16 },
+  creatorSheetTitle:    { fontSize: 13, fontWeight: '600', color: colors.mutedForeground, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 16 },
+  creatorRow:           { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  creatorAvatar:        { width: 56, height: 56, borderRadius: 28 },
+  creatorAvatarFallback: { backgroundColor: colors.muted, alignItems: 'center', justifyContent: 'center' },
+  creatorAvatarText:    { fontSize: 22, fontWeight: '700', color: colors.cardForeground },
+  creatorInfo:          { flex: 1, gap: 4 },
+  creatorName:          { fontSize: 16, fontWeight: '700', color: colors.cardForeground },
+  creatorMeta:          { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  trustBadge:           { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#22c55e18', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  trustScore:           { fontSize: 11, fontWeight: '600', color: '#22c55e' },
+  creatorFollowers:     { fontSize: 12, color: colors.mutedForeground },
+  creatorFollowBtn:     { backgroundColor: colors.primary, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, minWidth: 80, alignItems: 'center' },
+  creatorFollowBtnActive: { backgroundColor: colors.muted },
+  creatorFollowText:    { fontSize: 13, fontWeight: '700', color: '#fff' },
+  creatorFollowTextActive: { color: colors.mutedForeground },
 });
