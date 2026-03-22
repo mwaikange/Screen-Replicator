@@ -944,19 +944,32 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const db = await getClient(req);
-      const { data, error } = await db.rpc("request_join_group", {
-        p_group_id: req.params.id,
-      });
 
+      // Issue 1: check visibility first — never let private groups bypass approval
+      const { data: group } = await db.from("groups").select("visibility").eq("id", req.params.id).single();
+      const isPrivate = group?.visibility === "private";
+
+      if (isPrivate) {
+        // Issue 2: deduplicate — don't insert if a pending request already exists
+        const { data: existing } = await db
+          .from("group_requests")
+          .select("id")
+          .eq("group_id", req.params.id)
+          .eq("user_id", userId)
+          .eq("status", "pending")
+          .maybeSingle();
+
+        if (existing) return res.json({ joined: false, status: "requested" });
+
+        await db.from("group_requests").insert({ group_id: req.params.id, user_id: userId, status: "pending" });
+        return res.json({ joined: false, status: "requested" });
+      }
+
+      // Public group: try RPC, fall back to direct insert
+      const { data, error } = await db.rpc("request_join_group", { p_group_id: req.params.id });
       if (error) {
-        const { data: group } = await db.from("groups").select("visibility").eq("id", req.params.id).single();
-        if (group?.visibility === "public") {
-          await db.from("group_members").insert({ group_id: req.params.id, user_id: userId, role: "member" });
-          return res.json({ joined: true, status: "joined" });
-        } else {
-          await db.from("group_requests").insert({ group_id: req.params.id, user_id: userId, status: "pending" });
-          return res.json({ joined: false, status: "requested" });
-        }
+        await db.from("group_members").insert({ group_id: req.params.id, user_id: userId, role: "member" });
+        return res.json({ joined: true, status: "joined" });
       }
 
       const status = data?.status || data;
@@ -1010,11 +1023,39 @@ export async function registerRoutes(
 
   app.post("/api/groups/:id/requests/:requestId/approve", async (req, res) => {
     try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
       const db = await getClient(req);
+
+      // Issue 3: only creator or admin may approve
+      const { data: membership } = await db
+        .from("group_members")
+        .select("role")
+        .eq("group_id", req.params.id)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!membership || !["creator", "admin"].includes(membership.role)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Issue 4: try RPC, fall back to manual update + insert
       const { data, error } = await db.rpc("approve_group_request", {
         p_request_id: req.params.requestId,
       });
-      if (error) return res.status(400).json({ message: error.message });
+      if (error) {
+        await db.from("group_requests").update({ status: "approved" }).eq("id", req.params.requestId);
+        const { data: joinReq } = await db
+          .from("group_requests")
+          .select("user_id")
+          .eq("id", req.params.requestId)
+          .single();
+        if (joinReq?.user_id) {
+          await db.from("group_members").insert({ group_id: req.params.id, user_id: joinReq.user_id, role: "member" });
+        }
+        return res.json({ approved: true });
+      }
       res.json(data);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -1023,7 +1064,23 @@ export async function registerRoutes(
 
   app.post("/api/groups/:id/requests/:requestId/deny", async (req, res) => {
     try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
       const db = await getClient(req);
+
+      // Issue 3: only creator or admin may deny
+      const { data: membership } = await db
+        .from("group_members")
+        .select("role")
+        .eq("group_id", req.params.id)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!membership || !["creator", "admin"].includes(membership.role)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
       const { data, error } = await db
         .from("group_requests")
         .update({ status: "rejected", updated_at: new Date().toISOString() })

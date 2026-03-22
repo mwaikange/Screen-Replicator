@@ -39,10 +39,6 @@ function MainTabs() {
     <Ionicons name="home-outline" size={size} color={color} />
   ), []);
 
-  const renderMapIcon = useCallback(({ color, size }: { color: string; size: number }) => (
-    <Ionicons name="map-outline" size={size} color={color} />
-  ), []);
-
   const renderReportIcon = useCallback(({ focused }: { focused: boolean }) => (
     <Ionicons name="add" size={24} color={focused ? colors.primary : colors.primary} />
   ), []);
@@ -80,15 +76,7 @@ function MainTabs() {
           tabBarAccessibilityLabel: 'Feed tab',
         }}
       />
-      <Tab.Screen 
-        name="Map" 
-        component={MapScreen}
-        options={{
-          tabBarIcon: renderMapIcon,
-          tabBarAccessibilityLabel: 'Map tab',
-        }}
-      />
-      <Tab.Screen 
+      <Tab.Screen
         name="Report" 
         component={ReportScreen}
         options={{

@@ -183,6 +183,7 @@ export default function LoginScreen() {
                   <Text style={styles.signupLink}>Sign up</Text>
                 </TouchableOpacity>
               </View>
+              <Text style={styles.versionText}>Version 1.0.0.1</Text>
             </View>
           </ScrollView>
         </TouchableWithoutFeedback>
@@ -323,5 +324,11 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: fontSize.sm,
     fontWeight: '600',
+  },
+  versionText: {
+    textAlign: 'center',
+    fontSize: fontSize.xs,
+    color: colors.mutedForeground,
+    marginTop: spacing.md,
   },
 });
