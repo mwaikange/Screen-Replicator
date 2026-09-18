@@ -10,10 +10,14 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { supabase } from '../lib/supabase';
 import { userApi } from '../lib/api';
@@ -22,6 +26,7 @@ import { User } from '../lib/types';
 const appLogo = require('../../assets/logo.jpg');
 
 interface Plan {
+  code: string;
   name: string;
   subtitle: string;
   price: string;
@@ -30,8 +35,78 @@ interface Plan {
   popular?: boolean;
 }
 
+interface PaymentDetails {
+  mobile: string;
+  email: string;
+  town: string;
+}
+
+const PAYSME_MERCHANT_ID = 'ae4dc707-394b-43cc-9610-0e7eaed46bdb';
+const PAYSME_API_KEY = 'pk_7bccd2d76dc24665a8dec6a6fd9d0abc';
+
+function planAmount(plan: Plan) {
+  return Number(plan.price.replace(/[^0-9.]/g, ''));
+}
+
+function isValidPaymentDetails(details: PaymentDetails) {
+  const mobile = details.mobile.replace(/[\s-]/g, '');
+  const validMobile = /^(?:0(?:81|83|85)\d{7}|\+264(?:81|83|85)\d{7})$/.test(mobile);
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.email.trim());
+  return validMobile && validEmail && details.town.trim().length > 1;
+}
+
+function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string) {
+  const requestDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const invoiceId = `NGUMU__${userId}__${plan.code}__${requestDate}`;
+  const config = {
+    container: '#paysme-request-button',
+    vendor_uuid: PAYSME_MERCHANT_ID,
+    api_key: PAYSME_API_KEY,
+    invoice_id: invoiceId,
+    amount_nad: planAmount(plan),
+    mobile: details.mobile.replace(/[\s-]/g, ''),
+    email: details.email.trim(),
+    town: details.town.trim(),
+    idempotency_key: `mobile-order-${invoiceId}`,
+    show_notification: true,
+  };
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <style>
+      html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+      #paysme-request-button { width: 100%; min-height: 72px; }
+      button { width: 100% !important; }
+    </style>
+  </head>
+  <body>
+    <div id="paysme-request-button"></div>
+    <script>
+      function send(type, payload) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, payload: payload || null }));
+      }
+      function renderButton() {
+        if (!window.PaySME || !window.PaySME.renderRequestToPayButton) {
+          send('error', { message: 'PaySME checkout did not load. Please try again.' });
+          return;
+        }
+        var config = ${JSON.stringify(config)};
+        config.on_request_sent = function(result) { send('request_sent', result); };
+        config.on_already_paid = function(result) { send('already_paid', result); };
+        config.on_error = function(error) { send('error', { message: error && error.message ? error.message : String(error) }); };
+        window.PaySME.renderRequestToPayButton(config);
+      }
+    </script>
+    <script src="https://www.paysme.site/sdk/v1/paysme.js" onload="renderButton()" onerror="send('error', { message: 'Unable to load PaySME. Check your connection and try again.' })"></script>
+  </body>
+</html>`;
+}
+
 const individualPlans: Plan[] = [
   {
+    code: "individual_1m",
     name: "Individual 1 Month",
     subtitle: "Perfect for personal safety",
     price: "N$70",
@@ -44,6 +119,7 @@ const individualPlans: Plan[] = [
     ],
   },
   {
+    code: "individual_3m",
     name: "Individual 3 Months",
     subtitle: "Save with quarterly plan",
     price: "N$180",
@@ -57,6 +133,7 @@ const individualPlans: Plan[] = [
     ],
   },
   {
+    code: "individual_6m",
     name: "Individual 6 Months",
     subtitle: "Save with semi-annual plan",
     price: "N$360",
@@ -71,6 +148,7 @@ const individualPlans: Plan[] = [
     ],
   },
   {
+    code: "individual_12m",
     name: "Individual 12 Months",
     subtitle: "Best value - annual plan",
     price: "N$660",
@@ -88,6 +166,7 @@ const individualPlans: Plan[] = [
 
 const familyPlans: Plan[] = [
   {
+    code: "family_1m",
     name: "Family 1 Month",
     subtitle: "Covers 4 Family Members",
     price: "N$150",
@@ -101,6 +180,7 @@ const familyPlans: Plan[] = [
     popular: true,
   },
   {
+    code: "family_3m",
     name: "Family 3 Months",
     subtitle: "Covers 4 Family Members",
     price: "N$360",
@@ -115,6 +195,7 @@ const familyPlans: Plan[] = [
     popular: true,
   },
   {
+    code: "family_6m",
     name: "Family 6 Months",
     subtitle: "Covers 4 Family Members",
     price: "N$720",
@@ -129,6 +210,7 @@ const familyPlans: Plan[] = [
     popular: true,
   },
   {
+    code: "family_12m",
     name: "Family 12 Months",
     subtitle: "Covers 6 Family Members",
     price: "N$1440",
@@ -146,6 +228,7 @@ const familyPlans: Plan[] = [
 
 const touristPlans: Plan[] = [
   {
+    code: "tourist_5d",
     name: "Tourist 5 Days",
     subtitle: "Short stay coverage",
     price: "N$399",
@@ -158,6 +241,7 @@ const touristPlans: Plan[] = [
     ],
   },
   {
+    code: "tourist_10d",
     name: "Tourist 10 Days",
     subtitle: "Extended stay coverage",
     price: "N$700",
@@ -171,6 +255,7 @@ const touristPlans: Plan[] = [
     ],
   },
   {
+    code: "tourist_14d",
     name: "Tourist 14 Days",
     subtitle: "Two week coverage",
     price: "N$900",
@@ -184,6 +269,7 @@ const touristPlans: Plan[] = [
     ],
   },
   {
+    code: "tourist_30d",
     name: "Tourist 30 Days",
     subtitle: "Full month coverage",
     price: "N$1800",
@@ -209,7 +295,7 @@ function getGeneralWhatsAppUrl() {
   return `https://api.whatsapp.com/send/?phone=264816802064&text=${encodeURIComponent(message)}&type=phone_number&app_absent=0`;
 }
 
-function PlanCard({ plan }: { plan: Plan }) {
+function PlanCard({ plan, onRequestPayment }: { plan: Plan; onRequestPayment: (plan: Plan) => void }) {
   return (
     <View style={[styles.planCard, plan.popular && styles.planCardPopular]}>
       {plan.popular && (
@@ -239,9 +325,12 @@ function PlanCard({ plan }: { plan: Plan }) {
 
         <TouchableOpacity
           style={styles.payButton}
-          onPress={() => Linking.openURL(getWhatsAppUrl(plan.name, plan.price))}
+          onPress={() => onRequestPayment(plan)}
         >
-          <Text style={styles.payButtonText}>Pay Now</Text>
+          <View style={styles.payButtonIcon}>
+            <View style={styles.payButtonIconFill} />
+          </View>
+          <Text style={styles.payButtonText}>Create Payment Request</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -253,10 +342,69 @@ export default function SubscribeScreen() {
   const [user, setUser] = useState<User | null>(null);
   const [voucherCode, setVoucherCode] = useState('');
   const [redeeming, setRedeeming] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails>({ mobile: '', email: '', town: '' });
+  const [confirmedPaymentDetails, setConfirmedPaymentDetails] = useState<PaymentDetails | null>(null);
 
   useEffect(() => {
-    userApi.getProfile().then(res => setUser(res.data)).catch(() => {});
+    userApi.getProfile().then(res => {
+      setUser(res.data);
+      if (res.data) {
+        setPaymentDetails({
+          mobile: res.data.phone || '',
+          email: res.data.email || '',
+          town: res.data.town || '',
+        });
+      }
+    }).catch(() => {});
   }, []);
+
+  const openPaymentRequest = (plan: Plan) => {
+    const details = {
+      mobile: user?.phone || paymentDetails.mobile,
+      email: user?.email || paymentDetails.email,
+      town: user?.town || paymentDetails.town,
+    };
+    setPaymentDetails(details);
+    setConfirmedPaymentDetails(isValidPaymentDetails(details) ? details : null);
+    setSelectedPlan(plan);
+  };
+
+  const closePaymentRequest = () => {
+    setSelectedPlan(null);
+    setConfirmedPaymentDetails(null);
+  };
+
+  const confirmPaymentDetails = () => {
+    if (!isValidPaymentDetails(paymentDetails)) {
+      Alert.alert(
+        'Check your details',
+        'Enter a valid email, town, and Namibian mobile number beginning with 081, 083, or 085.',
+      );
+      return;
+    }
+    setConfirmedPaymentDetails({
+      mobile: paymentDetails.mobile.trim(),
+      email: paymentDetails.email.trim(),
+      town: paymentDetails.town.trim(),
+    });
+  };
+
+  const handlePaySmeMessage = (event: WebViewMessageEvent) => {
+    try {
+      const message = JSON.parse(event.nativeEvent.data);
+      if (message.type === 'request_sent') {
+        Alert.alert('Request to Pay Sent. Check your SMS.');
+        closePaymentRequest();
+      } else if (message.type === 'already_paid') {
+        Alert.alert('Already paid', 'This payment request has already been paid.');
+      } else if (message.type === 'error') {
+        Alert.alert('Payment request failed', message.payload?.message || 'Please try again.');
+      }
+    } catch {
+      Alert.alert('Payment request failed', 'PaySME returned an unexpected response. Please try again.');
+    }
+  };
 
   const hasActiveSubscription = user?.subscriptionStatus === 'active' && user?.subscriptionExpiry;
   const daysRemaining = hasActiveSubscription && user?.subscriptionExpiry
@@ -367,7 +515,7 @@ export default function SubscribeScreen() {
           <Text style={styles.sectionTitle}>Individual Plans</Text>
           <Text style={styles.sectionSubtitle}>Perfect for personal safety and security</Text>
           {individualPlans.map((plan) => (
-            <PlanCard key={plan.name} plan={plan} />
+            <PlanCard key={plan.name} plan={plan} onRequestPayment={openPaymentRequest} />
           ))}
         </View>
 
@@ -375,7 +523,7 @@ export default function SubscribeScreen() {
           <Text style={styles.sectionTitle}>Family Plans</Text>
           <Text style={styles.sectionSubtitle}>Protect your whole family together</Text>
           {familyPlans.map((plan) => (
-            <PlanCard key={plan.name} plan={plan} />
+            <PlanCard key={plan.name} plan={plan} onRequestPayment={openPaymentRequest} />
           ))}
         </View>
 
@@ -383,7 +531,7 @@ export default function SubscribeScreen() {
           <Text style={styles.sectionTitle}>Tourist Plans</Text>
           <Text style={styles.sectionSubtitle}>Short-term coverage for visitors</Text>
           {touristPlans.map((plan) => (
-            <PlanCard key={plan.name} plan={plan} />
+            <PlanCard key={plan.name} plan={plan} onRequestPayment={openPaymentRequest} />
           ))}
         </View>
 
@@ -404,6 +552,82 @@ export default function SubscribeScreen() {
 
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      <Modal visible={!!selectedPlan} transparent animationType="slide" onRequestClose={closePaymentRequest}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.paymentModal}>
+            <View style={styles.paymentModalHeader}>
+              <View>
+                <Text style={styles.paymentModalTitle}>Create Payment Request</Text>
+                <Text style={styles.paymentModalSubtitle}>
+                  {selectedPlan?.name} - {selectedPlan?.price}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={closePaymentRequest} style={styles.modalCloseButton}>
+                <Ionicons name="close" size={22} color={colors.cardForeground} />
+              </TouchableOpacity>
+            </View>
+
+            {!confirmedPaymentDetails ? (
+              <>
+                <Text style={styles.paymentHelpText}>
+                  PaySME will send the secure payment link to this mobile number.
+                </Text>
+                <TextInput
+                  style={styles.paymentInput}
+                  placeholder="Mobile number (081, 083 or 085)"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="phone-pad"
+                  value={paymentDetails.mobile}
+                  onChangeText={(mobile) => setPaymentDetails(current => ({ ...current, mobile }))}
+                />
+                <TextInput
+                  style={styles.paymentInput}
+                  placeholder="Email address"
+                  placeholderTextColor={colors.mutedForeground}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={paymentDetails.email}
+                  onChangeText={(email) => setPaymentDetails(current => ({ ...current, email }))}
+                />
+                <TextInput
+                  style={styles.paymentInput}
+                  placeholder="Town"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={paymentDetails.town}
+                  onChangeText={(town) => setPaymentDetails(current => ({ ...current, town }))}
+                />
+                <TouchableOpacity style={styles.continueButton} onPress={confirmPaymentDetails}>
+                  <Text style={styles.continueButtonText}>Continue</Text>
+                </TouchableOpacity>
+              </>
+            ) : selectedPlan && user ? (
+              <>
+                <Text style={styles.paymentHelpText}>
+                  Tap the secure PaySME button below. The payment link will be sent by SMS.
+                </Text>
+                <WebView
+                  source={{ html: buildPaySmeHtml(selectedPlan, confirmedPaymentDetails, user.id) }}
+                  originWhitelist={['*']}
+                  javaScriptEnabled
+                  domStorageEnabled
+                  scrollEnabled={false}
+                  onMessage={handlePaySmeMessage}
+                  style={styles.paySmeWebView}
+                />
+                <TouchableOpacity onPress={() => setConfirmedPaymentDetails(null)}>
+                  <Text style={styles.editPaymentDetails}>Edit contact details</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <ActivityIndicator color={colors.primary} />
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -586,15 +810,34 @@ const styles = StyleSheet.create({
     color: colors.cardForeground,
   },
   payButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: 6,
+    backgroundColor: '#1f2a24',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 14,
   },
   payButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.primaryForeground,
+    color: '#ffffff',
+  },
+  payButtonIcon: {
+    width: 36,
+    height: 28,
+    borderWidth: 3,
+    borderColor: '#ffffff',
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  payButtonIconFill: {
+    width: 14,
+    height: 18,
+    borderRadius: 3,
+    backgroundColor: '#f5b91f',
   },
   whatsappCard: {
     backgroundColor: '#fffbeb',
@@ -686,5 +929,74 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.primaryForeground,
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  paymentModal: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 30,
+  },
+  paymentModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 18,
+  },
+  paymentModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.cardForeground,
+  },
+  paymentModalSubtitle: {
+    fontSize: 14,
+    color: colors.mutedForeground,
+    marginTop: 3,
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  paymentHelpText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.mutedForeground,
+    marginBottom: 14,
+  },
+  paymentInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    color: colors.cardForeground,
+    marginBottom: 10,
+  },
+  continueButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  continueButtonText: {
+    color: colors.primaryForeground,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  paySmeWebView: {
+    height: 92,
+    backgroundColor: 'transparent',
+  },
+  editPaymentDetails: {
+    textAlign: 'center',
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    paddingTop: 10,
   },
 });
