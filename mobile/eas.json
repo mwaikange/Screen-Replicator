@@ -1,34 +1,21 @@
 {
   "cli": {
-    "version": ">= 5.9.0"
+    "version": ">= 18.1.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal",
-      "android": {
-        "gradleCommand": ":app:assembleDebug"
-      }
+      "distribution": "internal"
     },
     "preview": {
       "distribution": "internal",
-      "env": {
-        "EXPO_PUBLIC_SITE_URL": "https://ngumu.vercel.app"
-      },
       "android": {
         "buildType": "apk"
-      },
-      "ios": {
-        "simulator": true
       }
     },
     "production": {
-      "env": {
-        "EXPO_PUBLIC_SITE_URL": "https://ngumu.vercel.app"
-      },
-      "android": {
-        "buildType": "app-bundle"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {
