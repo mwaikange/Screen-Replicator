@@ -52,19 +52,19 @@ function isValidPaymentDetails(details: PaymentDetails) {
   return isValidPaySmeMobile(details.mobile) && validEmail && isPaySmeTown(details.town);
 }
 
-function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string) {
-  const requestDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const requestId = `NGUMU__${userId}__${plan.code}__${requestDate}`;
+function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string, requestCycle: number) {
+  const invoiceId = requestCycle === 0 ? plan.name : `${plan.name} ${requestCycle + 1}`;
+  const requestId = `NGUMU__${userId}__${plan.code}__${requestCycle}`;
   const config = {
     container: '#paysme-request-button',
     vendor_uuid: PAYSME_MERCHANT_ID,
     api_key: PAYSME_API_KEY,
-    invoice_id: plan.name,
+    invoice_id: invoiceId,
     amount_nad: planAmount(plan),
     mobile: normalizePaySmeMobile(details.mobile),
     email: details.email.trim(),
     town: details.town.trim(),
-    idempotency_key: `mobile-order-${requestId}`,
+    idempotency_key: `mobile-order-v2-${requestId}`,
     metadata: { user_id: userId, plan_code: plan.code },
     show_notification: true,
   };
@@ -77,6 +77,7 @@ function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string) {
       html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
       #paysme-request-button { width: 100%; min-height: 72px; }
       button { width: 100% !important; border-radius: 10px !important; white-space: nowrap !important; font-size: 16px !important; padding-left: 12px !important; padding-right: 12px !important; }
+      .paysme-r2p-notice { top: 8px !important; bottom: auto !important; }
     </style>
   </head>
   <body>
@@ -93,7 +94,7 @@ function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string) {
         var config = ${JSON.stringify(config)};
         config.on_request_sent = function(result) { send('request_sent', result); };
         config.on_already_paid = function(result) { send('already_paid', result); };
-        config.on_error = function(error) { send('error', { message: error && error.message ? error.message : String(error) }); };
+        config.on_error = function(error) { send('error', { message: error && error.message ? error.message : String(error), status: error && error.status, code: error && error.code }); };
         window.PaySME.renderRequestToPayButton(config);
       }
     </script>
@@ -341,6 +342,10 @@ export default function SubscribeScreen() {
   const [voucherCode, setVoucherCode] = useState('');
   const [redeeming, setRedeeming] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [paymentWebViewKey, setPaymentWebViewKey] = useState(0);
+  const [requestCycle, setRequestCycle] = useState(0);
+  const [requestSent, setRequestSent] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState(false);
 
   useEffect(() => {
     userApi.getProfile().then(res => {
@@ -371,23 +376,50 @@ export default function SubscribeScreen() {
       );
       return;
     }
+    setRequestSent(false);
+    setPendingPayment(false);
+    setRequestCycle(0);
     setSelectedPlan(plan);
   };
 
   const closePaymentRequest = () => {
     setSelectedPlan(null);
+    setRequestSent(false);
+    setPendingPayment(false);
+  };
+
+  const resendPendingPayment = () => {
+    setPendingPayment(false);
+    setRequestSent(false);
+    setPaymentWebViewKey((key) => key + 1);
   };
 
   const handlePaySmeMessage = (event: WebViewMessageEvent) => {
     try {
       const message = JSON.parse(event.nativeEvent.data);
       if (message.type === 'request_sent') {
-        Alert.alert('Request to Pay Sent. Check your SMS.');
-        closePaymentRequest();
+        setPendingPayment(false);
+        setRequestSent(true);
+        setTimeout(() => setRequestSent(false), 7000);
       } else if (message.type === 'already_paid') {
-        Alert.alert('Already paid', 'This payment request has already been paid.');
+        setPendingPayment(false);
+        setRequestSent(false);
+        setRequestCycle((cycle) => cycle + 1);
+        setPaymentWebViewKey((key) => key + 1);
+        Alert.alert('Previous request paid', 'You can now create a new payment request.');
       } else if (message.type === 'error') {
-        Alert.alert('Payment request failed', message.payload?.message || 'Please try again.');
+        const errorMessage = String(message.payload?.message || '');
+        const isPendingConflict = /idempotency|already being processed/i.test(errorMessage);
+        if (isPendingConflict) {
+          setPendingPayment(true);
+          setRequestSent(false);
+        } else if (/cancelled|failed/i.test(errorMessage)) {
+          setRequestCycle((cycle) => cycle + 1);
+          setPaymentWebViewKey((key) => key + 1);
+          Alert.alert('Payment request ended', 'You can create a new payment request.');
+        } else {
+          Alert.alert('Payment request failed', 'The SMS could not be sent. Please try again.');
+        }
       }
     } catch {
       Alert.alert('Payment request failed', 'PaySME returned an unexpected response. Please try again.');
@@ -569,21 +601,34 @@ export default function SubscribeScreen() {
                 <Text style={styles.paymentHelpText}>
                   Request to Pay SMS link will be sent via PaySME to mobile number {user.phone}.
                 </Text>
-                <View style={styles.paySmeWebViewContainer}>
-                  <WebView
-                    source={{ html: buildPaySmeHtml(selectedPlan, {
-                      mobile: user.phone,
-                      email: user.email,
-                      town: user.town,
-                    }, user.id) }}
-                    originWhitelist={['*']}
-                    javaScriptEnabled
-                    domStorageEnabled
-                    scrollEnabled={false}
-                    onMessage={handlePaySmeMessage}
-                    style={styles.paySmeWebView}
-                  />
-                </View>
+                {pendingPayment ? (
+                  <View style={styles.pendingPaymentNotice}>
+                    <Text style={styles.pendingPaymentTitle}>Payment request pending</Text>
+                    <Text style={styles.pendingPaymentText}>
+                      A payment request for {selectedPlan.name} is already pending. Resend the same SMS link and PaySME code?
+                    </Text>
+                    <TouchableOpacity style={styles.resendButton} onPress={resendPendingPayment}>
+                      <Text style={styles.resendButtonText}>Resend SMS</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={[styles.paySmeWebViewContainer, requestSent && styles.paySmeNoticeContainer]}>
+                    <WebView
+                      key={paymentWebViewKey}
+                      source={{ html: buildPaySmeHtml(selectedPlan, {
+                        mobile: user.phone,
+                        email: user.email,
+                        town: user.town,
+                      }, user.id, requestCycle) }}
+                      originWhitelist={['*']}
+                      javaScriptEnabled
+                      domStorageEnabled
+                      scrollEnabled={false}
+                      onMessage={handlePaySmeMessage}
+                      style={styles.paySmeWebView}
+                    />
+                  </View>
+                )}
                 <TouchableOpacity style={styles.paymentCancelButton} onPress={closePaymentRequest}>
                   <Text style={styles.paymentCancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
@@ -974,9 +1019,49 @@ const styles = StyleSheet.create({
     height: 92,
     overflow: 'hidden',
   },
+  paySmeNoticeContainer: {
+    position: 'absolute',
+    top: 48,
+    left: 20,
+    right: 20,
+    width: 'auto',
+    zIndex: 20,
+    elevation: 20,
+  },
   paySmeWebView: {
     flex: 1,
     backgroundColor: 'transparent',
+  },
+  pendingPaymentNotice: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#f0b429',
+    backgroundColor: '#fff8e1',
+    padding: 14,
+  },
+  pendingPaymentTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.cardForeground,
+  },
+  pendingPaymentText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.mutedForeground,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  resendButton: {
+    minHeight: 44,
+    borderRadius: 10,
+    backgroundColor: '#1f2a24',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resendButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   paymentCancelButton: {
     width: '100%',
