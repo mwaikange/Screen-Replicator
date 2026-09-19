@@ -20,6 +20,8 @@ import { colors, spacing, fontSize } from '../lib/theme';
 import { userApi, authApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { User } from '../lib/types';
+import TownSelector from '../components/TownSelector';
+import { isPaySmeTown, isValidPaySmeMobile, normalizePaySmeMobile } from '../lib/paysme';
 
 const appLogo = require('../../assets/logo.jpg');
 
@@ -39,6 +41,8 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newTown, setNewTown] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [followModalType, setFollowModalType] = useState<'followers' | 'following' | null>(null);
   const [followList, setFollowList] = useState<FollowUser[]>([]);
@@ -97,15 +101,29 @@ export default function ProfileScreen() {
 
   const handleEditName = () => {
     setNewName(user?.displayName || '');
+    setNewPhone(user?.phone || '');
+    setNewTown(user?.town || '');
     setEditingName(true);
   };
 
   // FIX: use userApi.updateDisplayName() not raw supabase
   const handleSaveName = async () => {
     if (!newName.trim()) return;
+    if (!isValidPaySmeMobile(newPhone)) {
+      Alert.alert('Invalid mobile number', 'Use a Namibian number beginning with 081, 083, or 085.');
+      return;
+    }
+    if (!isPaySmeTown(newTown)) {
+      Alert.alert('Invalid town', 'Select your town from the PaySME town list.');
+      return;
+    }
     setSavingName(true);
     try {
-      await userApi.updateDisplayName(newName.trim());
+      await userApi.updateProfileDetails(
+        newName.trim(),
+        normalizePaySmeMobile(newPhone),
+        newTown,
+      );
       setEditingName(false);
       await fetchUser();
     } catch (err: any) {
@@ -159,6 +177,7 @@ export default function ProfileScreen() {
     displayName: '', email: '', phone: '', avatarUrl: '', level: 0,
     trustScore: 0, followers: 0, following: 0, subscriptionType: 'Free',
     subscriptionExpiry: '', subscriptionStatus: 'none', subscriptionPlanName: null,
+    town: '',
   };
 
   const hasActiveSubscription = displayUser.subscriptionStatus === 'active' && displayUser.subscriptionExpiry;
@@ -234,12 +253,13 @@ export default function ProfileScreen() {
               </View>
               <Text style={styles.email}>{displayUser.email}</Text>
               {!!displayUser.phone && <Text style={styles.phone}>{displayUser.phone}</Text>}
+              {!!displayUser.town && <Text style={styles.phone}>{displayUser.town}</Text>}
             </View>
           </View>
 
           <TouchableOpacity style={styles.editButton} onPress={handleEditName}>
             <Ionicons name="pencil-outline" size={16} color={colors.cardForeground} />
-            <Text style={styles.editButtonText}>Edit Display Name</Text>
+            <Text style={styles.editButtonText}>Edit Profile</Text>
           </TouchableOpacity>
 
           <View style={styles.trustScoreContainer}>
@@ -318,7 +338,6 @@ export default function ProfileScreen() {
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Sign Out', onPress: async () => {
                   try { await authApi.signOut(); } catch {}
-                  navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
                 }},
               ]);
             }}
@@ -335,7 +354,7 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Display Name</Text>
+              <Text style={styles.modalTitle}>Edit Profile</Text>
               <TouchableOpacity onPress={() => setEditingName(false)}>
                 <Ionicons name="close" size={24} color={colors.cardForeground} />
               </TouchableOpacity>
@@ -348,8 +367,17 @@ export default function ProfileScreen() {
               placeholderTextColor={colors.mutedForeground}
               autoFocus
             />
+            <TextInput
+              style={styles.nameInput}
+              value={newPhone}
+              onChangeText={setNewPhone}
+              placeholder="Mobile number (081, 083 or 085)"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="phone-pad"
+            />
+            <TownSelector value={newTown} onChange={setNewTown} />
             <TouchableOpacity
-              style={[styles.saveNameButton, (!newName.trim() || savingName) && { opacity: 0.5 }]}
+              style={[styles.saveNameButton, styles.profileSaveButton, (!newName.trim() || savingName) && { opacity: 0.5 }]}
               onPress={handleSaveName}
               disabled={!newName.trim() || savingName}
             >
@@ -477,6 +505,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700', color: colors.cardForeground },
   nameInput: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: spacing.md, fontSize: 16, color: colors.cardForeground, marginBottom: spacing.md },
   saveNameButton: { backgroundColor: colors.primary, borderRadius: 8, padding: spacing.md, alignItems: 'center' },
+  profileSaveButton: { marginTop: spacing.md },
   saveNameButtonText: { color: colors.primaryForeground, fontSize: 16, fontWeight: '600' },
   followUserRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   followUserAvatar: { width: 40, height: 40, borderRadius: 20 },

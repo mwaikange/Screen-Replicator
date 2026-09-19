@@ -18,6 +18,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, spacing, fontSize } from '../lib/theme';
 import { authApi } from '../lib/api';
 import { RootStackParamList } from '../lib/types';
+import TownSelector from '../components/TownSelector';
+import { isPaySmeTown, isValidPaySmeMobile, normalizePaySmeMobile } from '../lib/paysme';
 
 const appLogo = require('../../assets/logo.jpg');
 
@@ -42,6 +44,8 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [mobile, setMobile] = useState('');
+  const [town, setTown] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -59,6 +63,14 @@ export default function SignupScreen() {
       Alert.alert('Error', 'Please enter your email');
       return;
     }
+    if (!isValidPaySmeMobile(mobile)) {
+      Alert.alert('Error', 'Enter a valid Namibian mobile number beginning with 081, 083, or 085');
+      return;
+    }
+    if (!isPaySmeTown(town)) {
+      Alert.alert('Error', 'Please select your town from the PaySME town list');
+      return;
+    }
     if (password.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
@@ -70,7 +82,13 @@ export default function SignupScreen() {
 
     setLoading(true);
     try {
-      await authApi.signup(email.trim(), password, displayName.trim());
+      await authApi.signup(
+        email.trim().toLowerCase(),
+        password,
+        displayName.trim(),
+        normalizePaySmeMobile(mobile),
+        town,
+      );
       // FIX: after signup → show email verification alert → navigate to Login
       // Do NOT auto-login — Supabase requires email confirmation first
       Alert.alert(
@@ -128,6 +146,24 @@ export default function SignupScreen() {
                 autoCapitalize="none"
                 autoComplete="email"
               />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Mobile Number</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="081 123 4567"
+                placeholderTextColor={colors.mutedForeground}
+                value={mobile}
+                onChangeText={setMobile}
+                keyboardType="phone-pad"
+                autoComplete="tel"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Town</Text>
+              <TownSelector value={town} onChange={setTown} />
             </View>
 
             {/* Password */}

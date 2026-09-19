@@ -118,6 +118,7 @@ export type Case = {
   evidence: CaseEvidence[];
   documents: CaseDocument[];
   assignedTo: string | null;
+  resolutionNotes?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -153,11 +154,15 @@ export type TrackedDevice = {
 export type SupportRequest = {
   id: string;
   userId: string;
-  type: 'counseling' | 'legal' | 'medical' | 'emergency';
-  status: 'pending' | 'in_progress' | 'completed';
+  type: string;
+  status: string;
   description: string;
+  priority: string;
   contactMethod: string;
+  notes?: string | null;
+  assignedTo?: string | null;
   createdAt: string;
+  updatedAt?: string;
 };
 
 export type RootStackParamList = {
@@ -169,7 +174,7 @@ export type RootStackParamList = {
   Subscribe: undefined;
   GroupChat: { groupId: string };
   CreateGroup: undefined;
-  CaseDetail: { caseId: string };
+  CaseDetail: { caseId: string; itemType?: 'report' | 'counselling' };
   OpenNewCase: undefined;
   DeviceTracking: undefined;
   Counseling: undefined;
@@ -180,7 +185,6 @@ export type RootStackParamList = {
 
 export type MainTabParamList = {
   Feed: undefined;
-  Map: undefined;
   Report: undefined;
   CaseDeck: undefined;
   Groups: undefined;

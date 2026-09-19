@@ -476,6 +476,7 @@ export default function IncidentDetailsScreen({ route, navigation }: any) {
                 commentText={commentText}
                 setCommentText={setCommentText}
                 onSubmit={handleSubmitComment}
+                onOpenProfile={(userId) => navigation.navigate('PublicProfile', { userId })}
               />
             )}
           </View>
@@ -546,11 +547,13 @@ function CommentsTab({
   commentText,
   setCommentText,
   onSubmit,
+  onOpenProfile,
 }: {
   comments: Comment[];
   commentText: string;
   setCommentText: (v: string) => void;
   onSubmit: () => void;
+  onOpenProfile: (userId: string) => void;
 }) {
   return (
     <View>
@@ -590,7 +593,7 @@ function CommentsTab({
         comments.map((comment) => (
           <View key={comment.id} style={styles.commentItem}>
             <TouchableOpacity
-              onPress={() => comment.userId && navigation.navigate('PublicProfile', { userId: comment.userId })}
+              onPress={() => comment.userId && onOpenProfile(comment.userId)}
               activeOpacity={0.8}
             >
               <View style={styles.commentAvatar}>
@@ -599,7 +602,7 @@ function CommentsTab({
             </TouchableOpacity>
             <View style={styles.commentBody}>
               <View style={styles.commentHeader}>
-                <TouchableOpacity onPress={() => comment.userId && navigation.navigate('PublicProfile', { userId: comment.userId })}>
+                <TouchableOpacity onPress={() => comment.userId && onOpenProfile(comment.userId)}>
                   <Text style={[styles.commentAuthor, { color: colors.primary }]}>{comment.userName}</Text>
                 </TouchableOpacity>
                 <Text style={styles.commentTime}>{formatTimeAgo(comment.createdAt)}</Text>

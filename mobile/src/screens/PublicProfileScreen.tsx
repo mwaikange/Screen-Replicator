@@ -169,17 +169,23 @@ export default function PublicProfileScreen() {
             ) : null}
           </View>
 
-          {/* Trust Score + Community Trust — always shown together */}
+          {/* Admin Trust + Community Trust cards */}
           <View style={styles.trustScoreRow}>
-            <View style={styles.trustBadge}>
-              <Ionicons name="star" size={14} color="#f59e0b" />
-              <Text style={styles.trustBadgeLabel}>Admin Trust</Text>
-              <Text style={styles.trustBadgeValue}>{profile.trustScore}</Text>
+            {/* Admin Trust */}
+            <View style={styles.trustCard}>
+              <View style={styles.trustCardIcon}>
+                <Ionicons name="star" size={20} color="#f59e0b" />
+              </View>
+              <Text style={styles.trustCardScore}>{profile.trustScore}</Text>
+              <Text style={styles.trustCardLabel}>Admin Trust</Text>
             </View>
-            <View style={[styles.trustBadge, { backgroundColor: '#22c55e15', borderColor: '#22c55e40' }]}>
-              <Ionicons name="shield-checkmark" size={14} color="#22c55e" />
-              <Text style={[styles.trustBadgeLabel, { color: '#22c55e' }]}>Community Trust</Text>
-              <Text style={[styles.trustBadgeValue, { color: '#22c55e' }]}>{communityTrust}</Text>
+            {/* Community Trust */}
+            <View style={[styles.trustCard, styles.trustCardGreen]}>
+              <View style={[styles.trustCardIcon, { backgroundColor: '#22c55e20' }]}>
+                <Ionicons name="shield-checkmark" size={20} color="#22c55e" />
+              </View>
+              <Text style={[styles.trustCardScore, { color: '#22c55e' }]}>{communityTrust}</Text>
+              <Text style={[styles.trustCardLabel, { color: '#166534' }]}>Community Trust</Text>
             </View>
           </View>
 
@@ -346,7 +352,12 @@ const styles = StyleSheet.create({
   badgeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   levelBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary + '15', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   levelText: { fontSize: fontSize.xs, fontWeight: '600', color: colors.primary },
-  trustScoreRow: { flexDirection: 'row', gap: 10, marginTop: 10, marginBottom: 4 },
+  trustScoreRow: { flexDirection: 'row', gap: 10, marginTop: 14, marginBottom: 6, paddingHorizontal: 4 },
+  trustCard: { flex: 1, alignItems: 'center', backgroundColor: '#fefce8', borderWidth: 1, borderColor: '#f59e0b30', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 8, gap: 4 },
+  trustCardGreen: { backgroundColor: '#f0fdf4', borderColor: '#22c55e30' },
+  trustCardIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f59e0b20', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  trustCardScore: { fontSize: 24, fontWeight: '900', color: '#92400e' },
+  trustCardLabel: { fontSize: 11, fontWeight: '600', color: '#92400e', textAlign: 'center' },
   trustBadge: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#f59e0b15', borderWidth: 1, borderColor: '#f59e0b40', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10 },
   trustBadgeLabel: { fontSize: 11, fontWeight: '500', color: '#92400e', flex: 1 },
   trustBadgeValue: { fontSize: 14, fontWeight: '800', color: '#92400e' },

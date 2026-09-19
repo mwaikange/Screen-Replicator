@@ -113,7 +113,7 @@ export default function SearchScreen() {
   }, [navigation]);
 
   const handlePersonPress = useCallback((id: string) => {
-    navigation.navigate('Main', { screen: 'Profile' });
+    navigation.navigate('PublicProfile', { userId: id });
   }, [navigation]);
 
   const renderIncident = useCallback(({ item }: { item: IncidentResult }) => {
