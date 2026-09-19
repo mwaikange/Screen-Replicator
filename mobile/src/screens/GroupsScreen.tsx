@@ -69,7 +69,7 @@ export default function GroupsScreen() {
           onPress: async () => {
             try {
               const res = await groupsApi.reportGroup(group.id);
-              if (res.data?.alreadyReported) {
+              if ('alreadyReported' in res.data && res.data.alreadyReported) {
                 Alert.alert('Already Reported', 'You have already reported this group.');
                 return;
               }

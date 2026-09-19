@@ -54,17 +54,18 @@ function isValidPaymentDetails(details: PaymentDetails) {
 
 function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string) {
   const requestDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const invoiceId = `NGUMU__${userId}__${plan.code}__${requestDate}`;
+  const requestId = `NGUMU__${userId}__${plan.code}__${requestDate}`;
   const config = {
     container: '#paysme-request-button',
     vendor_uuid: PAYSME_MERCHANT_ID,
     api_key: PAYSME_API_KEY,
-    invoice_id: invoiceId,
+    invoice_id: plan.name,
     amount_nad: planAmount(plan),
     mobile: normalizePaySmeMobile(details.mobile),
     email: details.email.trim(),
     town: details.town.trim(),
-    idempotency_key: `mobile-order-${invoiceId}`,
+    idempotency_key: `mobile-order-${requestId}`,
+    metadata: { user_id: userId, plan_code: plan.code },
     show_notification: true,
   };
 
@@ -75,7 +76,7 @@ function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string) {
     <style>
       html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
       #paysme-request-button { width: 100%; min-height: 72px; }
-      button { width: 100% !important; border-radius: 10px !important; }
+      button { width: 100% !important; border-radius: 10px !important; white-space: nowrap !important; font-size: 16px !important; padding-left: 12px !important; padding-right: 12px !important; }
     </style>
   </head>
   <body>
@@ -544,35 +545,45 @@ export default function SubscribeScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.paymentModal}>
             <View style={styles.paymentModalHeader}>
-              <View>
-                <Text style={styles.paymentModalTitle}>Create Payment Request</Text>
-                <Text style={styles.paymentModalSubtitle}>
-                  {selectedPlan?.name} - {selectedPlan?.price}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={closePaymentRequest} style={styles.modalCloseButton}>
-                <Ionicons name="close" size={22} color={colors.cardForeground} />
-              </TouchableOpacity>
+              <Text style={styles.paymentModalTitle}>Create Payment Request</Text>
             </View>
 
             {selectedPlan && user ? (
               <>
+                <View style={styles.paymentPlanSummary}>
+                  <Text style={styles.paymentPlanName}>{selectedPlan.name}</Text>
+                  <Text style={styles.paymentPlanSubtitle}>{selectedPlan.subtitle}</Text>
+                  <View style={styles.paymentPlanPriceRow}>
+                    <Text style={styles.paymentPlanPrice}>{selectedPlan.price}</Text>
+                    <Text style={styles.paymentPlanDuration}> / {selectedPlan.duration}</Text>
+                  </View>
+                  <View style={styles.paymentFeatureList}>
+                    {selectedPlan.features.map((feature) => (
+                      <View key={feature} style={styles.paymentFeatureRow}>
+                        <Ionicons name="checkmark" size={17} color="#22c55e" />
+                        <Text style={styles.paymentFeatureText}>{feature}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
                 <Text style={styles.paymentHelpText}>
                   Request to Pay SMS link will be sent via PaySME to mobile number {user.phone}.
                 </Text>
-                <WebView
-                  source={{ html: buildPaySmeHtml(selectedPlan, {
-                    mobile: user.phone,
-                    email: user.email,
-                    town: user.town,
-                  }, user.id) }}
-                  originWhitelist={['*']}
-                  javaScriptEnabled
-                  domStorageEnabled
-                  scrollEnabled={false}
-                  onMessage={handlePaySmeMessage}
-                  style={styles.paySmeWebView}
-                />
+                <View style={styles.paySmeWebViewContainer}>
+                  <WebView
+                    source={{ html: buildPaySmeHtml(selectedPlan, {
+                      mobile: user.phone,
+                      email: user.email,
+                      town: user.town,
+                    }, user.id) }}
+                    originWhitelist={['*']}
+                    javaScriptEnabled
+                    domStorageEnabled
+                    scrollEnabled={false}
+                    onMessage={handlePaySmeMessage}
+                    style={styles.paySmeWebView}
+                  />
+                </View>
                 <TouchableOpacity style={styles.paymentCancelButton} onPress={closePaymentRequest}>
                   <Text style={styles.paymentCancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
@@ -898,36 +909,73 @@ const styles = StyleSheet.create({
     height: '65%',
     paddingBottom: 32,
     maxHeight: '90%',
+    overflow: 'hidden',
   },
   paymentModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 18,
+    marginBottom: 14,
   },
   paymentModalTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: colors.cardForeground,
   },
-  paymentModalSubtitle: {
-    fontSize: 14,
-    color: colors.mutedForeground,
-    marginTop: 3,
-  },
-  modalCloseButton: {
-    padding: 4,
-  },
-  paymentHelpText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.mutedForeground,
+  paymentPlanSummary: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: 14,
     marginBottom: 14,
   },
-  paySmeWebView: {
-    flex: 0,
-    height: 92,
+  paymentPlanName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.cardForeground,
+  },
+  paymentPlanSubtitle: {
+    fontSize: 13,
+    color: colors.mutedForeground,
+    marginTop: 2,
+  },
+  paymentPlanPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginVertical: 8,
+  },
+  paymentPlanPrice: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  paymentPlanDuration: {
+    fontSize: 13,
+    color: colors.mutedForeground,
+  },
+  paymentFeatureList: {
+    gap: 3,
+  },
+  paymentFeatureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  paymentFeatureText: {
+    fontSize: 13,
+    color: colors.cardForeground,
+  },
+  paymentHelpText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.mutedForeground,
+    marginBottom: 12,
+  },
+  paySmeWebViewContainer: {
     width: '100%',
+    height: 92,
+    overflow: 'hidden',
+  },
+  paySmeWebView: {
+    flex: 1,
     backgroundColor: 'transparent',
   },
   paymentCancelButton: {
@@ -935,14 +983,15 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#dc2626',
+    backgroundColor: '#fef2f2',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 12,
   },
   paymentCancelButtonText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: colors.cardForeground,
+    fontWeight: '700',
+    color: '#dc2626',
   },
 });

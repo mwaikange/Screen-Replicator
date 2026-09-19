@@ -185,7 +185,6 @@ export type RootStackParamList = {
 
 export type MainTabParamList = {
   Feed: undefined;
-  Map: undefined;
   Report: undefined;
   CaseDeck: undefined;
   Groups: undefined;

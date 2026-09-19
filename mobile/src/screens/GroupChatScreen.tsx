@@ -420,10 +420,10 @@ export default function GroupChatScreen() {
                   <View style={styles.memberInfoCol}>
                     <Text style={styles.memberName}>{member.userName}</Text>
                     <Text style={styles.memberRole}>
-                      {member.role === 'owner' || member.role === 'creator' ? 'Creator' : 'Member'}
+                      {member.role === 'creator' ? 'Creator' : member.role === 'admin' ? 'Admin' : 'Member'}
                     </Text>
                   </View>
-                  {isCreator && member.userId !== currentUserId && member.role !== 'owner' && member.role !== 'creator' && (
+                  {isCreator && member.userId !== currentUserId && member.role !== 'creator' && (
                     <TouchableOpacity
                       onPress={(e) => { e.stopPropagation(); handleRemoveMember(member.userId); }}
                       style={styles.removeButton}

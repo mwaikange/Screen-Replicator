@@ -1,13 +1,14 @@
 # Issues to Come Back To
 
-These TypeScript issues existed before the PaySME Request-to-Pay work:
+All previously recorded TypeScript issues were resolved on 19 September 2026:
 
-- `mobile/src/screens/CaseDetailScreen.tsx:161` - `styles.errorText` is referenced but not defined.
-- `mobile/src/screens/GroupChatScreen.tsx:423` - compares a member role with `"owner"`, although the declared roles are `"creator" | "admin" | "member"`.
-- `mobile/src/screens/GroupChatScreen.tsx:426` - same invalid `"owner"` comparison.
-- `mobile/src/screens/GroupsScreen.tsx:72` - accesses `alreadyReported` on a response union where that property is not always present.
-- `mobile/src/screens/IncidentDetailsScreen.tsx:593` - `navigation` is not defined.
-- `mobile/src/screens/IncidentDetailsScreen.tsx:602` - `navigation` is not defined.
+- Added the missing `errorText` style in `CaseDetailScreen`.
+- Aligned group member role handling with the declared `creator | admin | member` roles.
+- Safely narrowed the group-report response before reading `alreadyReported`.
+- Passed profile navigation into CommentsTab instead of referencing navigation outside the screen component.
+- Replaced the unsupported map fill helper with explicit absolute positioning.
+
+No outstanding items remain in this list.
 
 ## Related Projects
 

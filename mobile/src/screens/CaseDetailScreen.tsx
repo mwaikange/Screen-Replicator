@@ -477,6 +477,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  errorText: {
+    fontSize: 14,
+    color: colors.destructive,
+  },
   content: {
     flex: 1,
     padding: spacing.md,
