@@ -75,7 +75,7 @@ function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string) {
     <style>
       html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
       #paysme-request-button { width: 100%; min-height: 72px; }
-      button { width: 100% !important; }
+      button { width: 100% !important; border-radius: 10px !important; }
     </style>
   </head>
   <body>
@@ -573,6 +573,9 @@ export default function SubscribeScreen() {
                   onMessage={handlePaySmeMessage}
                   style={styles.paySmeWebView}
                 />
+                <TouchableOpacity style={styles.paymentCancelButton} onPress={closePaymentRequest}>
+                  <Text style={styles.paymentCancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
               </>
             ) : (
               <ActivityIndicator color={colors.primary} />
@@ -892,7 +895,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    paddingBottom: 80,
+    height: '65%',
+    paddingBottom: 32,
     maxHeight: '90%',
   },
   paymentModalHeader: {
@@ -921,7 +925,24 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   paySmeWebView: {
+    flex: 0,
     height: 92,
+    width: '100%',
     backgroundColor: 'transparent',
+  },
+  paymentCancelButton: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  paymentCancelButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.cardForeground,
   },
 });
