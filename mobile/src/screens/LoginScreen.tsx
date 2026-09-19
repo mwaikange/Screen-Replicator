@@ -21,7 +21,7 @@ import { colors, spacing, fontSize } from '../lib/theme';
 import { authApi } from '../lib/api';
 import { RootStackParamList } from '../lib/types';
 
-const ngumuLogo = require('../../assets/ngumu-eye-logo.jpg');
+const ngumuLogo = require('../../assets/ngumu-eye-logo-transparent.png');
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -63,7 +63,6 @@ export default function LoginScreen() {
 
     try {
       await authApi.login(email.trim().toLowerCase(), password);
-      navigation.replace('Main');
     } catch (error: any) {
       Alert.alert('Login Failed', error.message || 'Could not connect to server. Please try again.');
     } finally {
@@ -208,10 +207,12 @@ const styles = StyleSheet.create({
   logoContainer: {
     alignItems: 'center',
     marginBottom: spacing.lg,
+    backgroundColor: 'transparent',
   },
   logoImage: {
     width: 120,
     height: 120,
+    backgroundColor: 'transparent',
   },
   formContainer: {
     backgroundColor: colors.card,

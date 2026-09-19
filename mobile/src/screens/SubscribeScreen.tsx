@@ -11,8 +11,6 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +20,7 @@ import { colors, spacing, fontSize } from '../lib/theme';
 import { supabase } from '../lib/supabase';
 import { userApi } from '../lib/api';
 import { User } from '../lib/types';
+import { isPaySmeTown, isValidPaySmeMobile, normalizePaySmeMobile } from '../lib/paysme';
 
 const appLogo = require('../../assets/logo.jpg');
 
@@ -49,10 +48,8 @@ function planAmount(plan: Plan) {
 }
 
 function isValidPaymentDetails(details: PaymentDetails) {
-  const mobile = details.mobile.replace(/[\s-]/g, '');
-  const validMobile = /^(?:0(?:81|83|85)\d{7}|\+264(?:81|83|85)\d{7})$/.test(mobile);
   const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(details.email.trim());
-  return validMobile && validEmail && details.town.trim().length > 1;
+  return isValidPaySmeMobile(details.mobile) && validEmail && isPaySmeTown(details.town);
 }
 
 function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string) {
@@ -64,7 +61,7 @@ function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string) {
     api_key: PAYSME_API_KEY,
     invoice_id: invoiceId,
     amount_nad: planAmount(plan),
-    mobile: details.mobile.replace(/[\s-]/g, ''),
+    mobile: normalizePaySmeMobile(details.mobile),
     email: details.email.trim(),
     town: details.town.trim(),
     idempotency_key: `mobile-order-${invoiceId}`,
@@ -343,51 +340,41 @@ export default function SubscribeScreen() {
   const [voucherCode, setVoucherCode] = useState('');
   const [redeeming, setRedeeming] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
-  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails>({ mobile: '', email: '', town: '' });
-  const [confirmedPaymentDetails, setConfirmedPaymentDetails] = useState<PaymentDetails | null>(null);
 
   useEffect(() => {
     userApi.getProfile().then(res => {
       setUser(res.data);
-      if (res.data) {
-        setPaymentDetails({
-          mobile: res.data.phone || '',
-          email: res.data.email || '',
-          town: res.data.town || '',
-        });
+      if (res.data && !isValidPaymentDetails({
+        mobile: res.data.phone || '',
+        email: res.data.email || '',
+        town: res.data.town || '',
+      })) {
+        Alert.alert(
+          'Complete your profile',
+          'Add a valid mobile number and select your town before accessing membership payments.',
+          [{ text: 'Go to Profile', onPress: () => navigation.navigate('Main', { screen: 'Profile' }) }],
+        );
       }
     }).catch(() => {});
-  }, []);
+  }, [navigation]);
 
   const openPaymentRequest = (plan: Plan) => {
-    const details = {
-      mobile: user?.phone || paymentDetails.mobile,
-      email: user?.email || paymentDetails.email,
-      town: user?.town || paymentDetails.town,
-    };
-    setPaymentDetails(details);
-    setConfirmedPaymentDetails(isValidPaymentDetails(details) ? details : null);
+    if (!user || !isValidPaymentDetails({ mobile: user.phone, email: user.email, town: user.town })) {
+      Alert.alert(
+        'Complete your profile',
+        'Add a valid mobile number and select your town before creating a payment request.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Go to Profile', onPress: () => navigation.navigate('Main', { screen: 'Profile' }) },
+        ],
+      );
+      return;
+    }
     setSelectedPlan(plan);
   };
 
   const closePaymentRequest = () => {
     setSelectedPlan(null);
-    setConfirmedPaymentDetails(null);
-  };
-
-  const confirmPaymentDetails = () => {
-    if (!isValidPaymentDetails(paymentDetails)) {
-      Alert.alert(
-        'Check your details',
-        'Enter a valid email, town, and Namibian mobile number beginning with 081, 083, or 085.',
-      );
-      return;
-    }
-    setConfirmedPaymentDetails({
-      mobile: paymentDetails.mobile.trim(),
-      email: paymentDetails.email.trim(),
-      town: paymentDetails.town.trim(),
-    });
   };
 
   const handlePaySmeMessage = (event: WebViewMessageEvent) => {
@@ -554,10 +541,7 @@ export default function SubscribeScreen() {
       </ScrollView>
 
       <Modal visible={!!selectedPlan} transparent animationType="slide" onRequestClose={closePaymentRequest}>
-        <KeyboardAvoidingView
-          style={styles.modalBackdrop}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        <View style={styles.modalBackdrop}>
           <View style={styles.paymentModal}>
             <View style={styles.paymentModalHeader}>
               <View>
@@ -571,46 +555,17 @@ export default function SubscribeScreen() {
               </TouchableOpacity>
             </View>
 
-            {!confirmedPaymentDetails ? (
+            {selectedPlan && user ? (
               <>
                 <Text style={styles.paymentHelpText}>
-                  PaySME will send the secure payment link to this mobile number.
-                </Text>
-                <TextInput
-                  style={styles.paymentInput}
-                  placeholder="Mobile number (081, 083 or 085)"
-                  placeholderTextColor={colors.mutedForeground}
-                  keyboardType="phone-pad"
-                  value={paymentDetails.mobile}
-                  onChangeText={(mobile) => setPaymentDetails(current => ({ ...current, mobile }))}
-                />
-                <TextInput
-                  style={styles.paymentInput}
-                  placeholder="Email address"
-                  placeholderTextColor={colors.mutedForeground}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={paymentDetails.email}
-                  onChangeText={(email) => setPaymentDetails(current => ({ ...current, email }))}
-                />
-                <TextInput
-                  style={styles.paymentInput}
-                  placeholder="Town"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={paymentDetails.town}
-                  onChangeText={(town) => setPaymentDetails(current => ({ ...current, town }))}
-                />
-                <TouchableOpacity style={styles.continueButton} onPress={confirmPaymentDetails}>
-                  <Text style={styles.continueButtonText}>Continue</Text>
-                </TouchableOpacity>
-              </>
-            ) : selectedPlan && user ? (
-              <>
-                <Text style={styles.paymentHelpText}>
-                  Tap the secure PaySME button below. The payment link will be sent by SMS.
+                  Request to Pay SMS link will be sent via PaySME to mobile number {user.phone}.
                 </Text>
                 <WebView
-                  source={{ html: buildPaySmeHtml(selectedPlan, confirmedPaymentDetails, user.id) }}
+                  source={{ html: buildPaySmeHtml(selectedPlan, {
+                    mobile: user.phone,
+                    email: user.email,
+                    town: user.town,
+                  }, user.id) }}
                   originWhitelist={['*']}
                   javaScriptEnabled
                   domStorageEnabled
@@ -618,15 +573,12 @@ export default function SubscribeScreen() {
                   onMessage={handlePaySmeMessage}
                   style={styles.paySmeWebView}
                 />
-                <TouchableOpacity onPress={() => setConfirmedPaymentDetails(null)}>
-                  <Text style={styles.editPaymentDetails}>Edit contact details</Text>
-                </TouchableOpacity>
               </>
             ) : (
               <ActivityIndicator color={colors.primary} />
             )}
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -940,7 +892,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    paddingBottom: 30,
+    paddingBottom: 80,
+    maxHeight: '90%',
   },
   paymentModalHeader: {
     flexDirection: 'row',
@@ -967,36 +920,8 @@ const styles = StyleSheet.create({
     color: colors.mutedForeground,
     marginBottom: 14,
   },
-  paymentInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    color: colors.cardForeground,
-    marginBottom: 10,
-  },
-  continueButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 13,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  continueButtonText: {
-    color: colors.primaryForeground,
-    fontSize: 15,
-    fontWeight: '600',
-  },
   paySmeWebView: {
     height: 92,
     backgroundColor: 'transparent',
-  },
-  editPaymentDetails: {
-    textAlign: 'center',
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: '600',
-    paddingTop: 10,
   },
 });

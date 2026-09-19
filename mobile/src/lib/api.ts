@@ -120,12 +120,16 @@ export const authApi = {
     return makeResponse({ ...user, token: data.session.access_token });
   },
 
-  signup: async (email: string, password: string, displayName?: string) => {
+  signup: async (email: string, password: string, displayName?: string, phone?: string, town?: string) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { display_name: displayName || email.split('@')[0] },
+        data: {
+          display_name: displayName || email.split('@')[0],
+          phone: phone || null,
+          town: town || null,
+        },
       },
     });
     if (error) throw new Error(error.message);
@@ -1372,6 +1376,30 @@ export const userApi = {
       .eq('id', userId);
 
     if (error) throw new Error(error.message);
+    return makeResponse({ success: true });
+  },
+
+  updateProfileDetails: async (displayName: string, phone: string, town: string) => {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error('Not authenticated');
+
+    const normalizedPhone = phone.replace(/[\s-]/g, '');
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        display_name: displayName,
+        full_name: displayName,
+        phone: normalizedPhone,
+        town,
+      })
+      .eq('id', userId);
+
+    if (error) throw new Error(error.message);
+
+    await supabase.auth.updateUser({
+      data: { display_name: displayName, phone: normalizedPhone, town },
+    });
+
     return makeResponse({ success: true });
   },
 
