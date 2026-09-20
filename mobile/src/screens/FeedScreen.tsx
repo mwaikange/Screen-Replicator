@@ -449,7 +449,7 @@ function rowToPost(row: any): Post {
     userName: profile.display_name ?? 'Anonymous',
     userAvatar: profile.avatar_url ?? '',
     userTown: row.town ?? '',
-    type: typeInfo.label ?? row.type ?? 'incident',
+    type: typeInfo.code ?? typeInfo.label ?? row.type ?? 'incident',
     title: row.title ?? '',
     description: row.description ?? '',
     images: mediaPath ? [resolveMediaUrl(mediaPath)!] : [],
@@ -469,7 +469,7 @@ const BASE_SELECT = `
   id, title, description, created_at, created_by,
   lat, lng, town, area_radius_m, verification_level, admin_verified,
   upvotes, expires_at,
-  incident_types!type_id ( label, severity ),
+  incident_types!type_id ( code, label, severity ),
   incident_media ( path ),
   profiles!incidents_created_by_fkey ( id, display_name, avatar_url )
 `;

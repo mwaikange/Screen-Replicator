@@ -4,9 +4,10 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, AppState, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { memo, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 
 import LoginScreen from './src/screens/LoginScreen';
 import SignupScreen from './src/screens/SignupScreen';
@@ -30,6 +31,9 @@ import SearchScreen from './src/screens/SearchScreen';
 import PublicProfileScreen from './src/screens/PublicProfileScreen';
 import { colors } from './src/lib/theme';
 import { RootStackParamList, MainTabParamList } from './src/lib/types';
+import { supabase } from './src/lib/supabase';
+
+const authLogo = require('./assets/ngumu-eye-logo-transparent.png');
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -37,10 +41,6 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 function MainTabs() {
   const renderHomeIcon = useCallback(({ color, size }: { color: string; size: number }) => (
     <Ionicons name="home-outline" size={size} color={color} />
-  ), []);
-
-  const renderMapIcon = useCallback(({ color, size }: { color: string; size: number }) => (
-    <Ionicons name="map-outline" size={size} color={color} />
   ), []);
 
   const renderReportIcon = useCallback(({ focused }: { focused: boolean }) => (
@@ -80,15 +80,7 @@ function MainTabs() {
           tabBarAccessibilityLabel: 'Feed tab',
         }}
       />
-      <Tab.Screen 
-        name="Map" 
-        component={MapScreen}
-        options={{
-          tabBarIcon: renderMapIcon,
-          tabBarAccessibilityLabel: 'Map tab',
-        }}
-      />
-      <Tab.Screen 
+      <Tab.Screen
         name="Report" 
         component={ReportScreen}
         options={{
@@ -129,80 +121,87 @@ function MainTabs() {
 }
 
 export default function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session);
+      setCheckingSession(false);
+    }).catch(() => {
+      if (mounted) setCheckingSession(false);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!mounted) return;
+      setSession(nextSession);
+      setCheckingSession(false);
+    });
+
+    const syncAutoRefresh = (state: string) => {
+      if (state === 'active') supabase.auth.startAutoRefresh();
+      else supabase.auth.stopAutoRefresh();
+    };
+
+    syncAutoRefresh(AppState.currentState);
+    const appStateListener = AppState.addEventListener('change', syncAutoRefresh);
+
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+      appStateListener.remove();
+      supabase.auth.stopAutoRefresh();
+    };
+  }, []);
+
+  if (checkingSession) {
+    return (
+      <SafeAreaProvider>
+        <View style={styles.authLoadingContainer}>
+          <StatusBar style="dark" />
+          <Image source={authLogo} style={styles.authLoadingLogo} resizeMode="contain" />
+          <ActivityIndicator size="small" color={colors.primary} />
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <NavigationContainer>
         <StatusBar style="dark" />
-        <Stack.Navigator 
-          initialRouteName="Login"
+        <Stack.Navigator
+          key={session ? 'authenticated' : 'guest'}
           screenOptions={{ 
             headerShown: false,
             animation: 'slide_from_right',
           }}
         >
-          <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="Signup" component={SignupScreen} />
-          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-          <Stack.Screen 
-            name="Main" 
-            component={MainTabs}
-            options={{ animation: 'fade' }}
-          />
-          <Stack.Screen 
-            name="IncidentDetails" 
-            component={IncidentDetailsScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
-          <Stack.Screen 
-            name="Subscribe" 
-            component={SubscribeScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
-          <Stack.Screen 
-            name="GroupChat" 
-            component={GroupChatScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
-          <Stack.Screen 
-            name="CreateGroup" 
-            component={CreateGroupScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
-          <Stack.Screen 
-            name="CaseDetail" 
-            component={CaseDetailScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
-          <Stack.Screen 
-            name="OpenNewCase" 
-            component={OpenNewCaseScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
-          <Stack.Screen 
-            name="DeviceTracking" 
-            component={DeviceTrackingScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
-          <Stack.Screen 
-            name="Counseling" 
-            component={CounselingScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
-          <Stack.Screen 
-            name="Notifications" 
-            component={NotificationsScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
-          <Stack.Screen 
-            name="Search" 
-            component={SearchScreen}
-            options={{ animation: 'slide_from_bottom' }}
-          />
-          <Stack.Screen 
-            name="PublicProfile" 
-            component={PublicProfileScreen}
-            options={{ animation: 'slide_from_right' }}
-          />
+          {session ? (
+            <>
+              <Stack.Screen name="Main" component={MainTabs} options={{ animation: 'fade' }} />
+              <Stack.Screen name="IncidentDetails" component={IncidentDetailsScreen} />
+              <Stack.Screen name="Subscribe" component={SubscribeScreen} />
+              <Stack.Screen name="GroupChat" component={GroupChatScreen} />
+              <Stack.Screen name="CreateGroup" component={CreateGroupScreen} />
+              <Stack.Screen name="CaseDetail" component={CaseDetailScreen} />
+              <Stack.Screen name="OpenNewCase" component={OpenNewCaseScreen} />
+              <Stack.Screen name="DeviceTracking" component={DeviceTrackingScreen} />
+              <Stack.Screen name="Counseling" component={CounselingScreen} />
+              <Stack.Screen name="Notifications" component={NotificationsScreen} />
+              <Stack.Screen name="Search" component={SearchScreen} options={{ animation: 'slide_from_bottom' }} />
+              <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
+            </>
+          ) : (
+            <>
+              <Stack.Screen name="Login" component={LoginScreen} options={{ animation: 'fade' }} />
+              <Stack.Screen name="Signup" component={SignupScreen} />
+              <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            </>
+          )}
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
@@ -210,6 +209,18 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  authLoadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 20,
+    backgroundColor: colors.background,
+  },
+  authLoadingLogo: {
+    width: 120,
+    height: 120,
+    backgroundColor: 'transparent',
+  },
   tabBar: {
     backgroundColor: colors.card,
     borderTopColor: colors.border,

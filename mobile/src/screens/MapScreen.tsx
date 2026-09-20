@@ -565,7 +565,7 @@ const styles = StyleSheet.create({
 
   // Map
   mapWrapper:   { flex: 1 },
-  map:          { ...StyleSheet.absoluteFillObject },
+  map:          { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
 
   // FABs
   fabStack: { position: 'absolute', right: 12, bottom: 100, gap: 10 },

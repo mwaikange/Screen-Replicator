@@ -9,20 +9,25 @@ import {
   Image,
   Alert,
   Linking,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { colors, spacing, fontSize } from '../lib/theme';
-import { casesApi } from '../lib/api';
-import { Case, RootStackParamList } from '../lib/types';
+import { casesApi, supportApi } from '../lib/api';
+import { Case, SupportRequest, RootStackParamList } from '../lib/types';
 
 const statusColors: Record<string, { bg: string; text: string; label: string }> = {
-  open: { bg: '#fef3c7', text: '#92400e', label: 'Open' },
-  in_progress: { bg: '#ede9fe', text: '#6b21a8', label: 'In Progress' },
-  closed: { bg: '#dcfce7', text: '#166534', label: 'Closed' },
-  archived: { bg: '#f3f4f6', text: '#6b7280', label: 'Archived' },
+  open:     { bg: '#fef3c7', text: '#92400e', label: 'Open' },
+  pending:  { bg: '#eff6ff', text: '#1d4ed8', label: 'Pending' },
+  active:   { bg: '#ede9fe', text: '#6b21a8', label: 'Active' },
+  resolved: { bg: '#dcfce7', text: '#166534', label: 'Resolved' },
+  rejected: { bg: '#fee2e2', text: '#991b1b', label: 'Rejected' },
+  closed:   { bg: '#f3f4f6', text: '#6b7280', label: 'Closed' },
 };
+
+const WHATSAPP_NUMBER = '264816802064';
 
 const priorityColors: Record<string, { color: string; label: string }> = {
   low: { color: '#22c55e', label: 'Low' },
@@ -44,22 +49,32 @@ function formatDate(dateString: string): string {
 export default function CaseDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RootStackParamList, 'CaseDetail'>>();
-  const { caseId } = route.params;
+  const { caseId, itemType = 'report' } = route.params;
+  const isCounselling = itemType === 'counselling';
 
   const [caseData, setCaseData] = useState<Case | null>(null);
+  const [counselData, setCounselData] = useState<SupportRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'details' | 'evidence' | 'documents'>('details');
+  const [closingNote, setClosingNote] = useState('');
+  const [closing, setClosing] = useState(false);
 
   const fetchCase = useCallback(async () => {
     try {
-      const response = await casesApi.getById(caseId);
-      setCaseData(response.data);
+      if (isCounselling) {
+        const { data } = await supportApi.getAll();
+        const found = (data || []).find((r: SupportRequest) => r.id === caseId);
+        setCounselData(found || null);
+      } else {
+        const response = await casesApi.getById(caseId);
+        setCaseData(response.data);
+      }
     } catch (error) {
-      console.error('Failed to fetch case:', error);
+      console.error('Failed to fetch:', error);
     } finally {
       setLoading(false);
     }
-  }, [caseId]);
+  }, [caseId, isCounselling]);
 
   useEffect(() => {
     fetchCase();
@@ -76,10 +91,49 @@ export default function CaseDetailScreen() {
     }
   }, [caseData]);
 
+  const handleCloseCase = useCallback(async () => {
+    if (!caseData) return;
+    const words = closingNote.trim().split(/\s+/).filter(Boolean);
+    if (words.length > 20) {
+      Alert.alert('Too long', 'Closing note must be 20 words or less.');
+      return;
+    }
+    Alert.alert(
+      'Close File',
+      'Are you sure you want to mark this file as resolved and closed?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Close File', style: 'destructive',
+          onPress: async () => {
+            setClosing(true);
+            try {
+              await casesApi.update(caseData.id, {
+                status: 'closed',
+                resolution_notes: closingNote.trim() || 'Closed by user',
+              });
+              setCaseData({ ...caseData, status: 'closed' as any, resolutionNotes: closingNote.trim() || 'Closed by user' });
+              setClosingNote('');
+              Alert.alert('✅ File Closed', 'Your file has been marked as resolved and closed.');
+            } catch {
+              Alert.alert('Error', 'Failed to close file. Please try again.');
+            } finally {
+              setClosing(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [caseData, closingNote]);
+
+  const handleWhatsApp = useCallback((message: string) => {
+    Linking.openURL(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`);
+  }, []);
+
   const handleContactSupport = useCallback(() => {
-    const message = `Case ID: ${caseId}\nTitle: ${caseData?.title || 'N/A'}\n\nI need assistance with this case.`;
-    Linking.openURL(`https://wa.me/264816802064?text=${encodeURIComponent(message)}`);
-  }, [caseId, caseData]);
+    const message = `File ID: ${caseId}\nTitle: ${caseData?.title || 'N/A'}\n\nI need assistance with this file.`;
+    handleWhatsApp(message);
+  }, [caseId, caseData, handleWhatsApp]);
 
   if (loading) {
     return (
@@ -91,6 +145,99 @@ export default function CaseDetailScreen() {
     );
   }
 
+  // Counselling view
+  if (isCounselling) {
+    if (!counselData) {
+      return (
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color={colors.cardForeground} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Counselling Details</Text>
+            <View style={styles.headerRight} />
+          </View>
+          <View style={styles.loadingContainer}>
+            <Text style={styles.errorText}>Request not found</Text>
+          </View>
+        </SafeAreaView>
+      );
+    }
+    const sc = statusColors[counselData.status] || statusColors.pending;
+    const counsellingTypeLabels: Record<string, string> = {
+      counseling: 'Counselling', legal: 'Legal', medical: 'Medical', emergency: 'Emergency', support: 'Support',
+    };
+    const typeLabel = counsellingTypeLabels[counselData.type] || counselData.type;
+    const counselWhatsApp = () => {
+      const msg = `Counselling Request ID: ${caseId}\nType: ${typeLabel}\nStatus: ${sc.label}\n\nI need assistance with this request.`;
+      Linking.openURL(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`);
+    };
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={colors.cardForeground} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Counselling Details</Text>
+          <TouchableOpacity onPress={counselWhatsApp} style={styles.supportButton}>
+            <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Title card */}
+          <View style={styles.card}>
+            <View style={styles.badgeRow}>
+              <View style={[styles.statusBadge, { backgroundColor: '#f3e8ff' }]}>
+                <Text style={[styles.statusText, { color: '#7e22ce' }]}>Counselling</Text>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
+                <Text style={[styles.statusText, { color: sc.text }]}>{sc.label}</Text>
+              </View>
+            </View>
+            <Text style={styles.caseTitle}>{typeLabel} Request</Text>
+            <View style={styles.metaRow}>
+              <View style={styles.metaItem}>
+                <Ionicons name="calendar-outline" size={14} color={colors.mutedForeground} />
+                <Text style={styles.metaText}>{formatDate(counselData.createdAt)}</Text>
+              </View>
+              {counselData.assignedTo && (
+                <View style={styles.metaItem}>
+                  <Ionicons name="person-outline" size={14} color={colors.mutedForeground} />
+                  <Text style={styles.metaText}>{counselData.assignedTo}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Description */}
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Description</Text>
+            <Text style={styles.descriptionText}>{counselData.description || 'No description provided.'}</Text>
+          </View>
+
+          {/* Notes from assigned counsellor */}
+          {!!counselData.notes && (
+            <View style={styles.card}>
+              <View style={styles.notesHeader}>
+                <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+                <Text style={[styles.sectionTitle, { color: colors.primary, marginBottom: 0 }]}>Counsellor Notes</Text>
+              </View>
+              <Text style={styles.notesText}>{counselData.notes}</Text>
+            </View>
+          )}
+
+          {/* WhatsApp */}
+          <TouchableOpacity style={styles.whatsappBtn} onPress={counselWhatsApp} activeOpacity={0.8}>
+            <Ionicons name="logo-whatsapp" size={20} color="#fff" />
+            <Text style={styles.whatsappBtnText}>Submit Query via WhatsApp</Text>
+          </TouchableOpacity>
+
+          <View style={styles.bottomSpacing} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   if (!caseData) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -98,7 +245,7 @@ export default function CaseDetailScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={colors.cardForeground} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Case Not Found</Text>
+          <Text style={styles.headerTitle}>File Not Found</Text>
           <View style={styles.headerRight} />
         </View>
       </SafeAreaView>
@@ -114,7 +261,7 @@ export default function CaseDetailScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} data-testid="button-back">
           <Ionicons name="arrow-back" size={24} color={colors.cardForeground} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>Case Details</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>{isCounselling ? 'Counselling Details' : 'File Details'}</Text>
         <TouchableOpacity onPress={handleContactSupport} style={styles.supportButton} data-testid="button-contact-support">
           <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.primary} />
         </TouchableOpacity>
@@ -163,34 +310,83 @@ export default function CaseDetailScreen() {
         </View>
 
         {activeTab === 'details' && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Description</Text>
-            <Text style={styles.descriptionText}>{caseData.description || 'No description provided.'}</Text>
+          <View>
+            {/* Description */}
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Description</Text>
+              <Text style={styles.descriptionText}>{caseData.description || 'No description provided.'}</Text>
 
-            {caseData.assignedTo && (
-              <View style={styles.assignedRow}>
-                <Ionicons name="person-outline" size={16} color={colors.mutedForeground} />
-                <Text style={styles.assignedText}>Assigned to: {caseData.assignedTo}</Text>
+              {/* Assigned To — from assigned_to_name */}
+              {caseData.assignedTo && (
+                <View style={styles.assignedRow}>
+                  <Ionicons name="person-circle-outline" size={16} color={colors.mutedForeground} />
+                  <Text style={styles.assignedText}>Assigned to: {caseData.assignedTo}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Resolution Notes — read only, shown when present */}
+            {!!caseData.resolutionNotes && (
+              <View style={styles.card}>
+                <View style={styles.notesHeader}>
+                  <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+                  <Text style={[styles.sectionTitle, { color: colors.primary, marginBottom: 0 }]}>Resolution Notes</Text>
+                </View>
+                <Text style={styles.notesText}>{caseData.resolutionNotes}</Text>
               </View>
             )}
 
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Update Status</Text>
-            <View style={styles.statusActions}>
-              {Object.entries(statusColors).map(([key, val]) => (
+            {/* WhatsApp Query Button */}
+            <TouchableOpacity
+              style={styles.whatsappBtn}
+              onPress={handleContactSupport}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="logo-whatsapp" size={20} color="#fff" />
+              <Text style={styles.whatsappBtnText}>Submit Query via WhatsApp</Text>
+            </TouchableOpacity>
+
+            {/* Close File — only if not already closed */}
+            {caseData.status !== 'closed' && (
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Resolve & Close File</Text>
+                <Text style={styles.closingHint}>
+                  Once closed, no further updates can be made. Add a short note (max 20 words).
+                </Text>
+                <TextInput
+                  style={styles.closingInput}
+                  placeholder="Optional closing note (max 20 words)..."
+                  placeholderTextColor={colors.mutedForeground}
+                  value={closingNote}
+                  onChangeText={setClosingNote}
+                  multiline
+                  maxLength={150}
+                />
                 <TouchableOpacity
-                  key={key}
-                  style={[
-                    styles.statusActionButton,
-                    { borderColor: caseData.status === key ? val.text : colors.border },
-                    caseData.status === key && { backgroundColor: val.bg },
-                  ]}
-                  onPress={() => handleStatusChange(key)}
-                  disabled={caseData.status === key}
+                  style={[styles.closeBtn, closing && { opacity: 0.6 }]}
+                  onPress={handleCloseCase}
+                  disabled={closing}
+                  activeOpacity={0.8}
                 >
-                  <Text style={[styles.statusActionText, { color: val.text }]}>{val.label}</Text>
+                  {closing
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <>
+                        <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                        <Text style={styles.closeBtnText}>Resolved / Close File</Text>
+                      </>
+                  }
                 </TouchableOpacity>
-              ))}
-            </View>
+              </View>
+            )}
+
+            {/* Already closed state */}
+            {caseData.status === 'closed' && (
+              <View style={[styles.card, { alignItems: 'center', paddingVertical: 24 }]}>
+                <Ionicons name="checkmark-circle" size={40} color="#22c55e" />
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#166534', marginTop: 8 }}>File Closed</Text>
+                <Text style={{ fontSize: 13, color: colors.mutedForeground, marginTop: 4 }}>This file has been resolved and closed.</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -280,6 +476,10 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  errorText: {
+    fontSize: 14,
+    color: colors.destructive,
   },
   content: {
     flex: 1,
@@ -398,6 +598,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.mutedForeground,
   },
+  notesHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  notesText: { fontSize: 14, color: colors.cardForeground, lineHeight: 20, fontStyle: 'italic' },
+  whatsappBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: '#25D366', borderRadius: 12, paddingVertical: 14,
+    marginHorizontal: spacing.md, marginBottom: 12,
+  },
+  whatsappBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  closingHint: { fontSize: 13, color: colors.mutedForeground, marginBottom: 10, lineHeight: 18 },
+  closingInput: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+    padding: 12, fontSize: 14, color: colors.cardForeground,
+    minHeight: 70, textAlignVertical: 'top', marginBottom: 12,
+  },
+  closeBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#ef4444', borderRadius: 12, paddingVertical: 14,
+  },
+  closeBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   statusActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
