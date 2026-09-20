@@ -15,7 +15,7 @@ export default {
     userInterfaceStyle: "light",
 
     splash: {
-      image: "./assets/splash.png",
+      image: "./assets/ngumu-eye-logo-transparent.png",
       resizeMode: "contain",
       backgroundColor: "#ffffff",
     },
@@ -75,6 +75,16 @@ export default {
 
     plugins: [
       [
+        "expo-splash-screen",
+        {
+          image: "./assets/ngumu-eye-logo-transparent.png",
+          imageWidth: 220,
+          resizeMode: "contain",
+          backgroundColor: "#ffffff",
+        },
+      ],
+
+      [
         "expo-location",
         {
           locationAlwaysAndWhenInUsePermission:
@@ -95,6 +105,15 @@ export default {
 
       "expo-secure-store",
       "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          image: "./assets/ngumu-eye-logo-transparent.png",
+          imageWidth: 220,
+          resizeMode: "contain",
+          backgroundColor: "#ffffff",
+        },
+      ],
       "expo-status-bar",
     ],
 

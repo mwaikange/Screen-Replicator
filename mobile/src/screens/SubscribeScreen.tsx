@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -66,7 +67,7 @@ function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string, re
     town: details.town.trim(),
     idempotency_key: `mobile-order-v2-${requestId}`,
     metadata: { user_id: userId, plan_code: plan.code },
-    show_notification: true,
+    show_notification: false,
   };
 
   return `<!doctype html>
@@ -77,7 +78,6 @@ function buildPaySmeHtml(plan: Plan, details: PaymentDetails, userId: string, re
       html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
       #paysme-request-button { width: 100%; min-height: 72px; }
       button { width: 100% !important; border-radius: 10px !important; white-space: nowrap !important; font-size: 16px !important; padding-left: 12px !important; padding-right: 12px !important; }
-      .paysme-r2p-notice { top: 8px !important; bottom: auto !important; }
     </style>
   </head>
   <body>
@@ -346,6 +346,31 @@ export default function SubscribeScreen() {
   const [requestCycle, setRequestCycle] = useState(0);
   const [requestSent, setRequestSent] = useState(false);
   const [pendingPayment, setPendingPayment] = useState(false);
+  const successNoticeX = useRef(new Animated.Value(360)).current;
+  const successNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (successNoticeTimer.current) clearTimeout(successNoticeTimer.current);
+  }, []);
+
+  const showSuccessNotice = () => {
+    if (successNoticeTimer.current) clearTimeout(successNoticeTimer.current);
+    successNoticeX.setValue(360);
+    Animated.spring(successNoticeX, {
+      toValue: 0,
+      useNativeDriver: true,
+      damping: 18,
+      stiffness: 180,
+      mass: 0.8,
+    }).start();
+    successNoticeTimer.current = setTimeout(() => {
+      Animated.timing(successNoticeX, {
+        toValue: 360,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => setRequestSent(false));
+    }, 5000);
+  };
 
   useEffect(() => {
     userApi.getProfile().then(res => {
@@ -400,7 +425,7 @@ export default function SubscribeScreen() {
       if (message.type === 'request_sent') {
         setPendingPayment(false);
         setRequestSent(true);
-        setTimeout(() => setRequestSent(false), 7000);
+        showSuccessNotice();
       } else if (message.type === 'already_paid') {
         setPendingPayment(false);
         setRequestSent(false);
@@ -575,6 +600,15 @@ export default function SubscribeScreen() {
 
       <Modal visible={!!selectedPlan} transparent animationType="slide" onRequestClose={closePaymentRequest}>
         <View style={styles.modalBackdrop}>
+          {requestSent && (
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.successNotice, { transform: [{ translateX: successNoticeX }] }]}
+            >
+              <Ionicons name="checkmark-circle" size={22} color="#f6b91a" />
+              <Text style={styles.successNoticeText}>Request to Pay Sent. Check your SMS.</Text>
+            </Animated.View>
+          )}
           <View style={styles.paymentModal}>
             <View style={styles.paymentModalHeader}>
               <Text style={styles.paymentModalTitle}>Create Payment Request</Text>
@@ -612,7 +646,7 @@ export default function SubscribeScreen() {
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  <View style={[styles.paySmeWebViewContainer, requestSent && styles.paySmeNoticeContainer]}>
+                  <View style={styles.paySmeWebViewContainer}>
                     <WebView
                       key={paymentWebViewKey}
                       source={{ html: buildPaySmeHtml(selectedPlan, {
@@ -946,6 +980,35 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
   },
+  successNotice: {
+    position: 'absolute',
+    top: 18,
+    right: 12,
+    zIndex: 30,
+    elevation: 30,
+    width: '78%',
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#17211c',
+    borderWidth: 1,
+    borderColor: '#f6b91a',
+    shadowColor: '#000000',
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  successNoticeText: {
+    flex: 1,
+    color: '#ffffff',
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '600',
+  },
   paymentModal: {
     backgroundColor: colors.card,
     borderTopLeftRadius: 20,
@@ -1018,15 +1081,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 92,
     overflow: 'hidden',
-  },
-  paySmeNoticeContainer: {
-    position: 'absolute',
-    top: 48,
-    left: 20,
-    right: 20,
-    width: 'auto',
-    zIndex: 20,
-    elevation: 20,
   },
   paySmeWebView: {
     flex: 1,
