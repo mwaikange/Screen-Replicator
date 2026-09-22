@@ -56,6 +56,7 @@ export default function GroupChatScreen() {
   const [editIsPublic, setEditIsPublic] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageAsset, setImageAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [isSending, setIsSending] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
@@ -136,12 +137,19 @@ export default function GroupChatScreen() {
     isSendingRef.current = true;
     const textToSend = messageText.trim();
     const imageToSend = imagePreview;
+    const assetToSend = imageAsset;
     setMessageText('');
     setImagePreview(null);
+    setImageAsset(null);
     try {
-      await groupsApi.sendMessage(groupId, textToSend || '', imageToSend);
+      await groupsApi.sendMessage(groupId, textToSend || '', imageToSend, assetToSend);
       await loadMessages();
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (error) {
+      setMessageText(textToSend);
+      setImagePreview(imageToSend);
+      setImageAsset(assetToSend);
+      Alert.alert('Upload failed', error instanceof Error ? error.message : 'The image could not be uploaded. Please try again.');
     } finally {
       isSendingRef.current = false;
     }
@@ -162,16 +170,12 @@ export default function GroupChatScreen() {
   };
 
   const handlePickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please grant access to your photo library to share images.');
-      return;
-    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'], allowsEditing: true, quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
       setImagePreview(result.assets[0].uri);
+      setImageAsset(result.assets[0]);
     }
   };
 

@@ -55,7 +55,7 @@ export default function ReportScreen() {
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationSet, setLocationSet] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [incidentTypes, setIncidentTypes] = useState(fallbackIncidentTypes);
   const [typesLoading, setTypesLoading] = useState(true);
   const [typePickerVisible, setTypePickerVisible] = useState(false);
@@ -131,18 +131,13 @@ export default function ReportScreen() {
   }, []);
 
   const pickImage = useCallback(async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Photo library access is required');
-      return;
-    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'] as any,
       allowsMultipleSelection: true,
       quality: 0.8,
     });
     if (!result.canceled) {
-      setSelectedFiles(prev => [...prev, ...result.assets.map(a => a.uri)]);
+      setSelectedFiles(prev => [...prev, ...result.assets]);
     }
   }, []);
 

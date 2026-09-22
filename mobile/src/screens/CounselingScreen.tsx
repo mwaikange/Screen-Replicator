@@ -42,8 +42,6 @@ export default function CounselingScreen() {
 
   const handleAddPhoto = useCallback(async () => {
     if (attachments.length >= 3) { Alert.alert('Limit reached', 'You can attach up to 3 files.'); return; }
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permission needed', 'Please grant photo library access.'); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] as any, quality: 0.8 });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];

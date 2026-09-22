@@ -25,21 +25,42 @@ async function getAuthToken(): Promise<string | null> {
   return data?.session?.access_token || null;
 }
 
-async function uploadMedia(uri: string): Promise<string | null> {
+type UploadAsset = {
+  uri: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+};
+
+async function uploadMedia(asset: string | UploadAsset): Promise<string> {
   try {
-    const filename = uri.split('/').pop() || 'upload.jpg';
+    const uri = typeof asset === 'string' ? asset : asset.uri;
+    const filename = (typeof asset === 'string' ? undefined : asset.fileName) || uri.split('/').pop() || 'upload.jpg';
     const ext = filename.split('.').pop()?.toLowerCase() || 'jpg';
-    const mimeType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+    const mimeTypes: Record<string, string> = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+      webp: 'image/webp', heic: 'image/heic', mp4: 'video/mp4', mov: 'video/quicktime',
+      webm: 'video/webm', '3gp': 'video/3gpp', pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      txt: 'text/plain',
+    };
+    const mimeType = (typeof asset === 'string' ? undefined : asset.mimeType) || mimeTypes[ext] || 'application/octet-stream';
     const safeName = `upload_${Date.now()}.${ext}`;
 
-    // React Native FormData — do NOT set Content-Type manually
-    // fetch will set it automatically with the correct multipart boundary
+    // Convert the Expo file URI to a real Blob. React Native 0.86 rejects
+    // the legacy { uri, name, type } FormData part on Android.
+    const fileResponse = await fetch(uri);
+    if (!fileResponse.ok) {
+      throw new Error(`Could not read selected file (${fileResponse.status})`);
+    }
+    const fileBlob = await fileResponse.blob();
+    if (!fileBlob.size) {
+      throw new Error('Selected file is empty');
+    }
+    const uploadBlob = fileBlob.type === mimeType ? fileBlob : new Blob([fileBlob], { type: mimeType });
+
     const formData = new FormData();
-    formData.append('file', {
-      uri,
-      name: safeName,
-      type: mimeType,
-    } as any);
+    formData.append('file', uploadBlob, safeName);
 
     const uploadUrl = 'https://app.ngumus-eye.site';
     console.log('[upload] Sending to:', `${uploadUrl}/api/upload`);
@@ -56,15 +77,18 @@ async function uploadMedia(uri: string): Promise<string | null> {
     if (response.ok) {
       const result = await response.json();
       console.log('[upload] Success:', result.url);
-      return result.url || null;
+      if (!result.url) throw new Error('Upload completed without a file URL');
+      return result.url;
     } else {
       const errText = await response.text();
       console.error('[upload] Server error:', response.status, errText);
-      return null;
+      let message = 'File upload failed';
+      try { message = JSON.parse(errText)?.error || message; } catch {}
+      throw new Error(message);
     }
   } catch (error) {
     console.error('[upload] Network error:', error);
-    return null;
+    throw error instanceof Error ? error : new Error('File upload failed');
   }
 }
 
@@ -633,9 +657,11 @@ export const postsApi = {
     let imageUrls: string[] = [];
     if (data.images && data.images.length > 0) {
       for (const img of data.images) {
-        if (img.startsWith('file://') || img.startsWith('content://')) {
+        if (typeof img === 'string' && (img.startsWith('file://') || img.startsWith('content://'))) {
           const url = await uploadMedia(img);
           if (url) imageUrls.push(url);
+        } else if (typeof img === 'object' && img?.uri) {
+          imageUrls.push(await uploadMedia(img));
         } else {
           imageUrls.push(img);
         }
@@ -714,11 +740,12 @@ export const postsApi = {
 
     if (imageUrls.length > 0) {
       for (const url of imageUrls) {
-        await supabase.from('incident_media').insert({
+        const { error: mediaError } = await supabase.from('incident_media').insert({
           incident_id: newIncident.id,
           path: url,
           mime: 'image/jpeg',
         });
+        if (mediaError) throw new Error(`Image record could not be saved: ${mediaError.message}`);
       }
     }
 
@@ -854,12 +881,14 @@ export const groupsApi = {
     return makeResponse(messages);
   },
 
-  sendMessage: async (groupId: string, text: string, imageUrl?: string | null) => {
+  sendMessage: async (groupId: string, text: string, imageUrl?: string | null, imageAsset?: UploadAsset | null) => {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error('Not authenticated');
 
     let finalImageUrl = imageUrl || null;
-    if (finalImageUrl && (finalImageUrl.startsWith('file://') || finalImageUrl.startsWith('content://'))) {
+    if (imageAsset) {
+      finalImageUrl = await uploadMedia(imageAsset);
+    } else if (finalImageUrl && (finalImageUrl.startsWith('file://') || finalImageUrl.startsWith('content://'))) {
       finalImageUrl = await uploadMedia(finalImageUrl);
     }
 
@@ -877,7 +906,7 @@ export const groupsApi = {
       `)
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(`Message could not be saved: ${error.message}`);
 
     const msgProfile = Array.isArray(data.profiles) ? data.profiles[0] : data.profiles;
     const msg: GroupMessage = {
@@ -1679,6 +1708,15 @@ export const supportApi = {
     const userId = await getCurrentUserId();
     if (!userId) throw new Error('Not authenticated');
 
+    const attachmentUrls: string[] = [];
+    for (const uri of [requestData.doc1, requestData.doc2, requestData.doc3].filter(Boolean)) {
+      attachmentUrls.push(
+        uri.startsWith('file://') || uri.startsWith('content://')
+          ? await uploadMedia(uri)
+          : uri,
+      );
+    }
+
     const { data, error } = await supabase
       .from('support_requests')
       .insert({
@@ -1687,6 +1725,7 @@ export const supportApi = {
         description: requestData.description || '',
         contact_method: requestData.contactMethod || 'phone',
         status: 'pending',
+        notes: attachmentUrls.length ? `Attachments:\n${attachmentUrls.join('\n')}` : null,
       })
       .select('*')
       .single();
