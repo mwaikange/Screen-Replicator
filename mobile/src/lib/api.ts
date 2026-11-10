@@ -1,7 +1,28 @@
-import { supabase, siteUrl, supabaseUrl } from './supabase';
+import { supabase, supabaseUrl } from './supabase';
 import { User, Post, Group, Comment, TimelineEvent, GroupMessage, GroupMember, GroupJoinRequest, Case, TrackedDevice, SupportRequest } from './types';
 
 export const postImages: Record<string, any> = {};
+const PRIMARY_WEB_APP_URL = 'https://app.ngumus-eye.site';
+const BACKUP_WEB_APP_URL = 'https://ngumus.vercel.app';
+const WEB_APP_URLS = [...new Set([PRIMARY_WEB_APP_URL, BACKUP_WEB_APP_URL])];
+
+async function fetchWebApp(path: string, init?: RequestInit): Promise<Response> {
+  let lastResponse: Response | null = null;
+  let lastError: unknown = null;
+
+  for (const baseUrl of WEB_APP_URLS) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`, init);
+      if (response.ok || (response.status < 500 && response.status !== 404)) return response;
+      lastResponse = response;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastResponse) return lastResponse;
+  throw lastError instanceof Error ? lastError : new Error('Web service is unavailable');
+}
 
 function makeResponse<T>(data: T) {
   return { data };
@@ -62,10 +83,7 @@ async function uploadMedia(asset: string | UploadAsset): Promise<string> {
     const formData = new FormData();
     formData.append('file', uploadBlob, safeName);
 
-    const uploadUrl = 'https://app.ngumus-eye.site';
-    console.log('[upload] Sending to:', `${uploadUrl}/api/upload`);
-
-    const response = await fetch(`${uploadUrl}/api/upload`, {
+    const response = await fetchWebApp('/api/upload', {
       method: 'POST',
       // No Content-Type header — React Native sets it automatically with boundary
       // No Authorization header — endpoint is public
@@ -162,9 +180,9 @@ export const authApi = {
     // ✅ NEW: Send signup confirmation email via Vercel API
     const finalDisplayName = displayName || email.split('@')[0];
     try {
-      const confirmUrl = 'https://app.ngumus-eye.site/auth/verify-email?email=' + encodeURIComponent(email);
+      const confirmUrl = `${BACKUP_WEB_APP_URL}/auth/verify-email?email=${encodeURIComponent(email)}`;
       
-      const emailResponse = await fetch('https://app.ngumus-eye.site/api/auth/send-signup-confirmation', {
+      const emailResponse = await fetchWebApp('/api/auth/send-signup-confirmation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -200,9 +218,9 @@ export const authApi = {
 
     // ✅ NEW: Send custom password reset email via Vercel API
     try {
-      const resetUrl = 'https://app.ngumus-eye.site/auth/reset-password?email=' + encodeURIComponent(email);
+      const resetUrl = `${BACKUP_WEB_APP_URL}/auth/reset-password?email=${encodeURIComponent(email)}`;
       
-      const emailResponse = await fetch('https://app.ngumus-eye.site/api/auth/send-password-reset', {
+      const emailResponse = await fetchWebApp('/api/auth/send-password-reset', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

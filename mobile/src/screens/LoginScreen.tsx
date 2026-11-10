@@ -182,7 +182,7 @@ export default function LoginScreen() {
                   <Text style={styles.signupLink}>Sign up</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={styles.versionText}>Version 2.1.1</Text>
+              <Text style={styles.versionText}>Version 2.1.2</Text>
             </View>
           </ScrollView>
         </TouchableWithoutFeedback>

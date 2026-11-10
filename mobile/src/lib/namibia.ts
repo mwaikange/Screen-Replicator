@@ -1,4 +1,4 @@
-export const PAYSME_NAMIBIAN_TOWNS = [
+export const NAMIBIAN_TOWNS = [
   'Aminuis', 'Arandis', 'Aranos', 'Aroab', 'Aus', 'Berseba', 'Bethanie',
   'Bukalo', 'Divundu', 'Dordabis', 'Eenhana', 'Engela', 'Epupa', 'Gibeon',
   'Gobabis', 'Gochas', 'Groot Aub', 'Grootfontein', 'Grünau', 'Helao Nafidi',
@@ -13,14 +13,14 @@ export const PAYSME_NAMIBIAN_TOWNS = [
   'Usakos', 'Walvis Bay', 'Warmbad', 'Windhoek', 'Witvlei',
 ] as const;
 
-export function normalizePaySmeMobile(mobile: string) {
+export function normalizeNamibianMobile(mobile: string) {
   return mobile.replace(/[\s-]/g, '');
 }
 
-export function isValidPaySmeMobile(mobile: string) {
-  return /^(?:0(?:81|83|85)\d{7}|\+264(?:81|83|85)\d{7})$/.test(normalizePaySmeMobile(mobile));
+export function isValidNamibianMobile(mobile: string) {
+  return /^(?:0(?:81|83|85)\d{7}|\+264(?:81|83|85)\d{7})$/.test(normalizeNamibianMobile(mobile));
 }
 
-export function isPaySmeTown(town: string) {
-  return PAYSME_NAMIBIAN_TOWNS.some((item) => item === town);
+export function isNamibianTown(town: string) {
+  return NAMIBIAN_TOWNS.some((item) => item === town);
 }

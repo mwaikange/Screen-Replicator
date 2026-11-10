@@ -19,7 +19,7 @@ import { colors, spacing, fontSize } from '../lib/theme';
 import { authApi } from '../lib/api';
 import { RootStackParamList } from '../lib/types';
 import TownSelector from '../components/TownSelector';
-import { isPaySmeTown, isValidPaySmeMobile, normalizePaySmeMobile } from '../lib/paysme';
+import { isNamibianTown, isValidNamibianMobile, normalizeNamibianMobile } from '../lib/namibia';
 
 const appLogo = require('../../assets/logo.jpg');
 
@@ -63,12 +63,12 @@ export default function SignupScreen() {
       Alert.alert('Error', 'Please enter your email');
       return;
     }
-    if (!isValidPaySmeMobile(mobile)) {
+    if (!isValidNamibianMobile(mobile)) {
       Alert.alert('Error', 'Enter a valid Namibian mobile number beginning with 081, 083, or 085');
       return;
     }
-    if (!isPaySmeTown(town)) {
-      Alert.alert('Error', 'Please select your town from the PaySME town list');
+    if (!isNamibianTown(town)) {
+      Alert.alert('Error', 'Please select your town from the Namibian town list');
       return;
     }
     if (password.length < 6) {
@@ -86,7 +86,7 @@ export default function SignupScreen() {
         email.trim().toLowerCase(),
         password,
         displayName.trim(),
-        normalizePaySmeMobile(mobile),
+        normalizeNamibianMobile(mobile),
         town,
       );
       // FIX: after signup → show email verification alert → navigate to Login

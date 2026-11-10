@@ -21,7 +21,7 @@ import { userApi, authApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { User } from '../lib/types';
 import TownSelector from '../components/TownSelector';
-import { isPaySmeTown, isValidPaySmeMobile, normalizePaySmeMobile } from '../lib/paysme';
+import { isNamibianTown, isValidNamibianMobile, normalizeNamibianMobile } from '../lib/namibia';
 
 const appLogo = require('../../assets/logo.jpg');
 
@@ -109,19 +109,19 @@ export default function ProfileScreen() {
   // FIX: use userApi.updateDisplayName() not raw supabase
   const handleSaveName = async () => {
     if (!newName.trim()) return;
-    if (!isValidPaySmeMobile(newPhone)) {
+    if (!isValidNamibianMobile(newPhone)) {
       Alert.alert('Invalid mobile number', 'Use a Namibian number beginning with 081, 083, or 085.');
       return;
     }
-    if (!isPaySmeTown(newTown)) {
-      Alert.alert('Invalid town', 'Select your town from the PaySME town list.');
+    if (!isNamibianTown(newTown)) {
+      Alert.alert('Invalid town', 'Select your town from the Namibian town list.');
       return;
     }
     setSavingName(true);
     try {
       await userApi.updateProfileDetails(
         newName.trim(),
-        normalizePaySmeMobile(newPhone),
+        normalizeNamibianMobile(newPhone),
         newTown,
       );
       setEditingName(false);

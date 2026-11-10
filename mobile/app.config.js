@@ -6,7 +6,7 @@ export default {
 
     owner: "mwaikange",
 
-    version: "2.1.1",
+    version: "2.1.2",
 
     orientation: "portrait",
 
@@ -21,6 +21,16 @@ export default {
     },
 
     assetBundlePatterns: ["**/*"],
+
+    runtimeVersion: {
+      policy: "appVersion",
+    },
+
+    updates: {
+      url: "https://u.expo.dev/087a5521-1213-416d-92bf-761dd8fb245a",
+      checkAutomatically: "ON_LOAD",
+      fallbackToCacheTimeout: 0,
+    },
 
     ios: {
       supportsTablet: false,
@@ -43,7 +53,7 @@ export default {
     },
 
     android: {
-      versionCode: 4,
+      versionCode: 5,
 
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
@@ -70,6 +80,7 @@ export default {
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
       ],
     },
 
@@ -122,7 +133,9 @@ export default {
 
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
 
-      siteUrl: process.env.EXPO_PUBLIC_SITE_URL,
+      siteUrl: "https://app.ngumus-eye.site",
+
+      backupSiteUrl: "https://ngumus.vercel.app",
 
       eas: {
         projectId: "087a5521-1213-416d-92bf-761dd8fb245a",

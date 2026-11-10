@@ -19,7 +19,6 @@ import NotificationBell from '../components/NotificationBell';
 import { colors, spacing } from '../lib/theme';
 import { supabase } from '../lib/supabase';
 
-const MAP_API = 'https://app.ngumus-eye.site/api/map-incidents'; // kept for reference
 
 type MapIncident = {
   id: string;

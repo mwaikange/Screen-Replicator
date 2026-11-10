@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fontSize, spacing } from '../lib/theme';
-import { PAYSME_NAMIBIAN_TOWNS } from '../lib/paysme';
+import { NAMIBIAN_TOWNS } from '../lib/namibia';
 
 export default function TownSelector({ value, onChange }: { value: string; onChange: (town: string) => void }) {
   const [visible, setVisible] = useState(false);
@@ -18,8 +18,8 @@ export default function TownSelector({ value, onChange }: { value: string; onCha
 
   const towns = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    if (!query) return [...PAYSME_NAMIBIAN_TOWNS];
-    return PAYSME_NAMIBIAN_TOWNS.filter((town) => town.toLocaleLowerCase().includes(query));
+    if (!query) return [...NAMIBIAN_TOWNS];
+    return NAMIBIAN_TOWNS.filter((town) => town.toLocaleLowerCase().includes(query));
   }, [search]);
 
   return (
@@ -42,7 +42,7 @@ export default function TownSelector({ value, onChange }: { value: string; onCha
               style={styles.search}
               value={search}
               onChangeText={setSearch}
-              placeholder="Search PaySME towns"
+              placeholder="Search Namibian towns"
               placeholderTextColor={colors.mutedForeground}
               autoFocus
             />
