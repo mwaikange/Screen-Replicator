@@ -22,9 +22,7 @@ export default {
 
     assetBundlePatterns: ["**/*"],
 
-    runtimeVersion: {
-      policy: "appVersion",
-    },
+    runtimeVersion: "2.1.2",
 
     updates: {
       url: "https://u.expo.dev/087a5521-1213-416d-92bf-761dd8fb245a",
