@@ -1,0 +1,36 @@
+# Dependencies are installed fresh by EAS on Linux.
+node_modules/
+
+# Expo local state and generated output.
+.expo/
+dist/
+web-build/
+*.log
+
+# Local environment files.
+.env*.local
+
+# Native build products and machine-specific caches. These can contain
+# absolute Windows paths that are invalid on EAS Linux workers.
+android/.gradle/
+android/build/
+android/app/build/
+android/.cxx/
+android/app/.cxx/
+android/local.properties
+ios/Pods/
+
+# Local signing material must never be uploaded.
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Editor and operating-system files.
+.DS_Store
+.idea/
+*.iml
+*.hprof
+*.orig.*
