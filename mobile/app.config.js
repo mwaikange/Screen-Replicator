@@ -6,9 +6,9 @@ export default {
 
     owner: "mwaikange",
 
-    version: "2.1.2",
+    version: "2.1.3",
 
-    orientation: "portrait",
+    orientation: "default",
 
     icon: "./assets/icon.png",
 
@@ -22,7 +22,7 @@ export default {
 
     assetBundlePatterns: ["**/*"],
 
-    runtimeVersion: "2.1.2",
+    runtimeVersion: "2.1.3",
 
     updates: {
       url: "https://u.expo.dev/087a5521-1213-416d-92bf-761dd8fb245a",
@@ -52,6 +52,8 @@ export default {
 
     android: {
       versionCode: 5,
+
+      edgeToEdgeEnabled: true,
 
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
